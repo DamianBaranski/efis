@@ -25,6 +25,7 @@ set(SRC
     src/data_manager_stratux.cpp
     src/main.cpp
     src/screen.cpp
+    src/btg_file.cpp
 )
 
 # Header files
@@ -37,6 +38,7 @@ set(INC
     src/iwidget.h
     src/screen.h
     src/subject.h
+    src/btg_file.h
 )
 
 # Add executable
