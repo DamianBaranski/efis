@@ -5,7 +5,7 @@
 int main()
 {
 	//Create screen object
-	Screen screen(800, 600);
+	Screen screen(1024, 600);
 	//Create data manager object
 	DataManagerStratux dataManager;
 	//Create attitude widget

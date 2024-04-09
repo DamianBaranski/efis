@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.10)
 project(efis)
 
+if (POLICY CMP0072)
+  cmake_policy (SET CMP0072 NEW)
+endif(POLICY CMP0072)
+
 # Set C++ standard and compiler flags
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -8,11 +12,12 @@ set(CMAKE_CXX_FLAGS "-Wall -Wextra")
 
 find_package(CURL REQUIRED)
 find_package(OpenGL REQUIRED)
-find_package(GLUT REQUIRED)
+find_package(SDL2 REQUIRED)
+find_package(SDL2_image REQUIRED)
 
+include_directories(${SDL2_INCLUDE_DIRS} ${SDL2_IMAGE_INCLUDE_DIRS})
 include_directories(${CURL_INCLUDE_DIRS})
 include_directories(${OPENGL_INCLUDE_DIRS})
-include_directories(${GLUT_INCLUDE_DIRS})
 
 # Source files
 set(SRC 
@@ -36,7 +41,7 @@ set(INC
 
 # Add executable
 add_executable(efis ${SRC} ${INC})
-target_link_libraries(efis ${OPENGL_LIBRARIES} ${GLUT_LIBRARY} ${CURL_LIBRARIES} glut)
+target_link_libraries(efis ${OPENGL_LIBRARIES} ${CURL_LIBRARIES} ${SDL2_LIBRARIES} ${SDL2_IMAGE_LIBRARIES} SDL2_image)
 
 # Find Doxygen package
 find_package(Doxygen)

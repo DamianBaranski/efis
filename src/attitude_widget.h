@@ -1,13 +1,13 @@
-/// \file attitude_widget.h
-/// \brief Contains the declaration of the AttitudeWidget class.
-
 #ifndef ATTITUDE_WIDGET_H
 #define ATTITUDE_WIDGET_H
 
+#include "texture.h"
 #include "iobserver.h"
 #include "iwidget.h"
 #include "idata_manager.h"
 #include "data_type.h"
+
+#include <SDL2/SDL.h>
 #include <iostream>
 
 /// \class AttitudeWidget
@@ -36,8 +36,10 @@ public:
     void update(DataType type) override;
 
 private:
-    IDataManager &mDataManager; ///< Reference to the data manager.
-    float y1 = 0, y2 = 0;       ///< Y-coordinates for rendering.
+    IDataManager &mDataManager;
+    float y1 = 0, y2 = 0;
+    Texture mScaleTexture;
+    SDL_Renderer* mRenderer; 
 };
 
 #endif // ATTITUDE_WIDGET_H
