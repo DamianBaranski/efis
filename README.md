@@ -15,7 +15,31 @@ Before running the EFIS project, make sure you have the following dependencies i
 - CURL (for fetching data)
 - Doxygen (for generating documentation)
 
-## Building and Running
+# Additional Setup for wgrib2
+
+If your project requires the wgrib2 library for handling GRIB files, follow these steps to prepare and build the library:
+Prepare the Build Environment
+
+`mkdir -p ~/wgrib2/build`
+`cd ~/wgrib2/build`
+
+## Run CMake
+
+You'll need to specify the CMAKE_INSTALL_PREFIX to determine where the library should be installed. For system-wide installation, you might use /usr/local. The CMAKE_PREFIX_PATH should point to where your dependencies are installed if they are not in standard locations.
+
+`cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_PREFIX_PATH=/path/to/dependencies`
+
+## Compile the Library
+
+`make`
+
+## Install the Library
+
+This step typically requires elevated privileges if installing to a system-wide directory like /usr/local.
+
+`sudo make install`
+
+## Building and Running EFIS
 
 To build the EFIS project, follow these steps:
 

@@ -59,13 +59,6 @@ add_subdirectory(gctpc)
 add_library(obj_lib OBJECT ${lib_src})
 target_compile_definitions(obj_lib PUBLIC ${definitions_list}) 
 
-# Write wgrib2_meta.h. This is installed and contains pre-processor
-# defines for other packages using wgrib2.
-configure_file (
-  "${PROJECT_SOURCE_DIR}/wgrib2/wgrib2_meta.h.in"
-  "${PROJECT_BINARY_DIR}/wgrib2/wgrib2_meta.h"
-  )
-
 if(BUILD_LIB)
 
   # with -DCALLABLE_WGRIB2 for the lib
@@ -141,7 +134,7 @@ target_link_libraries(wgrib2_exe PRIVATE gctpc)
 target_link_libraries(wgrib2_exe PRIVATE obj_lib)
 
 if(BUILD_LIB)
-  set(headers wgrib2_api.h wgrib2.h ${CMAKE_BINARY_DIR}/wgrib2_meta.h)
+  set(headers wgrib2_api.h wgrib2.h)
   target_link_libraries(wgrib2_lib PUBLIC gctpc)
   # if(USE_IPOLATES EQUAL 1)
   #   target_link_libraries(wgrib2_lib PRIVATE ip:ip_4 sp:sp_4)
