@@ -63,7 +63,7 @@ void DataManagerStratux::update_data()
     // Parse JSON data
     try
     {
-        nlohmann::json_abi_v3_11_2::json j = nlohmann::json_abi_v3_11_2::json::parse(response_data);
+        nlohmann::json_abi_v3_11_3::json j = nlohmann::json_abi_v3_11_3::json::parse(response_data);
 
         // Access individual fields
         float ahrs_gyro_heading = j["AHRSGyroHeading"];

@@ -15,12 +15,17 @@ find_package(OpenGL REQUIRED)
 find_package(SDL2 REQUIRED)
 find_package(SDL2_image REQUIRED)
 
+# Configuration for nlohmann_json library
+set(JSON_BuildTests OFF CACHE INTERNAL "")
+set(JSON_Install OFF CACHE INTERNAL "")
+add_subdirectory(nlohmann_json)
+
 include_directories(${SDL2_INCLUDE_DIRS} ${SDL2_IMAGE_INCLUDE_DIRS})
 include_directories(${CURL_INCLUDE_DIRS})
 include_directories(${OPENGL_INCLUDE_DIRS})
 
 # Source files
-set(SRC 
+set(SRC
     src/attitude_widget.cpp
     src/data_manager_stratux.cpp
     src/main.cpp
@@ -41,11 +46,12 @@ set(INC
 
 # Add executable
 add_executable(efis ${SRC} ${INC})
-target_link_libraries(efis ${OPENGL_LIBRARIES} ${CURL_LIBRARIES} ${SDL2_LIBRARIES} ${SDL2_IMAGE_LIBRARIES} SDL2_image)
+# Link libraries using a consistent signature style, here we choose keyword (PRIVATE or PUBLIC as needed)
+target_link_libraries(efis PRIVATE ${OPENGL_LIBRARIES} ${CURL_LIBRARIES} ${SDL2_LIBRARIES} ${SDL2_IMAGE_LIBRARIES} SDL2_image)
+target_link_libraries(efis PRIVATE nlohmann_json::nlohmann_json)
 
 # Find Doxygen package
 find_package(Doxygen)
-
 if(DOXYGEN_FOUND)
     # Set input and output files
     set(DOXYGEN_INPUT ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -62,4 +68,3 @@ if(DOXYGEN_FOUND)
         VERBATIM
     )
 endif()
-
