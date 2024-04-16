@@ -14,6 +14,8 @@ find_package(CURL REQUIRED)
 find_package(OpenGL REQUIRED)
 find_package(SDL2 REQUIRED)
 find_package(SDL2_image REQUIRED)
+find_package(SDL2_ttf REQUIRED)
+
 
 include_directories(${SDL2_INCLUDE_DIRS} ${SDL2_IMAGE_INCLUDE_DIRS})
 include_directories(${CURL_INCLUDE_DIRS})
@@ -25,7 +27,7 @@ set(SRC
     src/data_manager_stratux.cpp
     src/main.cpp
     src/screen.cpp
-    src/btg_file.cpp
+    src/shader.cpp
 )
 
 # Header files
@@ -38,12 +40,13 @@ set(INC
     src/iwidget.h
     src/screen.h
     src/subject.h
-    src/btg_file.h
+    src/shader.h
+    src/terrain_widget.h
 )
 
 # Add executable
 add_executable(efis ${SRC} ${INC})
-target_link_libraries(efis ${OPENGL_LIBRARIES} ${CURL_LIBRARIES} ${SDL2_LIBRARIES} ${SDL2_IMAGE_LIBRARIES} SDL2_image)
+target_link_libraries(efis ${OPENGL_LIBRARIES} ${CURL_LIBRARIES} ${SDL2_LIBRARIES} ${SDL2_IMAGE_LIBRARIES} ${SDL2_TTF_LIBRARIES} SDL2_image SDL2_ttf)
 
 # Find Doxygen package
 find_package(Doxygen)
