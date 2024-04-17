@@ -10,12 +10,13 @@
 ///
 /// This class defines the common interface for all widgets.
 /// Widgets are components that can be rendered on a screen.
-class IWidget : public IRenderer {
+class IWidget : public IRenderer
+{
 public:
     /// \brief Constructs a new IWidget object.
     ///
     /// \param screen The screen on which the widget will be rendered.
-    IWidget(Screen& screen) : mScreen(screen) {mScreen.registerRenderer(this);}
+    IWidget(Screen &screen) : mScreen(screen), mEnabled(true) { mScreen.registerRenderer(this); }
 
     /// \brief Renders the widget.
     ///
@@ -25,7 +26,7 @@ public:
     /// \brief Enables or disables the widget.
     ///
     /// \param enable If true, the widget is enabled; otherwise, it is disabled.
-    virtual void enable(bool enable) = 0;
+    virtual void enable(bool enable) { mEnabled = enable; }
 
     /// \brief Sets the position of the widget.
     ///
@@ -34,7 +35,8 @@ public:
     virtual void setPos(int x, int y) = 0;
 
 protected:
-    Screen& mScreen; ///< The screen on which the widget is rendered.
+    Screen &mScreen; ///< The screen on which the widget is rendered.
+    bool mEnabled;   ///< Indicates whether the widget is enabled or disabled.
 };
 
 #endif // IWIDGET_H

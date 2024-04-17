@@ -1,68 +1,71 @@
+/// \file render2d.h
+/// \brief Contains the declaration of the Render2D class, which provides functionalities for 2D rendering operations.
 #ifndef RENDER2D_H
 #define RENDER2D_H
+
 #include "shader.h"
+#include "screen.h"
 #include <SDL_ttf.h>
 
-class Render2D {
-    public:
-    Render2D() {
-        mShader.setMvpMatrix(glm::mat4(1));
-    }
+/// @brief A class for 2D rendering operations.
+class Render2D
+{
+public:
+    /// @brief Constructs a Render2D object.
+    /// @param screen The screen object.
+    Render2D(const Screen &screen);
 
-    void drawText(std::string text, float size, float x, float y) {
-        // Load font
-        TTF_Init();
-        TTF_Font* font = TTF_OpenFont("../resources/fonts/Amatic.ttf", size);
-        if (!font) {
-            std::cerr << "Failed to load font: " << TTF_GetError() << std::endl;
-            return;
-        }
+    /// @brief Constructs a Render2D object with a specified z-coordinate.
+    /// @param screen The screen object.
+    /// @param z The z-coordinate.
+    Render2D(const Screen &screen, int z);
 
-        // Create surface from text
-        SDL_Color color = {0, 255, 255, 255}; // White color with full opacity
-        SDL_Surface* surface = TTF_RenderText_Blended(font, text.c_str(), color);
-        if (!surface) {
-            std::cerr << "Failed to render text: " << TTF_GetError() << std::endl;
-            TTF_CloseFont(font);
-            return;
-        }
+    /// @brief Sets the rotation angle.
+    /// @param angle The rotation angle in radians.
+    void setRotation(float angle);
 
-        std::cout << "Surface w:" << surface->w << " h:" << surface->h << std::endl;
-        mShader.setTexture(text, surface);
+    /// @brief Sets the rotation angle around a specified point.
+    /// @param angle The rotation angle in radians.
+    /// @param x The x-coordinate of the rotation point.
+    /// @param y The y-coordinate of the rotation point.
+    void setRotation(float angle, int x, int y);
 
-        // Free surface
-        SDL_FreeSurface(surface);
+    /// @brief Sets the position.
+    /// @param x The x-coordinate.
+    /// @param y The y-coordinate.
+    void setPosition(int x, int y);
 
-        // Draw texture
-        drawTexture(text, x, y, surface->w/40.0, surface->h/40.0);
+    /// @brief Draws text on the screen.
+    /// @param text The text to be drawn.
+    /// @param size The font size.
+    /// @param x The x-coordinate of the text position.
+    /// @param y The y-coordinate of the text position.
+    void drawText(std::string text, float size, float x, float y);
 
-        // Cleanup
-        TTF_CloseFont(font);
-    }
+    /// @brief Draws a texture on the screen.
+    /// @param name The name of the texture.
+    /// @param x The x-coordinate of the texture position.
+    /// @param y The y-coordinate of the texture position.
+    /// @param w The width of the texture.
+    /// @param h The height of the texture.
+    void drawTexture(std::string name, float x, float y, float w, float h);
 
-    void drawTexture(std::string name, float x, float y, float w, float h) {
-        std::vector<VertexTexture> vertices = {
-            {{x, y, 0}, {0.0f, 1.0f}},
-            {{x, y+h, 0}, {0.0f, 0.0f}},
-            {{x+w, y, 0}, {1.0f, 1.0f}},
-            {{x+w, y+h, 0}, {1.0f, 0.0f}}
-        };
-        std::vector<GLushort> indices = {0,1,2,2,3,1};
-        std::vector<Triangles> triangles;
-        triangles.push_back({
-            name,
-            vertices,
-            indices,
-        });
-        mShader.setTriangles(triangles);
-    }
-    
-    void render() const {
-        mShader.render();
-    }
+    /// @brief Draws a colored rectangle on the screen.
+    /// @param x The x-coordinate of the top-left corner of the rectangle.
+    /// @param y The y-coordinate of the top-left corner of the rectangle.
+    /// @param w The width of the rectangle.
+    /// @param h The height of the rectangle.
+    /// @param rgba The color of the rectangle in RGBA format.
+    void drawRectangle(int x, int y, int w, int h, uint32_t rgba);
 
-    protected:
-    Shader mShader;
+    /// @brief Renders the scene.
+    void render() const;
+
+protected:
+    const Screen &mScreen; ///< The screen configuration.
+    Shader mShader;        ///< The shader used for rendering.
+    glm::mat4 mMvp;        ///< The Model-View-Projection matrix.
+    static int mPositionZ; ///< The static position z-coordinate.
 };
 
-#endif
+#endif // RENDER2D_H

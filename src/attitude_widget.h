@@ -1,5 +1,8 @@
+/// \file attitude_widget.h
+/// \brief Contains the declaration of the AttitudeWidget class, which represents a widget that displays attitude information.
 #ifndef ATTITUDE_WIDGET_H
 #define ATTITUDE_WIDGET_H
+
 #include "iobserver.h"
 #include "iwidget.h"
 #include "idata_manager.h"
@@ -9,7 +12,11 @@
 
 /// \class AttitudeWidget
 /// \brief Represents a widget that displays attitude information.
-class AttitudeWidget : public IObserver<DataType>, public IWidget {
+///
+/// This widget renders attitude information on a screen. It receives updates from a data manager
+/// and renders the current attitude state accordingly.
+class AttitudeWidget : public IObserver<DataType>, public IWidget
+{
 public:
     /// \brief Constructs an AttitudeWidget object.
     /// \param screen The screen to render the widget on.
@@ -18,10 +25,6 @@ public:
 
     /// \brief Renders the attitude widget.
     void render() const override;
-
-    /// \brief Enables or disables the attitude widget.
-    /// \param enable True to enable the widget, false to disable it.
-    void enable(bool enable) override;
 
     /// \brief Sets the position of the attitude widget.
     /// \param x The x-coordinate of the position.
@@ -32,10 +35,16 @@ public:
     /// \param type The type of data being updated.
     void update(DataType type) override;
 
+    /// \brief Handles mouse click events.
+    /// \param x The x-coordinate of the mouse click.
+    /// \param y The y-coordinate of the mouse click.
+    /// \return True if the click event is handled, false otherwise.
+    bool mouseClick(int x, int y) override;
+
 private:
-    Render2D mScale;
-    IDataManager &mDataManager;
-   
+    IDataManager &mDataManager; ///< Reference to the data manager providing attitude data.
+    Render2D mHorizon;          ///< Render2D object for the horizon.
+    Render2D mScale;            ///< Render2D object for the scale.
 };
 
 #endif // ATTITUDE_WIDGET_H

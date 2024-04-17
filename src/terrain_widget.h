@@ -56,7 +56,6 @@ public:
         const GLsizei numIndices = indicesPerSide * numSides;
         std::vector<GLushort> indices;
         indices.reserve(numIndices); // Reserve memory for indices
-        GLuint i = 0;
         for (GLushort j = 0; j < numSides; ++j)
         {
             GLushort sideBaseIdx = j * vertsPerSide;
@@ -100,12 +99,10 @@ public:
         mCamAngle+=0.01;
     }
 
-    virtual void enable(bool enable)
-    {
-    }
-
     virtual void setPos(int x, int y)
     {
+        (void) x;
+        (void) y;
     }
 
 private:

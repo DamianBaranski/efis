@@ -31,7 +31,7 @@ Screen::Screen(int width, int height) : mWidth(width), mHeight(height)
     }
 
     mContext = SDL_GL_CreateContext(mWindow);
-    
+
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
     glEnable(GL_BLEND);
@@ -66,9 +66,20 @@ void Screen::mainLoop()
         SDL_Event event;
         while (SDL_PollEvent(&event))
         {
-            if (event.type == SDL_QUIT)
+            switch (event.type)
             {
+            case SDL_QUIT:
                 quit = true;
+                break;
+
+            case SDL_MOUSEBUTTONDOWN:
+                for (auto renderer : mRenderers)
+                {
+                    if(renderer->mouseClick(event.button.x, event.button.y)) {
+                        break;
+                    }
+                }
+                break;
             }
         }
         render();

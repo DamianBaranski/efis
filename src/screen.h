@@ -15,6 +15,17 @@ class IRenderer
 public:
     /// \brief Renders the object.
     virtual void render() const = 0;
+
+    /// \brief Handles mouse click events.
+    /// \param x The x-coordinate of the mouse click.
+    /// \param y The y-coordinate of the mouse click.
+    /// \return True if the click event is handled, false otherwise.
+    virtual bool mouseClick(int x, int y)
+    {
+        (void)x;
+        (void)y;
+        return false;
+    }
 };
 
 /// \class Screen
@@ -51,6 +62,7 @@ private:
 
     /// \brief Displays the contents of the screen.
     void render();
+
     int mWidth;                          ///< The width of the screen.
     int mHeight;                         ///< The height of the screen.
     SDL_Window *mWindow = nullptr;       ///< The SDL window associated with the screen.

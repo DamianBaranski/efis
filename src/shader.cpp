@@ -131,9 +131,9 @@ void Shader::setTexture(const std::string &name, SDL_Surface *surface)
         SDL_Log("Creating texture %s failed, code %u\n", name.c_str(), err);
     }
 
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glGenerateMipmap(GL_TEXTURE_2D);
+    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    //glGenerateMipmap(GL_TEXTURE_2D);
 
     SDL_FreeSurface(surface);
 

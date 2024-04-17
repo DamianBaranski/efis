@@ -28,6 +28,7 @@ set(SRC
     src/main.cpp
     src/screen.cpp
     src/shader.cpp
+    src/render2d.cpp
 )
 
 # Header files
@@ -42,6 +43,7 @@ set(INC
     src/subject.h
     src/shader.h
     src/terrain_widget.h
+    src/render2d.h
 )
 
 # Add executable
