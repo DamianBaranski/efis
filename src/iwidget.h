@@ -15,7 +15,7 @@ public:
     /// \brief Constructs a new IWidget object.
     ///
     /// \param screen The screen on which the widget will be rendered.
-    IWidget(Screen& screen) : mScreen(screen) {}
+    IWidget(Screen& screen) : mScreen(screen) {mScreen.registerRenderer(this);}
 
     /// \brief Renders the widget.
     ///

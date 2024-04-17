@@ -1,13 +1,10 @@
 #ifndef ATTITUDE_WIDGET_H
 #define ATTITUDE_WIDGET_H
-
-#include "texture.h"
 #include "iobserver.h"
 #include "iwidget.h"
 #include "idata_manager.h"
 #include "data_type.h"
-
-#include <SDL2/SDL.h>
+#include "render2d.h"
 #include <iostream>
 
 /// \class AttitudeWidget
@@ -36,10 +33,9 @@ public:
     void update(DataType type) override;
 
 private:
+    Render2D mScale;
     IDataManager &mDataManager;
-    float y1 = 0, y2 = 0;
-    Texture mScaleTexture;
-    SDL_Renderer* mRenderer; 
+   
 };
 
 #endif // ATTITUDE_WIDGET_H
