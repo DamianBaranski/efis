@@ -8,7 +8,7 @@
 #include <algorithm>
 
 /**
- * @brief A concrete implementation of the Subject interface.
+ * @brief A concrete implementation of the ISubject interface.
  * 
  * @tparam T The type of data being observed.
  */

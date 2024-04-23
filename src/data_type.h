@@ -6,21 +6,32 @@
 #include <string>
 #include <vector>
 
-typedef struct {
-    struct {
+/// \struct VertexTexture
+/// \brief Represents a vertex with associated texture coordinates.
+typedef struct
+{
+    /// \brief Represents the vertex coordinates.
+    struct
+    {
         float x; ///< X-coordinate of the vertex.
         float y; ///< Y-coordinate of the vertex.
         float z; ///< Z-coordinate of the vertex.
     } vertex;
-    struct {
+
+    /// \brief Represents the texture coordinates.
+    struct
+    {
         float x; ///< X-coordinate of the texture coordinate.
         float y; ///< Y-coordinate of the texture coordinate.
     } textureCoord;
 } VertexTexture;
 
-typedef struct {
-    std::string material;             ///< Material of the triangle.
-    std::vector<VertexTexture> vertex; ///< Vertices of the triangle.
+/// \struct Triangles
+/// \brief Represents a set of triangles with associated material, vertices, and indices.
+typedef struct
+{
+    std::string material;                ///< Material of the triangle.
+    std::vector<VertexTexture> vertex;   ///< Vertices of the triangle.
     std::vector<unsigned short> indices; ///< Indices of the triangle.
 } Triangles;
 

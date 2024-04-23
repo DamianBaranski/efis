@@ -55,6 +55,10 @@ void Shader::setMvpMatrix(glm::mat4 mvpMat)
 
 void Shader::setTriangles(const std::vector<Triangles> &triangles)
 {
+    if(triangles.size() == 0) {
+        return;
+    }
+
     glUseProgram(mShaderProgram);
     std::cout << "set triangles:" << triangles.size() << std::endl;
     for (auto object : triangles)
@@ -62,8 +66,10 @@ void Shader::setTriangles(const std::vector<Triangles> &triangles)
         GLuint texture = texLoad(object.material);
         if (!texture)
         {
-            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Error", "Couldn't load texture.", NULL);
-            return;
+            texture=texLoad("../resources/textures/unknown.png");
+            if(!texture) {
+                return;
+            }
         }
 
         glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -152,6 +158,7 @@ void Shader::setColor(const std::string &name, uint32_t rgba)
 
 GLuint Shader::texLoad(const std::string &filename)
 {
+    SDL_Log("Loading image %s", filename.c_str());
     auto it = mTextureCache.find(filename);
     if (it != mTextureCache.end())
     {

@@ -3,7 +3,8 @@
 #ifndef IOBSERVER_H
 #define IOBSERVER_H
 
-/// Interface for Observer pattern.
+/// \class IObserver
+/// \brief Interface for Observer pattern.
 ///
 /// @tparam T The type of data being observed.
 template <typename T>
@@ -16,8 +17,8 @@ public:
     /// @param type The updated data.
     virtual void update(T type) = 0;
 };
-
-/// Interface for Subject pattern.
+/// \class ISubject
+/// \brief Interface for Subject pattern.
 ///
 /// @tparam T The type of data being observed.
 template <typename T>
