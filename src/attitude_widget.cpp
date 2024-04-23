@@ -1,5 +1,4 @@
 #include "attitude_widget.h"
-#include "font_file.h"
 
 AttitudeWidget::AttitudeWidget(Screen &screen, IDataManager &dataManager)
     : IWidget(screen), mDataManager(dataManager), mHorizon(screen), mScale(screen)
