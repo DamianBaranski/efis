@@ -40,7 +40,7 @@ public:
     /// @param size The font size.
     /// @param x The x-coordinate of the text position.
     /// @param y The y-coordinate of the text position.
-    void drawText(std::string text, float size, float x, float y);
+    void drawText(std::string text, float size, float x, float y, uint32_t color=0xFFFFFFFF);
 
     /// @brief Draws a texture on the screen.
     /// @param name The name of the texture.

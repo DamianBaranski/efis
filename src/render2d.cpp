@@ -38,9 +38,8 @@ void Render2D::setPosition(int x, int y)
     mShader.setMvpMatrix(mMvp);
 }
 
-void Render2D::drawText(std::string text, float size, float x, float y)
+void Render2D::drawText(std::string text, float size, float x, float y, uint32_t color)
 {
-    return;
     if (TTF_Init() != 0)
     {
         std::cerr << "TTF_Init" << std::endl;
@@ -54,24 +53,27 @@ void Render2D::drawText(std::string text, float size, float x, float y)
         return;
     }
 
+    SDL_Color sdlColor;
+    sdlColor.b = (color >> 24) & 0xFF;
+    sdlColor.g = (color >> 16) & 0xFF;
+    sdlColor.r = (color >> 8) & 0xFF;
+    sdlColor.a = (color >> 0) & 0xFF;
+
     // Create surface from text
-    SDL_Color color = {255, 255, 255, 255}; // White color with full opacity
-    SDL_Surface *surface = TTF_RenderText_Blended(font, text.c_str(), color);
+    SDL_Surface *surface = TTF_RenderText_Blended(font, text.c_str(), sdlColor);
     if (!surface)
     {
         std::cerr << "Failed to render text: " << TTF_GetError() << std::endl;
         TTF_CloseFont(font);
         return;
     }
+    int width = surface->w;
+    int height = surface->h;
 
-    std::cout << "Surface w:" << surface->w << " h:" << surface->h << std::endl;
     mShader.setTexture(text, surface);
 
-    // Free surface
-    SDL_FreeSurface(surface);
-
     // Draw texture
-    drawTexture("Untitled.png", x, y, surface->w / 200.0, surface->h / 200.0);
+    drawTexture(text, x, y, width, height);
 
     // Cleanup
     TTF_CloseFont(font);

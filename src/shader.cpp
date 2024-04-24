@@ -126,7 +126,7 @@ void Shader::setTexture(const std::string &name, SDL_Surface *surface)
     GLuint texture;
     glGenTextures(1, &texture);
     glBindTexture(GL_TEXTURE_2D, texture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, surface->w, surface->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, surface->pixels);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, surface->pitch/surface->format->BytesPerPixel, surface->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, surface->pixels);
 
     GLenum err = glGetError();
     if (err != GL_NO_ERROR)
@@ -137,9 +137,9 @@ void Shader::setTexture(const std::string &name, SDL_Surface *surface)
         SDL_Log("Creating texture %s failed, code %u\n", name.c_str(), err);
     }
 
-    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    //glGenerateMipmap(GL_TEXTURE_2D);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glGenerateMipmap(GL_TEXTURE_2D);
 
     SDL_FreeSurface(surface);
 
@@ -178,6 +178,7 @@ GLuint Shader::texLoad(const std::string &filename)
         SDL_Log("Loading image %s failed with error: %s", filename.c_str(), IMG_GetError());
         return 0;
     }
+    
 
     GLuint texture;
     glGenTextures(1, &texture);
