@@ -86,7 +86,7 @@ void Render2D::drawTexture(std::string name, float x, float y, float w, float h)
         {{x, y + h, 0}, {0.0f, 0.0f}},
         {{x + w, y, 0}, {1.0f, 1.0f}},
         {{x + w, y + h, 0}, {1.0f, 0.0f}}};
-    std::vector<GLushort> indices = {0, 1, 2, 2, 3, 1};
+    std::vector<GLuint> indices = {0, 1, 2, 2, 3, 1};
     std::vector<Triangles> triangles;
     triangles.push_back({
         name,

@@ -61,7 +61,16 @@ bool BtgFile::load(const std::string &filename)
         {
             IndividualTriangles triangles;
             triangles.unserialize(header, objHeader, file);
-            mVerticesIdxs.push_back(std::make_pair(triangles.getMaterial(), triangles.getIndexes()));
+            auto tmp = triangles.getIndexes();
+            //Clean invalid triangles
+            for (int q = tmp.size() - 3; q >= 0; q -= 3) {
+            if (tmp[q].vertexIndex == tmp[q + 1].vertexIndex ||
+                tmp[q].vertexIndex == tmp[q + 2].vertexIndex ||
+                tmp[q + 1].vertexIndex == tmp[q + 2].vertexIndex) {
+                    tmp.erase(tmp.begin() + q, tmp.begin() + q + 3);
+                }
+            }
+            mVerticesIdxs.push_back(std::make_pair(triangles.getMaterial(), tmp));
             break;
         }
 
