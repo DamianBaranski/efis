@@ -41,8 +41,7 @@ void Shader::render() const
         GLuint texCoordIdx = 1;
         glVertexAttribPointer(texCoordIdx, 2, GL_FLOAT, GL_FALSE, sizeof(VertexTexture), (const GLvoid *)offsetof(VertexTexture, textureCoord));
         glEnableVertexAttribArray(texCoordIdx);
-
-        glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(buffer.mIndicesSize), GL_UNSIGNED_SHORT, (GLvoid *)0);
+        glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(buffer.mIndicesSize), GL_UNSIGNED_INT, (GLvoid *)0);
     }
 }
 
@@ -58,7 +57,6 @@ void Shader::setTriangles(const std::vector<Triangles> &triangles)
     if(triangles.size() == 0) {
         return;
     }
-
     glUseProgram(mShaderProgram);
     std::cout << "set triangles:" << triangles.size() << std::endl;
     for (auto object : triangles)
@@ -126,7 +124,7 @@ void Shader::setTexture(const std::string &name, SDL_Surface *surface)
     GLuint texture;
     glGenTextures(1, &texture);
     glBindTexture(GL_TEXTURE_2D, texture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, surface->pitch/surface->format->BytesPerPixel, surface->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, surface->pixels);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, std::max(surface->pitch/surface->format->BytesPerPixel, surface->w), surface->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, surface->pixels);
 
     GLenum err = glGetError();
     if (err != GL_NO_ERROR)
@@ -224,13 +222,13 @@ void Shader::initializeShaderProgram()
     }
 }
 
-GLuint Shader::iboCreate(const std::vector<GLushort> &indices)
+GLuint Shader::iboCreate(const std::vector<GLuint> &indices)
 {
     GLuint ibo;
     glGenBuffers(1, &ibo);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
 
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLushort) * indices.size(), indices.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint) * indices.size(), indices.data(), GL_STATIC_DRAW);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
     GLenum err = glGetError();

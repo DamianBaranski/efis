@@ -32,7 +32,7 @@ typedef struct
 {
     std::string material;                ///< Material of the triangle.
     std::vector<VertexTexture> vertex;   ///< Vertices of the triangle.
-    std::vector<unsigned short> indices; ///< Indices of the triangle.
+    std::vector<unsigned int> indices; ///< Indices of the triangle.
 } Triangles;
 
 /// \enum DataType

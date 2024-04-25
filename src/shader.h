@@ -45,7 +45,7 @@ private:
     /// @brief Creates an index buffer object (IBO) for the given indices.
     /// @param indices The vector of indices.
     /// @return The OpenGL buffer ID for the IBO.
-    GLuint iboCreate(const std::vector<GLushort> &indices);
+    GLuint iboCreate(const std::vector<GLuint> &indices);
 
     /// @brief Creates a vertex buffer object (VBO) for the given vertices.
     /// @param vertices The vector of vertices.
