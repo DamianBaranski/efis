@@ -25,15 +25,15 @@
      inkscape:deskcolor="#d1d1d1"
      inkscape:document-units="mm"
      showgrid="true"
-     inkscape:zoom="0.87"
-     inkscape:cx="429.88506"
-     inkscape:cy="303.44828"
-     inkscape:window-width="1536"
-     inkscape:window-height="791"
-     inkscape:window-x="0"
-     inkscape:window-y="0"
+     inkscape:zoom="2.0312776"
+     inkscape:cx="450.94773"
+     inkscape:cy="212.67404"
+     inkscape:window-width="1850"
+     inkscape:window-height="1011"
+     inkscape:window-x="70"
+     inkscape:window-y="32"
      inkscape:window-maximized="1"
-     inkscape:current-layer="layer3">
+     inkscape:current-layer="layer4">
     <inkscape:grid
        type="xygrid"
        id="grid6668" />
@@ -351,6 +351,13 @@
        inkscape:transform-center-x="1.8279151e-06"
        inkscape:transform-center-y="0.59306769"
        transform="matrix(0.71259737,0,0,0.71259737,38.543815,5.523624)" />
+    <rect
+       style="fill:none;stroke:none;stroke-width:0.0892366"
+       id="rect492"
+       width="89.910759"
+       height="89.910767"
+       x="90.509857"
+       y="5.8200388" />
   </g>
   <g
      inkscape:groupmode="layer"
