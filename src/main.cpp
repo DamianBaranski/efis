@@ -1,5 +1,5 @@
 #include "data_manager_stratux.h"
-#include "attitude_widget.h"
+#include "ahrs_widget.h"
 #include "terrain_widget.h"
 #include "screen.h"
 
@@ -14,13 +14,13 @@ int main()
 	DataManagerStratux dataManager;
 
 	//Create terrain widget
-	TerrainWidget terrainWidget(screen);
+	//TerrainWidget terrainWidget(screen);
 
-	//Create attitude widget
-	AttitudeWidget attitudeWidget(screen, dataManager);
+	//Create ahrs widget
+	AhrsWidget ahrsWidget(screen, dataManager);
 
 	//Start data manager thread
-	//dataManager.start();
+	dataManager.start();
 
 	//Start screen main loop
 	screen.mainLoop();
