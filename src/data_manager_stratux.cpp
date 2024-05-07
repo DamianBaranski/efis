@@ -73,8 +73,8 @@ void DataManagerStratux::update_data()
         // Access individual fields
         float ahrs_gyro_heading = j["AHRSGyroHeading"];
         float ahrs_mag_heading = j["AHRSMagHeading"];
-        float ahrs_pitch = (float)(j["AHRSPitch"])/1.0;
-        float ahrs_roll = (float)(j["AHRSRoll"])/100.0;
+        float ahrs_pitch = (float)(j["AHRSPitch"])/180.0*M_PI;
+        float ahrs_roll = (float)(j["AHRSRoll"])/180.0*M_PI;
         float baro_vertical_speed = j["BaroVerticalSpeed"];
         float gps_height_above_ellipsoid = j["GPSHeightAboveEllipsoid"];
         float gps_latitude = j["GPSLatitude"];

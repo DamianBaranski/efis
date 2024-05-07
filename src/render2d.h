@@ -35,6 +35,10 @@ public:
     /// @param y The y-coordinate.
     void setPosition(int x, int y);
 
+    /// @brief Sets the transformaion matrix.
+    /// @param x The transformation matrix.
+    void setTransformationMatrix(glm::mat4 transform);
+
     /// @brief Draws text on the screen.
     /// @param text The text to be drawn.
     /// @param size The font size.

@@ -56,6 +56,7 @@ private:
     static constexpr const char *cHorizonLineTexture = "layer6.png";                ///< Texture file for the horizon line.
     static constexpr const char *cLandRepresentationTexture = "layer3.png";         ///< Texture file for the land representation.
     static constexpr int cAttitudeYPosition = 400;                                  ///< Default y-coordinate position for attitude elements.
+    static constexpr float cPixelPerPitchRadians = 600 / (2*M_PI/360.0*60.0);       //600px height, 60deg vision                                ///< Default y-coordinate position for attitude elements.
 };
 
 #endif

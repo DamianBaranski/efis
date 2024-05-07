@@ -14,13 +14,13 @@ AhrsWidget::AhrsWidget(Screen &screen, IDataManager &dataManager) : IWidget(scre
 {
     mDataManager.attach(this, DataType::ATTITUDE_DATA);
     screen.registerRenderer(this);
-    mLandRepresentation.drawTexture(std::string(cResourcesPath) + std::string(cLandRepresentationTexture), screen.getWidth() / 2, screen.getHeight() / 2);
-    mHorizonLine.drawTexture(std::string(cResourcesPath) + std::string(cHorizonLineTexture), screen.getWidth() / 2, screen.getHeight() / 2);
-    mPithScale.drawTexture(std::string(cResourcesPath) + std::string(cPithScaleTexture), screen.getWidth() / 2, screen.getHeight() / 2);
+    mLandRepresentation.drawTexture(std::string(cResourcesPath) + std::string(cLandRepresentationTexture), screen.getWidth() / 2, cAttitudeYPosition);
+    mHorizonLine.drawTexture(std::string(cResourcesPath) + std::string(cHorizonLineTexture), screen.getWidth() / 2, cAttitudeYPosition);
+    mPithScale.drawTexture(std::string(cResourcesPath) + std::string(cPithScaleTexture), screen.getWidth() / 2, cAttitudeYPosition);
     mRollPointer.drawTexture(std::string(cResourcesPath) + std::string(cRollPointerTexture), screen.getWidth() / 2, cAttitudeYPosition);
     mSkipSkidIndicator.drawTexture(std::string(cResourcesPath) + std::string(cSkipSkidIndicatorTexture), screen.getWidth() / 2, cAttitudeYPosition);
     mAttitudeIndicator.drawTexture(std::string(cResourcesPath) + std::string(cAttitudeIndicatorTexture), screen.getWidth() / 2, cAttitudeYPosition);
-    mAircraftSymbol.drawTexture(std::string(cResourcesPath) + std::string(cAircraftSymbolTexture), screen.getWidth() / 2, screen.getHeight() / 2);
+    mAircraftSymbol.drawTexture(std::string(cResourcesPath) + std::string(cAircraftSymbolTexture), screen.getWidth() / 2, cAttitudeYPosition);
 }
 
 void AhrsWidget::render() const
@@ -58,19 +58,20 @@ void AhrsWidget::updateRenderers() const
         return;
     }
 
-    float newPith = mNewAttitudeData.pitch - mOldAttitudeData.pitch;
-    float newRoll = mNewAttitudeData.roll - mOldAttitudeData.roll;
-    float rotationCenterX = mScreen.getWidth() / 2 + sin(newRoll) * mOldAttitudeData.pitch;
-    float rotationCenterY = mScreen.getHeight() / 2 + cos(newRoll) * mOldAttitudeData.pitch;
+    float pitchPixels = mNewAttitudeData.pitch * cPixelPerPitchRadians;
+    float rotationCenterX = mScreen.getWidth() / 2;
+    float rotationCenterY = cAttitudeYPosition;
+    glm::mat4 trans(1.0);
+    trans = glm::translate(trans, glm::vec3(rotationCenterX, rotationCenterY, 0));
+    trans = glm::rotate(trans, mNewAttitudeData.roll, glm::vec3(0,0,1.0));
+    trans = glm::translate(trans, glm::vec3(-rotationCenterX, -rotationCenterY, 0));
 
-    mHorizonLine.setRotation(newRoll, rotationCenterX, rotationCenterY);
-    mLandRepresentation.setRotation(newRoll, rotationCenterX, rotationCenterY);
-    mPithScale.setRotation(newRoll, rotationCenterX, rotationCenterY);
+    mAttitudeIndicator.setTransformationMatrix(trans);
 
-    mHorizonLine.setPosition(0, newPith);
-    mLandRepresentation.setPosition(0, newPith);
-    mPithScale.setPosition(0, newPith);
+    trans = glm::translate(trans, glm::vec3(0, pitchPixels, 0));
+    mHorizonLine.setTransformationMatrix(trans);
+    mLandRepresentation.setTransformationMatrix(trans);
+    mPithScale.setTransformationMatrix(trans);
 
-    mAttitudeIndicator.setRotation(newRoll, mScreen.getWidth() / 2, cAttitudeYPosition);
     mOldAttitudeData = mNewAttitudeData;
 }

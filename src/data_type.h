@@ -49,9 +49,9 @@ enum class DataType
 /// \brief Represents attitude data.
 typedef struct
 {
-    float roll;    ///< Roll angle.
-    float pitch;   ///< Pitch angle.
-    float heading; ///< Heading angle.
+    float roll;    ///< Roll angle [radians].
+    float pitch;   ///< Pitch angle [radians].
+    float heading; ///< Heading angle [radians].
 } AttitudeData;
 
 /// \struct DynamicsData

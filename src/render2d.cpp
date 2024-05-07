@@ -38,6 +38,18 @@ void Render2D::setPosition(int x, int y)
     mShader.setMvpMatrix(mMvp);
 }
 
+void Render2D::setTransformationMatrix(glm::mat4 transform) {
+    float z=mMvp[3][2];
+    mMvp = glm::mat4(1.0);
+    mMvp[0][0] = 2.0 / mScreen.getWidth();
+    mMvp[1][1] = 2.0 / mScreen.getHeight();
+    mMvp[3][0] = -1;
+    mMvp[3][1] = -1;
+    mMvp[3][2] = z;
+    mMvp = mMvp * transform;
+    mShader.setMvpMatrix(mMvp);
+}
+
 void Render2D::drawText(std::string text, float size, float x, float y, uint32_t color)
 {
     if (TTF_Init() != 0)
