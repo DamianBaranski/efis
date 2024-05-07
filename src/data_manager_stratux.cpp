@@ -7,6 +7,11 @@ DataManagerStratux::DataManagerStratux()
     curl_global_init(CURL_GLOBAL_DEFAULT);
 }
 
+DataManagerStratux::~DataManagerStratux()
+{
+    mThread.detach();
+}
+
 size_t DataManagerStratux::WriteCallback(void *contents, size_t size, size_t nmemb, std::string *buffer)
 {
     buffer->append((char *)contents, size * nmemb);
@@ -68,22 +73,31 @@ void DataManagerStratux::update_data()
         // Access individual fields
         float ahrs_gyro_heading = j["AHRSGyroHeading"];
         float ahrs_mag_heading = j["AHRSMagHeading"];
-        float ahrs_pitch = j["AHRSPitch"];
-        float ahrs_roll = j["AHRSRoll"];
+        float ahrs_pitch = (float)(j["AHRSPitch"])/180.0*M_PI;
+        float ahrs_roll = (float)(j["AHRSRoll"])/180.0*M_PI;
         float baro_vertical_speed = j["BaroVerticalSpeed"];
         float gps_height_above_ellipsoid = j["GPSHeightAboveEllipsoid"];
         float gps_latitude = j["GPSLatitude"];
         float gps_longitude = j["GPSLongitude"];
         float gps_vertical_speed = j["GPSVerticalSpeed"];
-
+        
         mLocationData.latitude = gps_latitude;
         mLocationData.longitude = gps_longitude;
         mLocationData.altitude = gps_height_above_ellipsoid;
         notify(DataType::LOCATION_DATA);
 
-        mAttitudeData.pitch = ahrs_pitch;
-        mAttitudeData.roll = ahrs_roll;
-        notify(DataType::ATTITUDE_DATA);
+        bool notifyAttitude = false;
+        if(mAttitudeData.pitch!=ahrs_pitch) {
+            mAttitudeData.pitch = ahrs_pitch;
+            notifyAttitude = true;
+        }
+        if(mAttitudeData.roll != ahrs_roll) {
+            mAttitudeData.roll = ahrs_roll;
+            notifyAttitude = true;
+        }
+        if(notifyAttitude) {
+            notify(DataType::ATTITUDE_DATA);
+        }
 
         //ToDo add data to members
         //ToDo notify when data was change

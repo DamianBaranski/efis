@@ -19,7 +19,7 @@ Shader::~Shader()
     }
     for (auto &tex : mTextureCache)
     {
-        glDeleteTextures(1, &tex.second);
+        glDeleteTextures(1, &tex.second.mTbo);
     }
 }
 
@@ -54,7 +54,8 @@ void Shader::setMvpMatrix(glm::mat4 mvpMat)
 
 void Shader::setTriangles(const std::vector<Triangles> &triangles)
 {
-    if(triangles.size() == 0) {
+    if (triangles.size() == 0)
+    {
         return;
     }
     glUseProgram(mShaderProgram);
@@ -64,8 +65,9 @@ void Shader::setTriangles(const std::vector<Triangles> &triangles)
         GLuint texture = texLoad(object.material);
         if (!texture)
         {
-            texture=texLoad("../resources/textures/unknown.png");
-            if(!texture) {
+            texture = texLoad("../resources/textures/unknown.png");
+            if (!texture)
+            {
                 return;
             }
         }
@@ -118,19 +120,21 @@ void Shader::setTexture(const std::string &name, SDL_Surface *surface)
     auto it = mTextureCache.find(name);
     if (it != mTextureCache.end())
     {
-        glDeleteBuffers(1, &it->second);
+        glDeleteBuffers(1, &it->second.mTbo);
     }
 
-    GLuint texture;
-    glGenTextures(1, &texture);
-    glBindTexture(GL_TEXTURE_2D, texture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, std::max(surface->pitch/surface->format->BytesPerPixel, surface->w), surface->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, surface->pixels);
+    TextureData textureData;
+    textureData.mHeight = surface->h;
+    textureData.mWidth = std::max(surface->pitch / surface->format->BytesPerPixel, surface->w);
+    glGenTextures(1, &textureData.mTbo);
+    glBindTexture(GL_TEXTURE_2D, textureData.mTbo);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, textureData.mWidth, textureData.mHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, surface->pixels);
 
     GLenum err = glGetError();
     if (err != GL_NO_ERROR)
     {
-        glDeleteBuffers(1, &texture);
-        texture = 0;
+        glDeleteBuffers(1, &textureData.mTbo);
+        textureData.mTbo = 0;
         SDL_FreeSurface(surface);
         SDL_Log("Creating texture %s failed, code %u\n", name.c_str(), err);
     }
@@ -141,16 +145,44 @@ void Shader::setTexture(const std::string &name, SDL_Surface *surface)
 
     SDL_FreeSurface(surface);
 
-    mTextureCache[name] = texture;
+    mTextureCache[name] = textureData;
+}
+
+int Shader::getTextureWidth(const std::string &name)
+{
+    texLoad(name);
+    auto it = mTextureCache.find(name);
+    if (it != mTextureCache.end())
+    {
+        return it->second.mWidth;
+    }
+    else
+    {
+        return -1;
+    }
+}
+
+int Shader::getTextureHeight(const std::string &name)
+{
+    texLoad(name);
+    auto it = mTextureCache.find(name);
+    if (it != mTextureCache.end())
+    {
+        return it->second.mHeight;
+    }
+    else
+    {
+        return -1;
+    }
 }
 
 void Shader::setColor(const std::string &name, uint32_t rgba)
 {
     SDL_Surface *color = SDL_CreateRGBSurface(0, 1, 1, 32, 0, 0, 0, 0);
-    ((uint8_t*)color->pixels)[0] = (rgba >> 24) & 0xFF;
-    ((uint8_t*)color->pixels)[1] = (rgba >> 16) & 0xFF;
-    ((uint8_t*)color->pixels)[2] = (rgba >> 8) & 0xFF;
-    ((uint8_t*)color->pixels)[3] = rgba & 0xFF;
+    ((uint8_t *)color->pixels)[0] = (rgba >> 24) & 0xFF;
+    ((uint8_t *)color->pixels)[1] = (rgba >> 16) & 0xFF;
+    ((uint8_t *)color->pixels)[2] = (rgba >> 8) & 0xFF;
+    ((uint8_t *)color->pixels)[3] = rgba & 0xFF;
     setTexture(name, color);
 }
 
@@ -160,7 +192,7 @@ GLuint Shader::texLoad(const std::string &filename)
     auto it = mTextureCache.find(filename);
     if (it != mTextureCache.end())
     {
-        return it->second;
+        return it->second.mTbo;
     }
 
     int flags = IMG_INIT_JPG | IMG_INIT_PNG;
@@ -176,18 +208,19 @@ GLuint Shader::texLoad(const std::string &filename)
         SDL_Log("Loading image %s failed with error: %s", filename.c_str(), IMG_GetError());
         return 0;
     }
-    
 
-    GLuint texture;
-    glGenTextures(1, &texture);
-    glBindTexture(GL_TEXTURE_2D, texture);
+    TextureData textureData;
+    textureData.mHeight = texSurf->h;
+    textureData.mWidth = texSurf->w;
+    glGenTextures(1, &textureData.mTbo);
+    glBindTexture(GL_TEXTURE_2D, textureData.mTbo);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, texSurf->w, texSurf->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, texSurf->pixels);
 
     GLenum err = glGetError();
     if (err != GL_NO_ERROR)
     {
-        glDeleteBuffers(1, &texture);
-        texture = 0;
+        glDeleteBuffers(1, &textureData.mTbo);
+        textureData.mTbo = 0;
         SDL_FreeSurface(texSurf);
         SDL_Log("Creating texture %s failed, code %u\n", filename.c_str(), err);
         return 0;
@@ -199,9 +232,9 @@ GLuint Shader::texLoad(const std::string &filename)
 
     SDL_FreeSurface(texSurf);
 
-    mTextureCache[filename] = texture;
+    mTextureCache[filename] = textureData;
 
-    return texture;
+    return textureData.mTbo;
 }
 
 void Shader::initializeShaderProgram()

@@ -35,6 +35,10 @@ public:
     /// @param y The y-coordinate.
     void setPosition(int x, int y);
 
+    /// @brief Sets the transformaion matrix.
+    /// @param x The transformation matrix.
+    void setTransformationMatrix(glm::mat4 transform);
+
     /// @brief Draws text on the screen.
     /// @param text The text to be drawn.
     /// @param size The font size.
@@ -42,13 +46,19 @@ public:
     /// @param y The y-coordinate of the text position.
     void drawText(std::string text, float size, float x, float y, uint32_t color=0xFFFFFFFF);
 
+    /// \brief Draws a texture on the screen.
+    /// \param name The name of the texture.
+    /// \param x The x-coordinate of the texture center position.
+    /// \param y The y-coordinate of the texture center position.
+    void drawTexture(std::string name, int x, int y);
+
     /// @brief Draws a texture on the screen.
     /// @param name The name of the texture.
     /// @param x The x-coordinate of the texture position.
     /// @param y The y-coordinate of the texture position.
     /// @param w The width of the texture.
     /// @param h The height of the texture.
-    void drawTexture(std::string name, float x, float y, float w, float h);
+    void drawTexture(std::string name, int x, int y, int w, int h);
 
     /// @brief Draws a colored rectangle on the screen.
     /// @param x The x-coordinate of the top-left corner of the rectangle.

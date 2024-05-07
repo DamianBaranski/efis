@@ -23,18 +23,17 @@ include_directories(${OPENGL_INCLUDE_DIRS})
 
 # Source files
 set(SRC 
-    src/attitude_widget.cpp
     src/data_manager_stratux.cpp
     src/main.cpp
     src/screen.cpp
     src/shader.cpp
     src/render2d.cpp
     src/btg_file.cpp
+    src/ahrs_widget.cpp
 )
 
 # Header files
 set(INC
-    src/attitude_widget.h
     src/data_manager_stratux.h
     src/data_type.h
     src/idata_manager.h
@@ -46,6 +45,7 @@ set(INC
     src/terrain_widget.h
     src/render2d.h
     src/btg_file.h
+    src/ahrs_widget.h
 )
 
 # Add executable

@@ -12,10 +12,14 @@
 
 /// \class DataManagerStratux
 /// \brief Manages data retrieval and updates from a Stratux device.
-class DataManagerStratux : public IDataManager {
+class DataManagerStratux : public IDataManager
+{
 public:
     /// \brief Constructs a DataManagerStratux object.
     DataManagerStratux();
+
+    /// \brief Destructor for the DataManagerStratux class.
+    ~DataManagerStratux();
 
     /// \brief Retrieves the attitude data.
     /// \return The attitude data.
@@ -33,8 +37,7 @@ public:
     /// \return The location data.
     const LocationData &getLocationData() const override;
 
-
-
+    /// \brief Starts the data retrieval thread.
     void start();
 
 private:
@@ -49,13 +52,15 @@ private:
     /// \brief Updates the data manager with new data.
     void update_data();
 
+    /// \brief Function executed by the thread to continuously update data.
     void threadFunction();
-    CURL *mCurl;             ///< Pointer to the libcurl handle.
-    AttitudeData mAttitudeData;   ///< Attitude data.
-    DynamicsData mDynamicsData;   ///< Dynamics data.
-    EngineData mEngineData;       ///< Engine data.
-    LocationData mLocationData;   ///< Location data.
-    std::thread mThread;
+
+    CURL *mCurl;                ///< Pointer to the libcurl handle.
+    AttitudeData mAttitudeData; ///< Attitude data.
+    DynamicsData mDynamicsData; ///< Dynamics data.
+    EngineData mEngineData;     ///< Engine data.
+    LocationData mLocationData; ///< Location data.
+    std::thread mThread;        ///< Thread for data retrieval.
 };
 
 #endif // DATA_MANAGER_STRATUX_H

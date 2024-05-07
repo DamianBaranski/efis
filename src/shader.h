@@ -1,3 +1,5 @@
+/// \file shader.h
+/// \brief Contains the declaration of the Shader class, which encapsulates functionality related to OpenGL shaders.
 #ifndef SHADER_H
 #define SHADER_H
 
@@ -30,9 +32,26 @@ public:
     /// @param triangles The vector of triangles to render.
     void setTriangles(const std::vector<Triangles> &triangles);
 
+    /// @brief Sets the texture for rendering.
+    /// @param name The name of the texture.
+    /// @param surface The SDL surface containing the texture data.
     void setTexture(const std::string &name, SDL_Surface *surface);
 
+    /// @brief Gets the width of a texture.
+    /// @param name The name of the texture.
+    /// @return The width of the texture.
+    int getTextureWidth(const std::string &name);
+
+    /// @brief Gets the height of a texture.
+    /// @param name The name of the texture.
+    /// @return The height of the texture.
+    int getTextureHeight(const std::string &name);
+
+    /// @brief Sets the color for rendering.
+    /// @param name The name of the color parameter in the shader.
+    /// @param rgba The color value in RGBA format.
     void setColor(const std::string &name, uint32_t rgba);
+
 private:
     /// @brief Loads a texture from file.
     /// @param filename The path to the texture file.
@@ -72,10 +91,18 @@ private:
         GLuint mTexture;     ///< The OpenGL texture ID.
         size_t mIndicesSize; ///< The size of indices for the object.
     } BufferLocations;
-    std::vector<BufferLocations> mBufferLocations;         ///< Vector to store buffer locations.
-    glm::mat4 mMvpMat;                                     ///< The model-view-projection matrix.
-    GLint mMvpMatrixLoc;                                   ///< The location of the model-view-projection matrix in the shader.
-    std::unordered_map<std::string, GLuint> mTextureCache; ///< Cache for loaded textures.
+
+    typedef struct
+    {
+        GLuint mTbo; ///< The OpenGL texture buffer object ID.
+        int mWidth;  ///< The width of the texture.
+        int mHeight; ///< The height of the texture.
+    } TextureData;
+
+    std::vector<BufferLocations> mBufferLocations;              ///< Vector to store buffer locations.
+    glm::mat4 mMvpMat;                                          ///< The model-view-projection matrix.
+    GLint mMvpMatrixLoc;                                        ///< The location of the model-view-projection matrix in the shader.
+    std::unordered_map<std::string, TextureData> mTextureCache; ///< Cache for loaded textures.
 };
 
 #endif // SHADER_H
