@@ -21,7 +21,7 @@ public:
     AhrsWidget(Screen &screen, IDataManager &dataManager);
 
     /// \brief Renders the AHRS widget.
-    void render() const override;
+    void render() override;
 
     /// \brief Sets the position of the AHRS widget.
     /// \param x The x-coordinate of the position.
@@ -34,18 +34,18 @@ public:
 
 private:
     /// \brief Updates the internal renderers based on the new attitude data.
-    void updateRenderers() const;
+    void updateRenderers();
 
     IDataManager &mDataManager;            ///< Reference to the data manager providing attitude data.
-    mutable Render2D mLandRepresentation;  ///< Representation of land in the AHRS widget.
-    mutable Render2D mHorizonLine;         ///< Representation of the horizon line in the AHRS widget.
-    mutable Render2D mPithScale;           ///< Representation of the pitch scale in the AHRS widget.
+    Render2D mLandRepresentation;  ///< Representation of land in the AHRS widget.
+    Render2D mHorizonLine;         ///< Representation of the horizon line in the AHRS widget.
+    Render2D mPithScale;           ///< Representation of the pitch scale in the AHRS widget.
     Render2D mRollPointer;                 ///< Representation of the roll pointer in the AHRS widget.
     Render2D mSkipSkidIndicator;           ///< Representation of the skip/skid indicator in the AHRS widget.
-    mutable Render2D mAttitudeIndicator;   ///< Representation of the attitude indicator in the AHRS widget.
+    Render2D mAttitudeIndicator;   ///< Representation of the attitude indicator in the AHRS widget.
     Render2D mAircraftSymbol;              ///< Representation of the aircraft symbol in the AHRS widget.
-    mutable AttitudeData mOldAttitudeData; ///< Previous attitude data.
-    AttitudeData mNewAttitudeData;         ///< New attitude data.
+    AttitudeData mAttitudeData;    ///< Attitude data.
+    bool mAttitudeDataUpdated;
 
     static constexpr const char *cResourcesPath = "../resources/textures/ui/AHRS/"; ///< Path to the resources directory.
     static constexpr const char *cPithScaleTexture = "layer10.png";                 ///< Texture file for the pitch scale.

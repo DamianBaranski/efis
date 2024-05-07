@@ -14,7 +14,7 @@ class IRenderer
 {
 public:
     /// \brief Renders the object.
-    virtual void render() const = 0;
+    virtual void render() = 0;
 
     /// \brief Handles mouse click events.
     /// \param x The x-coordinate of the mouse click.
