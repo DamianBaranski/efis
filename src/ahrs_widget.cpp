@@ -9,8 +9,8 @@ AhrsWidget::AhrsWidget(Screen &screen, IDataManager &dataManager) : IWidget(scre
                                                                     mSkipSkidIndicator(screen),
                                                                     mAttitudeIndicator(screen),
                                                                     mAircraftSymbol(screen),
-                                                                    mOldAttitudeData{},
-                                                                    mNewAttitudeData{}
+                                                                    mAttitudeData{},
+                                                                    mAttitudeDataUpdated(false)
 {
     mDataManager.attach(this, DataType::ATTITUDE_DATA);
     screen.registerRenderer(this);
@@ -23,7 +23,7 @@ AhrsWidget::AhrsWidget(Screen &screen, IDataManager &dataManager) : IWidget(scre
     mAircraftSymbol.drawTexture(std::string(cResourcesPath) + std::string(cAircraftSymbolTexture), screen.getWidth() / 2, cAttitudeYPosition);
 }
 
-void AhrsWidget::render() const
+void AhrsWidget::render()
 {
     updateRenderers();
     mLandRepresentation.render();
@@ -48,22 +48,23 @@ void AhrsWidget::update(DataType type)
         return;
     }
 
-    mNewAttitudeData = mDataManager.getAttitudeData();
+    mAttitudeData = mDataManager.getAttitudeData();
+    mAttitudeDataUpdated = true;
 }
 
-void AhrsWidget::updateRenderers() const
+void AhrsWidget::updateRenderers()
 {
-    if (mOldAttitudeData.pitch == mNewAttitudeData.pitch && mOldAttitudeData.roll == mNewAttitudeData.roll)
+    if (!mAttitudeDataUpdated)
     {
         return;
     }
 
-    float pitchPixels = mNewAttitudeData.pitch * cPixelPerPitchRadians;
+    float pitchPixels = mAttitudeData.pitch * cPixelPerPitchRadians;
     float rotationCenterX = mScreen.getWidth() / 2;
     float rotationCenterY = cAttitudeYPosition;
     glm::mat4 trans(1.0);
     trans = glm::translate(trans, glm::vec3(rotationCenterX, rotationCenterY, 0));
-    trans = glm::rotate(trans, mNewAttitudeData.roll, glm::vec3(0,0,1.0));
+    trans = glm::rotate(trans, mAttitudeData.roll, glm::vec3(0, 0, 1.0));
     trans = glm::translate(trans, glm::vec3(-rotationCenterX, -rotationCenterY, 0));
 
     mAttitudeIndicator.setTransformationMatrix(trans);
@@ -72,6 +73,5 @@ void AhrsWidget::updateRenderers() const
     mHorizonLine.setTransformationMatrix(trans);
     mLandRepresentation.setTransformationMatrix(trans);
     mPithScale.setTransformationMatrix(trans);
-
-    mOldAttitudeData = mNewAttitudeData;
+    mAttitudeDataUpdated = false;
 }

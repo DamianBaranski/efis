@@ -21,7 +21,7 @@ public:
     /// \brief Renders the widget.
     ///
     /// This method must be implemented by derived classes to render the widget.
-    virtual void render() const = 0;
+    virtual void render() = 0;
 
     /// \brief Enables or disables the widget.
     ///
