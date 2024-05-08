@@ -35,7 +35,7 @@ Screen::Screen(int width, int height) : mWidth(width), mHeight(height)
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
     glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);  
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClearDepthf(1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -59,9 +59,12 @@ void Screen::registerRenderer(IRenderer *renderer)
 
 void Screen::mainLoop()
 {
+    int i = 0;
+    uint64_t start = SDL_GetTicks64();
     bool quit = false;
     while (!quit)
     {
+        i++;
         SDL_Event event;
         while (SDL_PollEvent(&event))
         {
@@ -74,7 +77,8 @@ void Screen::mainLoop()
             case SDL_MOUSEBUTTONDOWN:
                 for (auto renderer : mRenderers)
                 {
-                    if(renderer->mouseClick(event.button.x, event.button.y)) {
+                    if (renderer->mouseClick(event.button.x, event.button.y))
+                    {
                         break;
                     }
                 }
@@ -82,6 +86,12 @@ void Screen::mainLoop()
             }
         }
         render();
+        if ((SDL_GetTicks64() - start) >= 1000)
+        {
+            std::cout << i << "FPS" << std::endl;
+            i = 0;
+            start = SDL_GetTicks64();
+        }
     }
 }
 
@@ -115,5 +125,4 @@ void Screen::render()
     }
 
     SDL_GL_SwapWindow(mWindow);
-    SDL_Delay(16); // Cap frame rate to ~60 FPS
 }

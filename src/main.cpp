@@ -14,7 +14,7 @@ int main()
 	DataManagerStratux dataManager;
 
 	//Create terrain widget
-	//TerrainWidget terrainWidget(screen);
+	TerrainWidget terrainWidget(screen, dataManager);
 
 	//Create ahrs widget
 	AhrsWidget ahrsWidget(screen, dataManager);

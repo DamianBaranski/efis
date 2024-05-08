@@ -90,6 +90,7 @@ const BtgFile::BoundingSphere &BtgFile::getBoundingSphere() const {
 
 std::vector<Triangles> BtgFile::generateTriangles()
 {
+    std::cout << "Bounding sphere:" << std::fixed << mBoundingSphere << std::endl;
     std::cout << "generating triangles" << std::endl;
     std::cout << "mVertices size:" << mVertices.getSize() << std::endl;
     std::cout << "mTextureCoordinates size:" << mTextureCoordinates.getSize() << std::endl;
@@ -101,9 +102,9 @@ std::vector<Triangles> BtgFile::generateTriangles()
         triangle.material = std::string("../resources/textures/btg/") + obj.first + std::string(".png");
         for (size_t i = 0; i < obj.second.size(); i++)
         {
-            triangle.vertex.push_back(VertexTexture({{mVertices[obj.second[i].vertexIndex].x,
-                                                      mVertices[obj.second[i].vertexIndex].y,
-                                                      mVertices[obj.second[i].vertexIndex].z},
+            triangle.vertex.push_back(VertexTexture({{-mVertices[obj.second[i].vertexIndex].x,
+                                                      -mVertices[obj.second[i].vertexIndex].y,
+                                                      -mVertices[obj.second[i].vertexIndex].z},
                                                      {mTextureCoordinates[obj.second[i].textureCoordIndex].x,
                                                       mTextureCoordinates[obj.second[i].textureCoordIndex].y}}));
             triangle.indices.push_back(i);
