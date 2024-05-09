@@ -99,10 +99,10 @@ private:
         int mHeight; ///< The height of the texture.
     } TextureData;
 
-    std::vector<BufferLocations> mBufferLocations;              ///< Vector to store buffer locations.
-    glm::mat4 mMvpMat;                                          ///< The model-view-projection matrix.
-    GLint mMvpMatrixLoc;                                        ///< The location of the model-view-projection matrix in the shader.
-    std::unordered_map<std::string, TextureData> mTextureCache; ///< Cache for loaded textures.
+    std::vector<BufferLocations> mBufferLocations;                     ///< Vector to store buffer locations.
+    glm::mat4 mMvpMat;                                                 ///< The model-view-projection matrix.
+    GLint mMvpMatrixLoc;                                               ///< The location of the model-view-projection matrix in the shader.
+    static std::unordered_map<std::string, TextureData> mTextureCache; ///< Cache for loaded textures.
 };
 
 #endif // SHADER_H
