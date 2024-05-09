@@ -19,10 +19,6 @@ Shader::~Shader()
         glDeleteBuffers(1, &buffer.mIbo);
         glDeleteBuffers(1, &buffer.mVbo);
     }
-    /*for (auto &tex : mTextureCache)
-    {
-        glDeleteTextures(1, &tex.second.mTbo);
-    }*/
 }
 
 void Shader::render() const
