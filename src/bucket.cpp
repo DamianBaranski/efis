@@ -2,6 +2,7 @@
 #include <cmath>
 #include <iostream>
 #include <iomanip>
+#include "geo_coord_utils.h"
 
 Bucket::Bucket(float lat, float lon) : mLon(lon), mLat(lat), mLoaded(false)
 {
@@ -37,25 +38,7 @@ bool Bucket::contain(float lat, float lon)
 
 double Bucket::distanceTo(float lat, float lon) const
 {
-    // Radius of the Earth in meters
-    constexpr double R = 6371000.0;
-
-    // Convert latitude and longitude from degrees to radians
-    double lat1 = mLat * M_PI / 180.0;
-    double lon1 = mLon * M_PI / 180.0;
-    double lat2 = lat * M_PI / 180.0;
-    double lon2 = lon * M_PI / 180.0;
-
-    // Haversine formula
-    double dLat = lat2 - lat1;
-    double dLon = lon2 - lon1;
-    double a = sin(dLat / 2) * sin(dLat / 2) +
-               cos(lat1) * cos(lat2) *
-               sin(dLon / 2) * sin(dLon / 2);
-    double c = 2 * atan2(sqrt(a), sqrt(1 - a));
-    double distance = R * c;
-
-    return distance;
+    return GeoCoordUtils::calculateDistance(mLat, mLon, lat, lon);
 }
 
 void Bucket::setMvpMatrix(glm::mat4 mvpMat)

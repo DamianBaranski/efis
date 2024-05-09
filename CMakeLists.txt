@@ -32,6 +32,7 @@ set(SRC
     src/ahrs_widget.cpp
     src/bucket.cpp
     src/bucket_container.cpp
+    src/geo_coord_utils.cpp
 )
 
 # Header files
@@ -50,6 +51,7 @@ set(INC
     src/ahrs_widget.h
     src/bucket.h
     src/bucket_container.h
+    src/geo_coord_utils.h
 )
 
 # Add executable

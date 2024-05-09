@@ -5,45 +5,8 @@
 #include "shader.h"
 #include "render2d.h"
 #include "bucket_container.h"
+#include "geo_coord_utils.h"
 #include <cmath>
-
-class GeoConverter
-{
-private:
-    const double a = 6378137.0;                  // semi-major axis of the Earth (in meters)
-    const double f_inv = 298.257223563;          // inverse of flattening
-    const double f = 1.0 / f_inv;                // flattening
-    const double b = a * (1.0 - f);              // semi-minor axis of the Earth
-    const double e_sq = 1.0 - (b * b) / (a * a); // eccentricity squared
-
-public:
-    struct XYZ
-    {
-        double x;
-        double y;
-        double z;
-    };
-
-    XYZ convertLatLonToXYZ(double lat, double lon, double alt=0)
-    {
-        lat = degToRad(lat);
-        lon = degToRad(lon);
-
-        double N = a / std::sqrt(1.0 - e_sq * std::sin(lat) * std::sin(lat));
-
-        double x = (N + alt) * std::cos(lat) * std::cos(lon);
-        double y = (N + alt) * std::cos(lat) * std::sin(lon);
-        double z = (N * (1.0 - e_sq) + alt) * std::sin(lat);
-
-        return {x, y, z};
-    }
-
-private:
-    double degToRad(double deg)
-    {
-        return deg * M_PI / 180.0;
-    }
-};
 
 class TerrainWidget : public IWidget, public IObserver<DataType>
 {
@@ -51,7 +14,7 @@ public:
     TerrainWidget(Screen &screen, IDataManager &dataManager) : IWidget(screen), mDataManager(dataManager)
     {
         mDataManager.attach(this, DataType::LOCATION_DATA);
-        mCamAngle = 8.1; // 1.6;
+        mCamAngle = 8.1;
         initSkybox();
         mProjMat = glm::perspective(glm::radians(60.0f), (float)mScreen.getWidth() / mScreen.getHeight(), 1.0f, 1000000000.0f);
     }
@@ -63,12 +26,9 @@ public:
         mLocation = mDataManager.getLocationData();
         float lat = mDataManager.getLocationData().latitude;
         float lon = mDataManager.getLocationData().longitude;
-        GeoConverter converter;
-        GeoConverter::XYZ xyz = converter.convertLatLonToXYZ(lat, lon, 1000);
+        GeoCoordUtils::XYZ xyz = GeoCoordUtils::convertLatLonToXYZ(lat, lon, 1000);
         mViewMat = glm::translate(glm::mat4(1.0f), glm::vec3(xyz.x, xyz.y, xyz.z));
         mSkyboxModelMat = glm::translate(glm::mat4(1.0), glm::vec3(-xyz.x, -xyz.y, -xyz.z));
-
-        //std::cout << std::fixed << "Converter: x:" << xyz.x << " y:" << xyz.y << " z:" << xyz.z << std::endl;
     }
 
     virtual void render()
@@ -82,8 +42,6 @@ public:
         glm::mat4 skyboxMvpMat = mProjMat * mViewMat * mSkyboxModelMat;
         mSkybox.setMvpMatrix(skyboxMvpMat);
         mSkybox.render();
-        //mCamAngle += 0.005;
-     //std::cout << mCamAngle << std::endl;
     }
 
     virtual void setPos(int x, int y)
@@ -96,7 +54,7 @@ private:
     void initSkybox()
     {
         std::vector<Triangles> trianglesVector;
-        float skySize = 1000000.0;
+        float skySize = 50000.0;
         Triangles triangles;
         // Walls
         triangles.material = "../resources/textures/skybox/wall.png";
