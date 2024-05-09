@@ -102,6 +102,11 @@ std::vector<Triangles> BtgFile::generateTriangles()
         triangle.material = std::string("../resources/textures/btg/") + obj.first + std::string(".png");
         for (size_t i = 0; i < obj.second.size(); i++)
         {
+            if(obj.second[i].vertexIndex>=mVertices.getSize() ||
+               obj.second[i].textureCoordIndex>=mTextureCoordinates.getSize()) {
+                std::cout << "Damage btg file" << std::endl;
+                return triangles;
+            }
             triangle.vertex.push_back(VertexTexture({{-mVertices[obj.second[i].vertexIndex].x,
                                                       -mVertices[obj.second[i].vertexIndex].y,
                                                       -mVertices[obj.second[i].vertexIndex].z},

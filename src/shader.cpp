@@ -4,6 +4,8 @@
 #include <iostream>
 #include <fstream>
 
+std::unordered_map<std::string, Shader::TextureData> Shader::mTextureCache = {};
+
 Shader::Shader() : mShaderProgram(0)
 {
     initializeShaderProgram();
@@ -17,10 +19,10 @@ Shader::~Shader()
         glDeleteBuffers(1, &buffer.mIbo);
         glDeleteBuffers(1, &buffer.mVbo);
     }
-    for (auto &tex : mTextureCache)
+    /*for (auto &tex : mTextureCache)
     {
         glDeleteTextures(1, &tex.second.mTbo);
-    }
+    }*/
 }
 
 void Shader::render() const

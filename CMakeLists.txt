@@ -30,6 +30,8 @@ set(SRC
     src/render2d.cpp
     src/btg_file.cpp
     src/ahrs_widget.cpp
+    src/bucket.cpp
+    src/bucket_container.cpp
 )
 
 # Header files
@@ -46,6 +48,8 @@ set(INC
     src/render2d.h
     src/btg_file.h
     src/ahrs_widget.h
+    src/bucket.h
+    src/bucket_container.h
 )
 
 # Add executable
