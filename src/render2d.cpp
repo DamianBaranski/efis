@@ -94,10 +94,10 @@ void Render2D::drawText(std::string text, float size, float x, float y, uint32_t
 void Render2D::drawTexture(std::string name, int x, int y, int w, int h)
 {
     std::vector<VertexTexture> vertices = {
-        {{static_cast<float>(x), static_cast<float>(y), 0}, {0.0f, 1.0f}},
-        {{static_cast<float>(x), static_cast<float>(y + h), 0}, {0.0f, 0.0f}},
-        {{static_cast<float>(x + w), static_cast<float>(y), 0}, {1.0f, 1.0f}},
-        {{static_cast<float>(x + w), static_cast<float>(y + h), 0}, {1.0f, 0.0f}}};
+        {{static_cast<float>(x), static_cast<float>(y), 0}, {0.0f, 1.0f}, {0.0f, 0.0f}},
+        {{static_cast<float>(x), static_cast<float>(y + h), 0}, {0.0f, 0.0f}, {0.0f, 0.0f}},
+        {{static_cast<float>(x + w), static_cast<float>(y), 0}, {1.0f, 1.0f}, {0.0f, 0.0f}},
+        {{static_cast<float>(x + w), static_cast<float>(y + h), 0}, {1.0f, 0.0f}, {0.0f, 0.0f}}};
     std::vector<GLuint> indices = {0, 1, 2, 2, 3, 1};
     std::vector<Triangles> triangles;
     triangles.push_back({

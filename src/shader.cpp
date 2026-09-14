@@ -5,6 +5,19 @@
 #include <fstream>
 
 std::unordered_map<std::string, Shader::TextureData> Shader::mTextureCache = {};
+Shader::OpenAipGroundState Shader::sOpenAip = {};
+
+void Shader::setOpenAipGround(bool active, GLuint texture, float originX, float originY,
+                              float tilesX, float tilesY, float n)
+{
+    sOpenAip.active = active;
+    sOpenAip.texture = texture;
+    sOpenAip.originX = originX;
+    sOpenAip.originY = originY;
+    sOpenAip.tilesX = tilesX;
+    sOpenAip.tilesY = tilesY;
+    sOpenAip.n = n;
+}
 
 Shader::Shader() : mShaderProgram(0)
 {
@@ -25,8 +38,33 @@ void Shader::render() const
 {
     glUseProgram(mShaderProgram);
 
+    const bool overlay = mOpenAipOverlay && sOpenAip.active && sOpenAip.texture != 0;
+    if (mUseOpenAipLoc >= 0)
+    {
+        glUniform1i(mUseOpenAipLoc, overlay ? 1 : 0);
+    }
+    if (overlay)
+    {
+        if (mOpenAipSamplerLoc >= 0)
+        {
+            glUniform1i(mOpenAipSamplerLoc, 1);
+        }
+        if (mOpenAipAtlasLoc >= 0)
+        {
+            glUniform4f(mOpenAipAtlasLoc, sOpenAip.originX, sOpenAip.originY, sOpenAip.tilesX, sOpenAip.tilesY);
+        }
+        if (mOpenAipNLoc >= 0)
+        {
+            glUniform1f(mOpenAipNLoc, sOpenAip.n);
+        }
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, sOpenAip.texture);
+        glActiveTexture(GL_TEXTURE0);
+    }
+
     for (auto &buffer : mBufferLocations)
     {
+        glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, buffer.mTexture);
 
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffer.mIbo);
@@ -39,6 +77,10 @@ void Shader::render() const
         GLuint texCoordIdx = 1;
         glVertexAttribPointer(texCoordIdx, 2, GL_FLOAT, GL_FALSE, sizeof(VertexTexture), (const GLvoid *)offsetof(VertexTexture, textureCoord));
         glEnableVertexAttribArray(texCoordIdx);
+
+        GLuint geoCoordIdx = 2;
+        glVertexAttribPointer(geoCoordIdx, 2, GL_FLOAT, GL_FALSE, sizeof(VertexTexture), (const GLvoid *)offsetof(VertexTexture, geoCoord));
+        glEnableVertexAttribArray(geoCoordIdx);
         glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(buffer.mIndicesSize), GL_UNSIGNED_INT, (GLvoid *)0);
     }
 }
@@ -48,6 +90,16 @@ void Shader::setMvpMatrix(glm::mat4 mvpMat)
     glUseProgram(mShaderProgram);
     mMvpMat = mvpMat;
     glUniformMatrix4fv(mMvpMatrixLoc, 1, GL_FALSE, glm::value_ptr(mMvpMat));
+}
+
+void Shader::clearGeometry()
+{
+    for (auto &buffer : mBufferLocations)
+    {
+        glDeleteBuffers(1, &buffer.mIbo);
+        glDeleteBuffers(1, &buffer.mVbo);
+    }
+    mBufferLocations.clear();
 }
 
 void Shader::setTriangles(const std::vector<Triangles> &triangles)
@@ -96,6 +148,10 @@ void Shader::setTriangles(const std::vector<Triangles> &triangles)
         GLuint texCoordIdx = 1;
         glVertexAttribPointer(texCoordIdx, 2, GL_FLOAT, GL_FALSE, sizeof(VertexTexture), (const GLvoid *)offsetof(VertexTexture, textureCoord));
         glEnableVertexAttribArray(texCoordIdx);
+
+        GLuint geoCoordIdx = 2;
+        glVertexAttribPointer(geoCoordIdx, 2, GL_FLOAT, GL_FALSE, sizeof(VertexTexture), (const GLvoid *)offsetof(VertexTexture, geoCoord));
+        glEnableVertexAttribArray(geoCoordIdx);
 
         mBufferLocations.push_back({ibo, vbo, texture, object.indices.size()});
         std::cout << "setTriangles: ibo:" << ibo << " vbo:" << vbo << " size:" << object.indices.size() << std::endl;
@@ -270,6 +326,24 @@ void Shader::initializeShaderProgram()
     {
         SDL_Log("ERROR: Couldn't get mvpMatrix's location.");
         return;
+    }
+
+    mUseOpenAipLoc = glGetUniformLocation(mShaderProgram, "useOpenAip");
+    mOpenAipSamplerLoc = glGetUniformLocation(mShaderProgram, "openAipSampler");
+    mOpenAipAtlasLoc = glGetUniformLocation(mShaderProgram, "openAipAtlas");
+    mOpenAipNLoc = glGetUniformLocation(mShaderProgram, "openAipN");
+    if (mOpenAipSamplerLoc >= 0)
+    {
+        glUniform1i(mOpenAipSamplerLoc, 1);
+    }
+    GLint texSamplerUniformLoc = glGetUniformLocation(mShaderProgram, "texSampler");
+    if (texSamplerUniformLoc >= 0)
+    {
+        glUniform1i(texSamplerUniformLoc, 0);
+    }
+    if (mUseOpenAipLoc >= 0)
+    {
+        glUniform1i(mUseOpenAipLoc, 0);
     }
 }
 

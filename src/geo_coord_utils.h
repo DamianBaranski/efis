@@ -23,12 +23,28 @@ public:
         double roll;  ///< Roll angle.
     };
 
+    /// @brief Geographic position in degrees.
+    struct LatLon
+    {
+        double latitude;
+        double longitude;
+    };
+
     /// @brief Converts latitude, longitude, and altitude to Earth-centered Cartesian coordinates.
     /// @param latitude Latitude in degrees.
     /// @param longitude Longitude in degrees.
     /// @param altitude Altitude in meters (default is 0).
     /// @return XYZ struct containing the Cartesian coordinates.
     static XYZ convertLatLonToXYZ(double latitude, double longitude, double altitude = 0);
+
+    /// Inverse of convertLatLonToXYZ (WGS-84, altitude ignored for texturing).
+    static LatLon convertXYZToLatLon(double x, double y, double z);
+
+    /// Web Mercator UV in [0, 1] (Y increases south, matching XYZ map tiles).
+    static void latLonToMercatorUv(double latitude, double longitude, float &u, float &v);
+
+    /// Offset a WGS-84 position by north/east metres.
+    static LatLon offsetMeters(double latitude, double longitude, double northMeters, double eastMeters);
 
     /// @brief Generates Euler angles (pitch, yaw, roll) for a ground-level camera given latitude and longitude.
     /// @param latitude Latitude in degrees.

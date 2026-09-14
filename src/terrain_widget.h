@@ -9,6 +9,9 @@
 #include "render2d.h"
 #include "bucket_container.h"
 #include "geo_coord_utils.h"
+#include "openaip_atlas.h"
+#include "openaip_client.h"
+#include "runway_overlay.h"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -21,16 +24,27 @@ public:
     TerrainWidget(Screen &screen, IDataManager &dataManager) : IWidget(screen), mDataManager(dataManager)
     {
         mDataManager.attach(this, DataType::LOCATION_DATA);
-        mLocation = {};
+        mLocation = mDataManager.getLocationData();
+        if (mLocation.latitude == 0.0f && mLocation.longitude == 0.0f)
+        {
+            mLocation.latitude = 50.959167f;
+            mLocation.longitude = 16.770278f;
+            mLocation.altitude = 800.0f;
+        }
         initSkybox();
         mProjMat = glm::perspective(glm::radians(60.0f), (float)mScreen.getWidth() / mScreen.getHeight(), 10.0f, 250000.0f);
     }
+
+    void setOpenAipGround(bool enable) { mOpenAipGround = enable; }
 
     void update(DataType type) override {
         if(type != DataType::LOCATION_DATA) {
             return;
         }
         mLocation = mDataManager.getLocationData();
+        OpenAipClient::instance().fetchAround(mLocation.latitude, mLocation.longitude,
+                                              OpenAipAtlas::zoomForStyle(OpenAipClient::instance().basemapStyle()),
+                                              OpenAipAtlas::kRadius);
         if (!mLoggedPosition)
         {
             std::cout << "Terrain camera " << mLocation.latitude << " N, "
@@ -45,11 +59,25 @@ public:
         {
             return;
         }
+        mLocation = mDataManager.getLocationData();
         mMap.updateLocation(mLocation.latitude, mLocation.longitude);
         glm::dvec3 eye;
         glm::vec3 forward;
         glm::vec3 up;
         buildCamera(eye, forward, up);
+
+        if (mOpenAipGround)
+        {
+            mOpenAipAtlas.update(mLocation.latitude, mLocation.longitude);
+            Shader::setOpenAipGround(true, mOpenAipAtlas.texture(),
+                                     mOpenAipAtlas.originX(), mOpenAipAtlas.originY(),
+                                     mOpenAipAtlas.tilesX(), mOpenAipAtlas.tilesY(),
+                                     mOpenAipAtlas.n());
+        }
+        else
+        {
+            Shader::setOpenAipGround(false, 0, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f);
+        }
 
         const glm::mat4 skyView = glm::mat4(glm::mat3(glm::lookAt(glm::vec3(0.0f), forward, up)));
         glDisable(GL_BLEND);
@@ -59,6 +87,9 @@ public:
         glDepthMask(GL_TRUE);
 
         mMap.render(mProjMat, eye, forward, up);
+        mRunways.update(mLocation.latitude, mLocation.longitude);
+        mRunways.render(mProjMat, eye, forward, up);
+        Shader::setOpenAipGround(false, 0, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f);
         glEnable(GL_BLEND);
     }
 
@@ -100,15 +131,15 @@ private:
         Triangles triangles;
         // Walls
         triangles.material = "../resources/textures/skybox/wall.png";
-        triangles.vertex = {{{-skySize, -skySize, skySize}, {0.0, 0.999}},
-                            {{skySize, -skySize, skySize}, {1.0, 0.999}},
-                            {{skySize, skySize, skySize}, {1.0, 0.001}},
-                            {{-skySize, skySize, skySize}, {0.0, 0.001}},
+        triangles.vertex = {{{-skySize, -skySize, skySize}, {0.0, 0.999}, {0.0, 0.0}},
+                            {{skySize, -skySize, skySize}, {1.0, 0.999}, {0.0, 0.0}},
+                            {{skySize, skySize, skySize}, {1.0, 0.001}, {0.0, 0.0}},
+                            {{-skySize, skySize, skySize}, {0.0, 0.001}, {0.0, 0.0}},
 
-                            {{-skySize, -skySize, -skySize}, {1.0, 0.999}},
-                            {{skySize, -skySize, -skySize}, {0.0, 0.999}},
-                            {{skySize, skySize, -skySize}, {0.0, 0.001}},
-                            {{-skySize, skySize, -skySize}, {1.0, 0.001}}
+                            {{-skySize, -skySize, -skySize}, {1.0, 0.999}, {0.0, 0.0}},
+                            {{skySize, -skySize, -skySize}, {0.0, 0.999}, {0.0, 0.0}},
+                            {{skySize, skySize, -skySize}, {0.0, 0.001}, {0.0, 0.0}},
+                            {{-skySize, skySize, -skySize}, {1.0, 0.001}, {0.0, 0.0}}
 
         };
         triangles.indices = {
@@ -140,18 +171,18 @@ private:
         trianglesVector.push_back(triangles);
         // Top
         triangles.material = "../resources/textures/skybox/top.png";
-        triangles.vertex = {{{skySize, skySize, skySize}, {1.0, 1.0}},
-                            {{-skySize, skySize, skySize}, {0.0, 1.0}},
-                            {{skySize, skySize, -skySize}, {0.0, 1.0}},
-                            {{-skySize, skySize, -skySize}, {1.0, 1.0}}};
+        triangles.vertex = {{{skySize, skySize, skySize}, {1.0, 1.0}, {0.0, 0.0}},
+                            {{-skySize, skySize, skySize}, {0.0, 1.0}, {0.0, 0.0}},
+                            {{skySize, skySize, -skySize}, {0.0, 1.0}, {0.0, 0.0}},
+                            {{-skySize, skySize, -skySize}, {1.0, 1.0}, {0.0, 0.0}}};
         triangles.indices = {0, 1, 2, 1, 2, 3};
         trianglesVector.push_back(triangles);
         // Bottom
         triangles.material = "../resources/textures/skybox/bottom.png";
-        triangles.vertex = {{{skySize, -skySize, skySize}, {1.0, 1.0}},
-                            {{-skySize, -skySize, skySize}, {0.0, 1.0}},
-                            {{skySize, -skySize, -skySize}, {0.0, 1.0}},
-                            {{-skySize, -skySize, -skySize}, {1.0, 1.0}}};
+        triangles.vertex = {{{skySize, -skySize, skySize}, {1.0, 1.0}, {0.0, 0.0}},
+                            {{-skySize, -skySize, skySize}, {0.0, 1.0}, {0.0, 0.0}},
+                            {{skySize, -skySize, -skySize}, {0.0, 1.0}, {0.0, 0.0}},
+                            {{-skySize, -skySize, -skySize}, {1.0, 1.0}, {0.0, 0.0}}};
         triangles.indices = {0, 1, 2, 1, 2, 3};
         trianglesVector.push_back(triangles);
 
@@ -163,6 +194,9 @@ private:
     IDataManager &mDataManager;
     LocationData mLocation;
     bool mLoggedPosition = false;
+    bool mOpenAipGround = false;
+    OpenAipAtlas mOpenAipAtlas;
+    RunwayOverlay mRunways;
 };
 
 #endif

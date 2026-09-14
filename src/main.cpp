@@ -14,7 +14,7 @@ void printUsage(const char *argv0)
     std::cout << "Usage: " << argv0 << " [--sim|--stratux]\n"
               << "  --sim       in-process Stratux simulator (default)\n"
               << "  --stratux   live Stratux at http://127.0.0.1:5000/getSituation\n"
-              << "Keys: Tab/1/2/3 views, Esc quit\n"
+              << "Keys: Tab/1/2/3/4 views, F5 basemap, Esc quit\n"
               << "Sim keys: arrows pitch/roll, Q/E heading, W/S speed, +/- alt, R reset\n";
 }
 }

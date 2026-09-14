@@ -1,5 +1,9 @@
 #include "geo_coord_utils.h"
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 GeoCoordUtils::XYZ GeoCoordUtils::convertLatLonToXYZ(double latitude, double longitude, double altitude)
 {
     latitude = degreesToRadians(latitude);
@@ -12,6 +16,46 @@ GeoCoordUtils::XYZ GeoCoordUtils::convertLatLonToXYZ(double latitude, double lon
     double z = (N * (1.0 - cEccentricitySquared) + altitude) * std::sin(latitude);
 
     return {x, y, z};
+}
+
+GeoCoordUtils::LatLon GeoCoordUtils::convertXYZToLatLon(double x, double y, double z)
+{
+    const double a = cEarthSemiMajorAxis;
+    const double b = cEarthSemiMinorAxis;
+    const double e2 = cEccentricitySquared;
+    const double ep2 = (a * a - b * b) / (b * b);
+    const double p = std::sqrt(x * x + y * y);
+    const double theta = std::atan2(z * a, p * b);
+    const double sinTheta = std::sin(theta);
+    const double cosTheta = std::cos(theta);
+    const double lat = std::atan2(z + ep2 * b * sinTheta * sinTheta * sinTheta,
+                                  p - e2 * a * cosTheta * cosTheta * cosTheta);
+    const double lon = std::atan2(y, x);
+    return {radiansToDegrees(lat), radiansToDegrees(lon)};
+}
+
+void GeoCoordUtils::latLonToMercatorUv(double latitude, double longitude, float &u, float &v)
+{
+    const double maxLat = 85.05112878;
+    if (latitude > maxLat)
+    {
+        latitude = maxLat;
+    }
+    else if (latitude < -maxLat)
+    {
+        latitude = -maxLat;
+    }
+    u = static_cast<float>((longitude + 180.0) / 360.0);
+    const double latRad = degreesToRadians(latitude);
+    v = static_cast<float>((1.0 - std::log(std::tan(latRad) + 1.0 / std::cos(latRad)) / M_PI) / 2.0);
+}
+
+GeoCoordUtils::LatLon GeoCoordUtils::offsetMeters(double latitude, double longitude, double northMeters, double eastMeters)
+{
+    const double metersPerDegLat = 111320.0;
+    const double latRad = degreesToRadians(latitude);
+    const double metersPerDegLon = std::max(1000.0, metersPerDegLat * std::cos(latRad));
+    return {latitude + northMeters / metersPerDegLat, longitude + eastMeters / metersPerDegLon};
 }
 
 GeoCoordUtils::EulerAngles GeoCoordUtils::generateGroundCameraAngles(double latitude, double longitude)

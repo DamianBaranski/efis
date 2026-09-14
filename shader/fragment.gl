@@ -1,9 +1,31 @@
 #version 330 core
 
 in vec2 TexCoord;
+in vec2 GeoCoord;
 out vec4 fragColour;
+
 uniform sampler2D texSampler;
+uniform sampler2D openAipSampler;
+uniform int useOpenAip;
+uniform vec4 openAipAtlas;
+uniform float openAipN;
 
 void main() {
-	fragColour = texture(texSampler, TexCoord);
+    vec4 ground = texture(texSampler, TexCoord);
+    if (useOpenAip == 0)
+    {
+        fragColour = ground;
+        return;
+    }
+
+    vec2 uv;
+    uv.x = (GeoCoord.x * openAipN - openAipAtlas.x) / openAipAtlas.z;
+    uv.y = (GeoCoord.y * openAipN - openAipAtlas.y) / openAipAtlas.w;
+    vec4 aip = vec4(0.0);
+    if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0)
+    {
+        aip = texture(openAipSampler, uv);
+    }
+
+    fragColour = vec4(mix(ground.rgb, aip.rgb, aip.a), 1.0);
 }

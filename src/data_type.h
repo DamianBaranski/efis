@@ -24,6 +24,13 @@ typedef struct
         float x; ///< X-coordinate of the texture coordinate.
         float y; ///< Y-coordinate of the texture coordinate.
     } textureCoord;
+
+    /// Web Mercator UV in [0, 1] for draping map tiles onto the mesh.
+    struct
+    {
+        float x = 0.0f;
+        float y = 0.0f;
+    } geoCoord;
 } VertexTexture;
 
 /// \struct Triangles

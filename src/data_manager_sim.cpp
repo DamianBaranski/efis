@@ -17,14 +17,20 @@ constexpr float kClimbRate = 80.0f;
 
 DataManagerSim::DataManagerSim(float latitude, float longitude, float altitude)
 {
+    mHome.latitude = latitude;
+    mHome.longitude = longitude;
+    mHome.altitude = altitude;
+    applyHome();
+}
+
+void DataManagerSim::applyHome()
+{
     mAttitudeData = {};
-    mDynamicsData.airspeed = 40.0f;
+    mDynamicsData.airspeed = 0.0f;
     mDynamicsData.vertical_speed = 0.0f;
     mDynamicsData.slip_rad = 0.0f;
     mEngineData = {};
-    mLocationData.latitude = latitude;
-    mLocationData.longitude = longitude;
-    mLocationData.altitude = altitude;
+    mLocationData = mHome;
 }
 
 const AttitudeData &DataManagerSim::getAttitudeData() const
@@ -50,14 +56,15 @@ const LocationData &DataManagerSim::getLocationData() const
 void DataManagerSim::start()
 {
     mStarted = true;
-    std::cout << "Sim start position: 50.9578 N, 16.7703 E (Mirosławice EPMR), alt 800 m" << std::endl;
+    applyHome();
+    std::cout << "Sim start above EPMR (Mirosławice): " << mLocationData.latitude << " N, "
+              << mLocationData.longitude << " E, alt " << mLocationData.altitude << " m" << std::endl;
     publish();
 }
 
 void DataManagerSim::resetAttitude()
 {
-    mAttitudeData.pitch = 0.0f;
-    mAttitudeData.roll = 0.0f;
+    applyHome();
     publish();
 }
 

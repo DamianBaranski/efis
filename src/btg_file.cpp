@@ -1,4 +1,5 @@
 #include "btg_file.h"
+#include "geo_coord_utils.h"
 
 bool BtgFile::load(const std::string &filename)
 {
@@ -95,6 +96,10 @@ std::vector<Triangles> BtgFile::generateTriangles()
     std::cout << "mVertices size:" << mVertices.getSize() << std::endl;
     std::cout << "mTextureCoordinates size:" << mTextureCoordinates.getSize() << std::endl;
 
+    const double cx = mBoundingSphere.getCenterX();
+    const double cy = mBoundingSphere.getCenterY();
+    const double cz = mBoundingSphere.getCenterZ();
+
     std::vector<Triangles> triangles;
     Triangles triangle;
     for (auto obj : mVerticesIdxs)
@@ -107,11 +112,21 @@ std::vector<Triangles> BtgFile::generateTriangles()
                 std::cout << "Damage btg file" << std::endl;
                 return triangles;
             }
-            triangle.vertex.push_back(VertexTexture({{mVertices[obj.second[i].vertexIndex].x,
-                                                      mVertices[obj.second[i].vertexIndex].y,
-                                                      mVertices[obj.second[i].vertexIndex].z},
-                                                     {mTextureCoordinates[obj.second[i].textureCoordIndex].x,
-                                                      mTextureCoordinates[obj.second[i].textureCoordIndex].y}}));
+            const auto &vert = mVertices[obj.second[i].vertexIndex];
+            const auto &uv = mTextureCoordinates[obj.second[i].textureCoordIndex];
+            const auto ll = GeoCoordUtils::convertXYZToLatLon(cx + vert.x, cy + vert.y, cz + vert.z);
+            float geoU = 0.0f;
+            float geoV = 0.0f;
+            GeoCoordUtils::latLonToMercatorUv(ll.latitude, ll.longitude, geoU, geoV);
+            VertexTexture vt{};
+            vt.vertex.x = vert.x;
+            vt.vertex.y = vert.y;
+            vt.vertex.z = vert.z;
+            vt.textureCoord.x = uv.x;
+            vt.textureCoord.y = uv.y;
+            vt.geoCoord.x = geoU;
+            vt.geoCoord.y = geoV;
+            triangle.vertex.push_back(vt);
             triangle.indices.push_back(i);
         }
         triangles.push_back(triangle);

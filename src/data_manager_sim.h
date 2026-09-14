@@ -2,13 +2,18 @@
 #define DATA_MANAGER_SIM_H
 
 #include "idata_manager.h"
-#include <chrono>
 
 /// In-process Stratux stand-in: keyboard-driven attitude and GPS.
 class DataManagerSim : public IDataManager
 {
 public:
-    DataManagerSim(float latitude = 50.9578f, float longitude = 16.7703f, float altitude = 800.0f);
+    /// Mirosławice ARP (EPMR): 50°57'33"N 016°46'13"E, ~650 m AGL.
+    static constexpr float kEpmrLatitude = 50.959167f;
+    static constexpr float kEpmrLongitude = 16.770278f;
+    static constexpr float kEpmrAltitude = 800.0f;
+
+    DataManagerSim(float latitude = kEpmrLatitude, float longitude = kEpmrLongitude,
+                   float altitude = kEpmrAltitude);
 
     const AttitudeData &getAttitudeData() const override;
     const DynamicsData &getDynamicsData() const override;
@@ -24,11 +29,13 @@ public:
 
 private:
     void publish();
+    void applyHome();
 
     AttitudeData mAttitudeData{};
     DynamicsData mDynamicsData{};
     EngineData mEngineData{};
     LocationData mLocationData{};
+    LocationData mHome{};
     bool mStarted = false;
 };
 

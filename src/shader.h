@@ -32,6 +32,9 @@ public:
     /// @param triangles The vector of triangles to render.
     void setTriangles(const std::vector<Triangles> &triangles);
 
+    /// Drops GPU geometry so setTriangles can replace a previous mesh.
+    void clearGeometry();
+
     /// @brief Sets the texture for rendering.
     /// @param name The name of the texture.
     /// @param surface The SDL surface containing the texture data.
@@ -51,6 +54,12 @@ public:
     /// @param name The name of the color parameter in the shader.
     /// @param rgba The color value in RGBA format.
     void setColor(const std::string &name, uint32_t rgba);
+
+    /// Terrain buckets sample the OpenAIP atlas with geographic UVs when the global overlay is active.
+    void enableOpenAipOverlay(bool enable) { mOpenAipOverlay = enable; }
+
+    static void setOpenAipGround(bool active, GLuint texture, float originX, float originY,
+                                 float tilesX, float tilesY, float n);
 
 private:
     /// @brief Loads a texture from file.
@@ -102,7 +111,24 @@ private:
     std::vector<BufferLocations> mBufferLocations;                     ///< Vector to store buffer locations.
     glm::mat4 mMvpMat;                                                 ///< The model-view-projection matrix.
     GLint mMvpMatrixLoc;                                               ///< The location of the model-view-projection matrix in the shader.
+    GLint mUseOpenAipLoc = -1;
+    GLint mOpenAipSamplerLoc = -1;
+    GLint mOpenAipAtlasLoc = -1;
+    GLint mOpenAipNLoc = -1;
+    bool mOpenAipOverlay = false;
     static std::unordered_map<std::string, TextureData> mTextureCache; ///< Cache for loaded textures.
+
+    struct OpenAipGroundState
+    {
+        bool active = false;
+        GLuint texture = 0;
+        float originX = 0.0f;
+        float originY = 0.0f;
+        float tilesX = 1.0f;
+        float tilesY = 1.0f;
+        float n = 1.0f;
+    };
+    static OpenAipGroundState sOpenAip;
 };
 
 #endif // SHADER_H

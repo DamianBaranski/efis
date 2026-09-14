@@ -3,6 +3,7 @@
 
 #include "ahrs_widget.h"
 #include "data_manager_sim.h"
+#include "openaip_client.h"
 #include "screen.h"
 #include "terrain_widget.h"
 #include <chrono>
@@ -13,6 +14,7 @@ enum class ViewMode
     Combined,
     Ahrs,
     Terrain,
+    OpenAip,
 };
 
 class AppController : public IRenderer
@@ -23,7 +25,7 @@ public:
     {
         screen.registerController(this);
         applyView();
-        std::cout << "Keys: Tab/1/2/3 views, Esc quit\n";
+        std::cout << "Keys: Tab/1/2/3/4 views, F5 basemap, Esc quit\n";
         if (mSim)
         {
             std::cout << "Sim: arrows pitch/roll, Q/E heading, W/S speed, +/- alt, R reset\n";
@@ -78,6 +80,14 @@ public:
         case SDLK_F3:
             setView(ViewMode::Combined);
             return true;
+        case SDLK_4:
+        case SDLK_F4:
+            setView(ViewMode::OpenAip);
+            return true;
+        case SDLK_5:
+        case SDLK_F5:
+            OpenAipClient::instance().cycleBasemapStyle();
+            return true;
         case SDLK_r:
             if (mSim)
             {
@@ -102,6 +112,9 @@ private:
             setView(ViewMode::Terrain);
             break;
         case ViewMode::Terrain:
+            setView(ViewMode::OpenAip);
+            break;
+        case ViewMode::OpenAip:
             setView(ViewMode::Combined);
             break;
         }
@@ -120,15 +133,21 @@ private:
         {
             name = "terrain";
         }
+        else if (view == ViewMode::OpenAip)
+        {
+            name = "OpenAIP";
+        }
         std::cout << "View: " << name << std::endl;
     }
 
     void applyView()
     {
-        const bool terrain = (mView != ViewMode::Ahrs);
+        const bool openAip = (mView == ViewMode::OpenAip);
+        const bool terrain = (mView == ViewMode::Combined || mView == ViewMode::Terrain || openAip);
         mTerrain.enable(terrain);
-        mAhrs.enable(true);
-        mAhrs.setDrawSkyGround(!terrain);
+        mTerrain.setOpenAipGround(openAip);
+        mAhrs.enable(mView != ViewMode::Terrain);
+        mAhrs.setDrawSkyGround(mView == ViewMode::Ahrs);
     }
 
     AhrsWidget &mAhrs;

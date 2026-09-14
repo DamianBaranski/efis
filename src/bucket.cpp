@@ -13,6 +13,7 @@ Bucket::Bucket(float lat, float lon) : mLon(lon), mLat(lat), mLoaded(false)
     filename += generateTilePath();
     filename += "/" + std::to_string(mIndex) + cTileFileExt;
     std::cout << "Loading terrain " << filename << std::endl;
+    mShader.enableOpenAipOverlay(true);
     mLoadingThread = std::thread(&Bucket::loadFile, this, filename);
 }
 
