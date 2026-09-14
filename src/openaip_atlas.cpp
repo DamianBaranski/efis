@@ -447,14 +447,14 @@ void OpenAipAtlas::featherSeams(SDL_Surface *dest) const
     {
         return;
     }
-    auto hasBase = [&](int dx, int dy) {
+    auto hasContent = [&](int dx, int dy) {
         return (mSlot[static_cast<size_t>(dy * mTiles + dx)] & kHasAnyBase) != 0;
     };
     for (int ty = 0; ty < mTiles; ++ty)
     {
         for (int tx = 0; tx < mTiles - 1; ++tx)
         {
-            if (hasBase(tx, ty) && hasBase(tx + 1, ty))
+            if (hasContent(tx, ty) && hasContent(tx + 1, ty))
             {
                 featherVertical(dest, (tx + 1) * kTilePx, ty * kTilePx, (ty + 1) * kTilePx);
             }
@@ -464,7 +464,7 @@ void OpenAipAtlas::featherSeams(SDL_Surface *dest) const
     {
         for (int tx = 0; tx < mTiles; ++tx)
         {
-            if (hasBase(tx, ty) && hasBase(tx, ty + 1))
+            if (hasContent(tx, ty) && hasContent(tx, ty + 1))
             {
                 featherHorizontal(dest, (ty + 1) * kTilePx, tx * kTilePx, (tx + 1) * kTilePx);
             }

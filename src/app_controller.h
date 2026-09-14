@@ -24,7 +24,7 @@ public:
     {
         screen.registerController(this);
         applyView();
-        std::cout << "Keys: Tab/1/2/3/4 views, Esc quit\n";
+        std::cout << "Keys: Tab/1/2/3/4 views, F5 airspaces, Esc quit\n";
         if (mSim)
         {
             std::cout << "Sim: arrows pitch/roll, Q/E heading, W/S speed, +/- alt, R reset\n";
@@ -82,6 +82,11 @@ public:
         case SDLK_4:
         case SDLK_F4:
             setView(ViewMode::OpenAip);
+            return true;
+        case SDLK_5:
+        case SDLK_F5:
+            mTerrain.setAirspacesEnabled(!mTerrain.airspacesEnabled());
+            std::cout << "Airspaces: " << (mTerrain.airspacesEnabled() ? "on" : "off") << std::endl;
             return true;
         case SDLK_r:
             if (mSim)

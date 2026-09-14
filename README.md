@@ -85,6 +85,16 @@ python3 scripts/download-osm-runways.py --icao EPMR,EPWS
 
 F2/F3/F4 draw nearby strips from the OpenAIP list, with OSM endpoints when `resources/airports/osm_runways.csv` is present.
 
+## Airspaces
+
+OpenAIP country GeoJSON (`{cc}_asp.geojson`) supplies vector rings plus floor/ceiling. F2/F3/F4 draw nearby CTR, TMA, ATZ, RMZ, TMZ, restricted, prohibited, and danger as vertical walls (no floor or ceiling). F5 toggles those walls. FIR/UIR, TRA dumps, and high ceilings are skipped. The F4 PNG chart stays draped on the ground.
+
+```
+python3 scripts/download-airspaces.py --country PL,CZ
+```
+
+Output: `resources/airspaces/pl_asp.geojson`, `cz_asp.geojson`. Console logs `inside …` / `left …` when the aircraft enters or leaves a volume.
+
 ## Running
 
 ```
@@ -107,6 +117,7 @@ python3 scripts/stratux-sim.py --port 5000
 - `2` / `F2` terrain only
 - `3` / `F3` both
 - `4` / `F4` 3D terrain with OpenAIP tiles draped on the ground
+- `5` / `F5` toggle airspace walls
 - `Esc` quit
 - Sim only: arrows pitch/roll, `Q`/`E` heading, `W`/`S` speed, `+`/`-` altitude, `R` reset attitude
 

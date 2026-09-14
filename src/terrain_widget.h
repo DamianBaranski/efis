@@ -11,6 +11,7 @@
 #include "geo_coord_utils.h"
 #include "openaip_atlas.h"
 #include "openaip_client.h"
+#include "airspace_overlay.h"
 #include "runway_overlay.h"
 #include <algorithm>
 #include <cmath>
@@ -36,6 +37,10 @@ public:
     }
 
     void setOpenAipGround(bool enable) { mOpenAipGround = enable; }
+
+    void setAirspacesEnabled(bool enable) { mAirspacesEnabled = enable; }
+
+    bool airspacesEnabled() const { return mAirspacesEnabled; }
 
     void update(DataType type) override {
         if(type != DataType::LOCATION_DATA) {
@@ -102,6 +107,12 @@ public:
         mMap.render(mProjMat, eye, forward, up);
         mRunways.update(mLocation.latitude, mLocation.longitude);
         mRunways.render(mProjMat, eye, forward, up);
+        if (mAirspacesEnabled)
+        {
+            mAirspaces.update(mLocation.latitude, mLocation.longitude, mLocation.altitude, mProjMat, eye, forward, up,
+                              mScreen.getWidth(), mScreen.getHeight());
+            mAirspaces.render(mProjMat, eye, forward, up);
+        }
         Shader::setOpenAipGround(false, 0, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f);
         glEnable(GL_BLEND);
     }
@@ -190,9 +201,11 @@ private:
     LocationData mLocation;
     bool mLoggedPosition = false;
     bool mOpenAipGround = false;
+    bool mAirspacesEnabled = true;
     OpenAipAtlas mOpenAipNear{OpenAipAtlas::kDetailZoom, OpenAipAtlas::kDetailRadius};
     OpenAipAtlas mOpenAipFar{OpenAipAtlas::kWideZoom, OpenAipAtlas::kWideRadius};
     RunwayOverlay mRunways;
+    AirspaceOverlay mAirspaces;
 };
 
 #endif

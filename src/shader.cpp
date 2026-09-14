@@ -1,4 +1,5 @@
 #include "shader.h"
+#include <SDL.h>
 #include <SDL_image.h>
 #include <SDL_opengles2.h>
 #include <iostream>
@@ -139,7 +140,6 @@ void Shader::setTriangles(const std::vector<Triangles> &triangles)
         return;
     }
     glUseProgram(mShaderProgram);
-    std::cout << "set triangles:" << triangles.size() << std::endl;
     for (auto object : triangles)
     {
         GLuint texture = texLoad(object.material);
@@ -184,7 +184,6 @@ void Shader::setTriangles(const std::vector<Triangles> &triangles)
         glEnableVertexAttribArray(geoCoordIdx);
 
         mBufferLocations.push_back({ibo, vbo, texture, object.indices.size()});
-        std::cout << "setTriangles: ibo:" << ibo << " vbo:" << vbo << " size:" << object.indices.size() << std::endl;
     }
 
     glActiveTexture(GL_TEXTURE0);
@@ -201,15 +200,6 @@ void Shader::setTriangles(const std::vector<Triangles> &triangles)
 void Shader::setTexture(const std::string &name, SDL_Surface *surface)
 {
     glUseProgram(mShaderProgram);
-    auto it = mTextureCache.find(name);
-    if (it != mTextureCache.end())
-    {
-        glDeleteBuffers(1, &it->second.mTbo);
-    }
-
-    TextureData textureData;
-    textureData.mHeight = surface->h;
-    textureData.mWidth = std::max(surface->pitch / surface->format->BytesPerPixel, surface->w);
     SDL_Surface *rgba = SDL_ConvertSurfaceFormat(surface, SDL_PIXELFORMAT_RGBA32, 0);
     SDL_FreeSurface(surface);
     if (!rgba)
@@ -217,29 +207,37 @@ void Shader::setTexture(const std::string &name, SDL_Surface *surface)
         SDL_Log("Converting texture %s to RGBA failed: %s", name.c_str(), SDL_GetError());
         return;
     }
+
+    TextureData textureData;
     textureData.mHeight = rgba->h;
     textureData.mWidth = rgba->w;
-    glGenTextures(1, &textureData.mTbo);
+    auto it = mTextureCache.find(name);
+    if (it != mTextureCache.end() && it->second.mTbo != 0)
+    {
+        textureData.mTbo = it->second.mTbo;
+    }
+    else
+    {
+        glGenTextures(1, &textureData.mTbo);
+    }
     glBindTexture(GL_TEXTURE_2D, textureData.mTbo);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, textureData.mWidth, textureData.mHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba->pixels);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, textureData.mWidth, textureData.mHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+                 rgba->pixels);
 
     GLenum err = glGetError();
     if (err != GL_NO_ERROR)
     {
-        glDeleteTextures(1, &textureData.mTbo);
-        textureData.mTbo = 0;
         SDL_FreeSurface(rgba);
         SDL_Log("Creating texture %s failed, code %u\n", name.c_str(), err);
         return;
     }
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glGenerateMipmap(GL_TEXTURE_2D);
-
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     SDL_FreeSurface(rgba);
-
     mTextureCache[name] = textureData;
 }
 
@@ -273,11 +271,17 @@ int Shader::getTextureHeight(const std::string &name)
 
 void Shader::setColor(const std::string &name, uint32_t rgba)
 {
-    SDL_Surface *color = SDL_CreateRGBSurface(0, 1, 1, 32, 0, 0, 0, 0);
-    ((uint8_t *)color->pixels)[0] = (rgba >> 24) & 0xFF;
-    ((uint8_t *)color->pixels)[1] = (rgba >> 16) & 0xFF;
-    ((uint8_t *)color->pixels)[2] = (rgba >> 8) & 0xFF;
-    ((uint8_t *)color->pixels)[3] = rgba & 0xFF;
+    SDL_Surface *color = SDL_CreateRGBSurfaceWithFormat(0, 1, 1, 32, SDL_PIXELFORMAT_RGBA32);
+    if (!color)
+    {
+        SDL_Log("setColor failed: %s", SDL_GetError());
+        return;
+    }
+    const Uint8 r = static_cast<Uint8>((rgba >> 24) & 0xFF);
+    const Uint8 g = static_cast<Uint8>((rgba >> 16) & 0xFF);
+    const Uint8 b = static_cast<Uint8>((rgba >> 8) & 0xFF);
+    const Uint8 a = static_cast<Uint8>(rgba & 0xFF);
+    *static_cast<Uint32 *>(color->pixels) = SDL_MapRGBA(color->format, r, g, b, a);
     setTexture(name, color);
 }
 
