@@ -1,19 +1,34 @@
 # EFIS (Electronic Flight Instrument System) Project
 
-This project is an Electronic Flight Instrument System (EFIS) developed in C++ with OpenGL and GLUT.
+This project is an Electronic Flight Instrument System (EFIS) developed in C++ with OpenGL and SDL2.
 
 ## Overview
 
 The EFIS project provides a graphical interface for displaying aircraft attitude and other flight-related data. It includes components such as attitude widgets, data managers, and screens.
+
+JSON parsing uses the vendored `nlohmann_json` tree. GRIB weather decoding uses the vendored `wgrib2` tree if that library is installed.
 
 ## Prerequisites
 
 Before running the EFIS project, make sure you have the following dependencies installed on your system:
 
 - OpenGL
-- GLUT (OpenGL Utility Toolkit)
+- SDL2, SDL2_image, SDL2_ttf
 - CURL (for fetching data)
+- ZLIB
 - Doxygen (for generating documentation)
+
+## Optional: wgrib2
+
+The `wgrib2` sources are included. To link them into EFIS, build and install that library first:
+
+```
+mkdir -p wgrib2/build && cd wgrib2/build
+cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local
+make && sudo make install
+```
+
+Then reconfigure EFIS so `find_package(wgrib2)` succeeds. The default EFIS build does not require wgrib2.
 
 ## Building and Running
 

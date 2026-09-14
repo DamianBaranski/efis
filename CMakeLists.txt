@@ -17,6 +17,14 @@ find_package(SDL2_image REQUIRED)
 find_package(SDL2_ttf REQUIRED)
 find_package(ZLIB REQUIRED)
 
+# Vendored nlohmann_json — used by the Stratux data manager
+set(JSON_BuildTests OFF CACHE INTERNAL "")
+set(JSON_Install OFF CACHE INTERNAL "")
+add_subdirectory(nlohmann_json)
+
+# Optional: install wgrib2 from the vendored tree (see README) then reconfigure
+find_package(wgrib2 QUIET)
+
 include_directories(${SDL2_INCLUDE_DIRS} ${SDL2_IMAGE_INCLUDE_DIRS})
 include_directories(${CURL_INCLUDE_DIRS})
 include_directories(${OPENGL_INCLUDE_DIRS})
@@ -56,7 +64,20 @@ set(INC
 
 # Add executable
 add_executable(efis ${SRC} ${INC})
-target_link_libraries(efis ${OPENGL_LIBRARIES} ${CURL_LIBRARIES} ${SDL2_LIBRARIES} ${SDL2_IMAGE_LIBRARIES} ${SDL2_TTF_LIBRARIES} ${ZLIB_LIBRARIES} SDL2_image SDL2_ttf)
+target_link_libraries(efis
+    ${OPENGL_LIBRARIES}
+    ${CURL_LIBRARIES}
+    ${SDL2_LIBRARIES}
+    ${SDL2_IMAGE_LIBRARIES}
+    ${SDL2_TTF_LIBRARIES}
+    ${ZLIB_LIBRARIES}
+    SDL2_image
+    SDL2_ttf
+    nlohmann_json::nlohmann_json
+)
+if(wgrib2_FOUND)
+    target_link_libraries(efis wgrib2::wgrib2_lib)
+endif()
 
 # Find Doxygen package
 find_package(Doxygen)
