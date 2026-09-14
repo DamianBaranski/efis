@@ -81,7 +81,8 @@ void AhrsWidget::updateRenderers()
     float rotationCenterY = static_cast<float>(mAttitudeY);
     glm::mat4 trans(1.0);
     trans = glm::translate(trans, glm::vec3(rotationCenterX, rotationCenterY, 0));
-    trans = glm::rotate(trans, mAttitudeData.roll, glm::vec3(0, 0, 1.0));
+    // 2D Y-up: negative roll so the tape banks the same way as the 3D horizon.
+    trans = glm::rotate(trans, -mAttitudeData.roll, glm::vec3(0, 0, 1.0));
     trans = glm::translate(trans, glm::vec3(-rotationCenterX, -rotationCenterY, 0));
 
     mAttitudeIndicator.setTransformationMatrix(trans);
