@@ -1,28 +1,73 @@
-#include "data_manager_stratux.h"
 #include "ahrs_widget.h"
-#include "terrain_widget.h"
+#include "app_controller.h"
+#include "data_manager_sim.h"
+#include "data_manager_stratux.h"
 #include "screen.h"
+#include <iostream>
+#include <memory>
+#include <string>
 
-
-
-int main()
+namespace
 {
-	//Create screen object
-	Screen screen(1024, 600);
-	
-	//Create data manager object
-	DataManagerStratux dataManager;
+void printUsage(const char *argv0)
+{
+    std::cout << "Usage: " << argv0 << " [--sim|--stratux]\n"
+              << "  --sim       in-process Stratux simulator (default)\n"
+              << "  --stratux   live Stratux at http://127.0.0.1:5000/getSituation\n"
+              << "Keys: Tab/1/2/3 views, Esc quit\n"
+              << "Sim keys: arrows pitch/roll, Q/E heading, W/S speed, +/- alt, R reset\n";
+}
+}
 
-	//Create terrain widget
-	TerrainWidget terrainWidget(screen, dataManager);
+int main(int argc, char **argv)
+{
+    bool useSim = true;
+    for (int i = 1; i < argc; ++i)
+    {
+        const std::string arg = argv[i];
+        if (arg == "--sim")
+        {
+            useSim = true;
+        }
+        else if (arg == "--stratux")
+        {
+            useSim = false;
+        }
+        else if (arg == "--help" || arg == "-h")
+        {
+            printUsage(argv[0]);
+            return 0;
+        }
+        else
+        {
+            std::cerr << "Unknown argument: " << arg << std::endl;
+            printUsage(argv[0]);
+            return 1;
+        }
+    }
 
-	//Create ahrs widget
-	AhrsWidget ahrsWidget(screen, dataManager);
+    Screen screen(1024, 600);
 
-	//Start data manager thread
-	dataManager.start();
+    std::unique_ptr<IDataManager> dataManager;
+    DataManagerSim *sim = nullptr;
+    if (useSim)
+    {
+        auto simulated = std::make_unique<DataManagerSim>();
+        sim = simulated.get();
+        dataManager = std::move(simulated);
+        std::cout << "Data source: simulated Stratux" << std::endl;
+    }
+    else
+    {
+        dataManager = std::make_unique<DataManagerStratux>();
+        std::cout << "Data source: Stratux HTTP" << std::endl;
+    }
 
-	//Start screen main loop
-	screen.mainLoop();
+    TerrainWidget terrainWidget(screen, *dataManager);
+    AhrsWidget ahrsWidget(screen, *dataManager);
+    AppController controller(screen, ahrsWidget, terrainWidget, sim);
 
+    dataManager->start();
+    screen.mainLoop();
+    return 0;
 }

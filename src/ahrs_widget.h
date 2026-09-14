@@ -32,6 +32,9 @@ public:
     /// \param type The type of data being updated.
     void update(DataType type) override;
 
+    /// \brief When false, skip the painted sky/ground tape so 3D terrain can show through.
+    void setDrawSkyGround(bool draw) { mDrawSkyGround = draw; }
+
 private:
     /// \brief Updates the internal renderers based on the new attitude data.
     void updateRenderers();
@@ -46,6 +49,8 @@ private:
     Render2D mAircraftSymbol;              ///< Representation of the aircraft symbol in the AHRS widget.
     AttitudeData mAttitudeData;    ///< Attitude data.
     bool mAttitudeDataUpdated;
+    bool mDrawSkyGround = true;
+    int mAttitudeY;
 
     static constexpr const char *cResourcesPath = "../resources/textures/ui/AHRS/"; ///< Path to the resources directory.
     static constexpr const char *cPithScaleTexture = "layer10.png";                 ///< Texture file for the pitch scale.
@@ -55,8 +60,7 @@ private:
     static constexpr const char *cAircraftSymbolTexture = "layer11.png";            ///< Texture file for the aircraft symbol.
     static constexpr const char *cHorizonLineTexture = "layer6.png";                ///< Texture file for the horizon line.
     static constexpr const char *cLandRepresentationTexture = "layer3.png";         ///< Texture file for the land representation.
-    static constexpr int cAttitudeYPosition = 400;                                  ///< Default y-coordinate position for attitude elements.
-    static constexpr float cPixelPerPitchRadians = 600 / (2*M_PI/360.0*60.0);       //600px height, 60deg vision                                ///< Default y-coordinate position for attitude elements.
+    static constexpr float cPixelPerPitchRadians = 600 / (2*M_PI/360.0*60.0);
 };
 
 #endif

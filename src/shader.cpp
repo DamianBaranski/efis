@@ -124,24 +124,35 @@ void Shader::setTexture(const std::string &name, SDL_Surface *surface)
     TextureData textureData;
     textureData.mHeight = surface->h;
     textureData.mWidth = std::max(surface->pitch / surface->format->BytesPerPixel, surface->w);
+    SDL_Surface *rgba = SDL_ConvertSurfaceFormat(surface, SDL_PIXELFORMAT_RGBA32, 0);
+    SDL_FreeSurface(surface);
+    if (!rgba)
+    {
+        SDL_Log("Converting texture %s to RGBA failed: %s", name.c_str(), SDL_GetError());
+        return;
+    }
+    textureData.mHeight = rgba->h;
+    textureData.mWidth = rgba->w;
     glGenTextures(1, &textureData.mTbo);
     glBindTexture(GL_TEXTURE_2D, textureData.mTbo);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, textureData.mWidth, textureData.mHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, surface->pixels);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, textureData.mWidth, textureData.mHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba->pixels);
 
     GLenum err = glGetError();
     if (err != GL_NO_ERROR)
     {
-        glDeleteBuffers(1, &textureData.mTbo);
+        glDeleteTextures(1, &textureData.mTbo);
         textureData.mTbo = 0;
-        SDL_FreeSurface(surface);
+        SDL_FreeSurface(rgba);
         SDL_Log("Creating texture %s failed, code %u\n", name.c_str(), err);
+        return;
     }
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     glGenerateMipmap(GL_TEXTURE_2D);
 
-    SDL_FreeSurface(surface);
+    SDL_FreeSurface(rgba);
 
     mTextureCache[name] = textureData;
 }
@@ -207,19 +218,28 @@ GLuint Shader::texLoad(const std::string &filename)
         return 0;
     }
 
+    SDL_Surface *rgba = SDL_ConvertSurfaceFormat(texSurf, SDL_PIXELFORMAT_RGBA32, 0);
+    SDL_FreeSurface(texSurf);
+    if (!rgba)
+    {
+        SDL_Log("Converting image %s to RGBA failed: %s", filename.c_str(), SDL_GetError());
+        return 0;
+    }
+
     TextureData textureData;
-    textureData.mHeight = texSurf->h;
-    textureData.mWidth = texSurf->w;
+    textureData.mHeight = rgba->h;
+    textureData.mWidth = rgba->w;
     glGenTextures(1, &textureData.mTbo);
     glBindTexture(GL_TEXTURE_2D, textureData.mTbo);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, texSurf->w, texSurf->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, texSurf->pixels);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, rgba->w, rgba->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba->pixels);
 
     GLenum err = glGetError();
     if (err != GL_NO_ERROR)
     {
-        glDeleteBuffers(1, &textureData.mTbo);
+        glDeleteTextures(1, &textureData.mTbo);
         textureData.mTbo = 0;
-        SDL_FreeSurface(texSurf);
+        SDL_FreeSurface(rgba);
         SDL_Log("Creating texture %s failed, code %u\n", filename.c_str(), err);
         return 0;
     }
@@ -228,7 +248,7 @@ GLuint Shader::texLoad(const std::string &filename)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     glGenerateMipmap(GL_TEXTURE_2D);
 
-    SDL_FreeSurface(texSurf);
+    SDL_FreeSurface(rgba);
 
     mTextureCache[filename] = textureData;
 

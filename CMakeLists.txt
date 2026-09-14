@@ -8,7 +8,7 @@ endif(POLICY CMP0072)
 # Set C++ standard and compiler flags
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_FLAGS "-Wall -Wextra")
+add_compile_options(-Wall -Wextra)
 
 find_package(CURL REQUIRED)
 find_package(OpenGL REQUIRED)
@@ -16,6 +16,7 @@ find_package(SDL2 REQUIRED)
 find_package(SDL2_image REQUIRED)
 find_package(SDL2_ttf REQUIRED)
 find_package(ZLIB REQUIRED)
+find_package(glm REQUIRED)
 
 # Vendored nlohmann_json — used by the Stratux data manager
 set(JSON_BuildTests OFF CACHE INTERNAL "")
@@ -32,6 +33,7 @@ include_directories(${OPENGL_INCLUDE_DIRS})
 # Source files
 set(SRC 
     src/data_manager_stratux.cpp
+    src/data_manager_sim.cpp
     src/main.cpp
     src/screen.cpp
     src/shader.cpp
@@ -46,6 +48,8 @@ set(SRC
 # Header files
 set(INC
     src/data_manager_stratux.h
+    src/data_manager_sim.h
+    src/app_controller.h
     src/data_type.h
     src/idata_manager.h
     src/iobserver.h
@@ -64,6 +68,23 @@ set(INC
 
 # Add executable
 add_executable(efis ${SRC} ${INC})
+if(TARGET SDL2::SDL2)
+    get_target_property(_sdl2_incs SDL2::SDL2 INTERFACE_INCLUDE_DIRECTORIES)
+    foreach(_inc IN LISTS _sdl2_incs)
+        if(_inc MATCHES "/SDL2$")
+            get_filename_component(_sdl2_parent "${_inc}" DIRECTORY)
+            target_include_directories(efis PRIVATE "${_sdl2_parent}")
+        endif()
+    endforeach()
+endif()
+set(_gles_hints)
+foreach(_p ${CMAKE_PREFIX_PATH})
+    list(APPEND _gles_hints "${_p}/include")
+endforeach()
+find_path(GLES3_INCLUDE_DIR GLES3/gl3.h HINTS ${_gles_hints} /usr/include)
+if(GLES3_INCLUDE_DIR)
+    target_include_directories(efis PRIVATE "${GLES3_INCLUDE_DIR}")
+endif()
 target_link_libraries(efis
     ${OPENGL_LIBRARIES}
     ${CURL_LIBRARIES}
@@ -74,6 +95,7 @@ target_link_libraries(efis
     SDL2_image
     SDL2_ttf
     nlohmann_json::nlohmann_json
+    glm::glm
 )
 if(wgrib2_FOUND)
     target_link_libraries(efis wgrib2::wgrib2_lib)

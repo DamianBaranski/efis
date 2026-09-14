@@ -34,6 +34,7 @@ Screen::Screen(int width, int height) : mWidth(width), mHeight(height)
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
+    glDisable(GL_CULL_FACE);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -57,6 +58,11 @@ void Screen::registerRenderer(IRenderer *renderer)
     mRenderers.push_back(renderer);
 }
 
+void Screen::registerController(IRenderer *controller)
+{
+    mRenderers.insert(mRenderers.begin(), controller);
+}
+
 void Screen::mainLoop()
 {
     int i = 0;
@@ -72,6 +78,21 @@ void Screen::mainLoop()
             {
             case SDL_QUIT:
                 quit = true;
+                break;
+
+            case SDL_KEYDOWN:
+                if (event.key.keysym.sym == SDLK_ESCAPE)
+                {
+                    quit = true;
+                    break;
+                }
+                for (auto renderer : mRenderers)
+                {
+                    if (renderer->keyDown(event.key.keysym.sym))
+                    {
+                        break;
+                    }
+                }
                 break;
 
             case SDL_MOUSEBUTTONDOWN:

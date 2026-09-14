@@ -1,4 +1,5 @@
 #include "ahrs_widget.h"
+#include <GLES3/gl3.h>
 
 AhrsWidget::AhrsWidget(Screen &screen, IDataManager &dataManager) : IWidget(screen),
                                                                     mDataManager(dataManager),
@@ -10,29 +11,45 @@ AhrsWidget::AhrsWidget(Screen &screen, IDataManager &dataManager) : IWidget(scre
                                                                     mAttitudeIndicator(screen),
                                                                     mAircraftSymbol(screen),
                                                                     mAttitudeData{},
-                                                                    mAttitudeDataUpdated(false)
+                                                                    mAttitudeDataUpdated(false),
+                                                                    mAttitudeY(screen.getHeight() / 2)
 {
     mDataManager.attach(this, DataType::ATTITUDE_DATA);
-    screen.registerRenderer(this);
-    mLandRepresentation.drawTexture(std::string(cResourcesPath) + std::string(cLandRepresentationTexture), screen.getWidth() / 2, cAttitudeYPosition);
-    mHorizonLine.drawTexture(std::string(cResourcesPath) + std::string(cHorizonLineTexture), screen.getWidth() / 2, cAttitudeYPosition);
-    mPithScale.drawTexture(std::string(cResourcesPath) + std::string(cPithScaleTexture), screen.getWidth() / 2, cAttitudeYPosition);
-    mRollPointer.drawTexture(std::string(cResourcesPath) + std::string(cRollPointerTexture), screen.getWidth() / 2, cAttitudeYPosition);
-    mSkipSkidIndicator.drawTexture(std::string(cResourcesPath) + std::string(cSkipSkidIndicatorTexture), screen.getWidth() / 2, cAttitudeYPosition);
-    mAttitudeIndicator.drawTexture(std::string(cResourcesPath) + std::string(cAttitudeIndicatorTexture), screen.getWidth() / 2, cAttitudeYPosition);
-    mAircraftSymbol.drawTexture(std::string(cResourcesPath) + std::string(cAircraftSymbolTexture), screen.getWidth() / 2, cAttitudeYPosition);
+    const int x = screen.getWidth() / 2;
+    mLandRepresentation.drawTexture(std::string(cResourcesPath) + std::string(cLandRepresentationTexture), x, mAttitudeY);
+    mHorizonLine.drawTexture(std::string(cResourcesPath) + std::string(cHorizonLineTexture), x, mAttitudeY);
+    mPithScale.drawTexture(std::string(cResourcesPath) + std::string(cPithScaleTexture), x, mAttitudeY);
+    mRollPointer.drawTexture(std::string(cResourcesPath) + std::string(cRollPointerTexture), x, mAttitudeY);
+    mSkipSkidIndicator.drawTexture(std::string(cResourcesPath) + std::string(cSkipSkidIndicatorTexture), x, mAttitudeY);
+    mAttitudeIndicator.drawTexture(std::string(cResourcesPath) + std::string(cAttitudeIndicatorTexture), x, mAttitudeY);
+    mAircraftSymbol.drawTexture(std::string(cResourcesPath) + std::string(cAircraftSymbolTexture), x, mAttitudeY);
 }
 
 void AhrsWidget::render()
 {
+    if (!mEnabled)
+    {
+        return;
+    }
     updateRenderers();
-    mLandRepresentation.render();
-    mHorizonLine.render();
+
+    glDisable(GL_DEPTH_TEST);
+    glDepthMask(GL_FALSE);
+    glEnable(GL_BLEND);
+
+    if (mDrawSkyGround)
+    {
+        mLandRepresentation.render();
+        mHorizonLine.render();
+    }
     mPithScale.render();
     mRollPointer.render();
     mSkipSkidIndicator.render();
     mAttitudeIndicator.render();
     mAircraftSymbol.render();
+
+    glDepthMask(GL_TRUE);
+    glEnable(GL_DEPTH_TEST);
 }
 
 void AhrsWidget::setPos(int x, int y)
@@ -59,9 +76,9 @@ void AhrsWidget::updateRenderers()
         return;
     }
 
-    float pitchPixels = mAttitudeData.pitch * cPixelPerPitchRadians;
+    float pitchPixels = -mAttitudeData.pitch * cPixelPerPitchRadians;
     float rotationCenterX = mScreen.getWidth() / 2;
-    float rotationCenterY = cAttitudeYPosition;
+    float rotationCenterY = static_cast<float>(mAttitudeY);
     glm::mat4 trans(1.0);
     trans = glm::translate(trans, glm::vec3(rotationCenterX, rotationCenterY, 0));
     trans = glm::rotate(trans, mAttitudeData.roll, glm::vec3(0, 0, 1.0));

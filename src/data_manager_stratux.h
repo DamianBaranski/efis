@@ -38,7 +38,7 @@ public:
     const LocationData &getLocationData() const override;
 
     /// \brief Starts the data retrieval thread.
-    void start();
+    void start() override;
 
 private:
     /// \brief Callback function for writing HTTP response data.

@@ -6,6 +6,7 @@
 
 #include "bucket.h"
 #include <vector>
+#include <memory>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -21,9 +22,8 @@ public:
     /// @param lon Longitude of the new location.
     void updateLocation(float lat, float lon);
 
-    /// @brief Renders all Buckets in the container.
-    /// @param mvpMat The Model-View-Projection (MVP) matrix.
-    void render(glm::mat4 mvpMat);
+    /// @brief Renders all Buckets in the container using an ECEF camera.
+    void render(const glm::mat4 &proj, const glm::dvec3 &eye, const glm::vec3 &forward, const glm::vec3 &up);
 
 private:
     /// @brief Checks if a Bucket exists for the given location, creates one if not.

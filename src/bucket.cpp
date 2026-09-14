@@ -3,6 +3,7 @@
 #include <iostream>
 #include <iomanip>
 #include "geo_coord_utils.h"
+#include <glm/gtc/matrix_transform.hpp>
 
 Bucket::Bucket(float lat, float lon) : mLon(lon), mLat(lat), mLoaded(false)
 {
@@ -11,6 +12,7 @@ Bucket::Bucket(float lat, float lon) : mLon(lon), mLat(lat), mLoaded(false)
     std::string filename = cTilePath;
     filename += generateTilePath();
     filename += "/" + std::to_string(mIndex) + cTileFileExt;
+    std::cout << "Loading terrain " << filename << std::endl;
     mLoadingThread = std::thread(&Bucket::loadFile, this, filename);
 }
 
@@ -41,9 +43,11 @@ double Bucket::distanceTo(float lat, float lon) const
     return GeoCoordUtils::calculateDistance(mLat, mLon, lat, lon);
 }
 
-void Bucket::setMvpMatrix(glm::mat4 mvpMat)
+void Bucket::setCamera(const glm::mat4 &proj, const glm::dvec3 &eye, const glm::vec3 &forward, const glm::vec3 &up)
 {
-    mShader.setMvpMatrix(mvpMat * mModelMat);
+    const glm::vec3 eyeLocal(eye - mCenter);
+    const glm::mat4 view = glm::lookAt(eyeLocal, eyeLocal + forward, up);
+    mShader.setMvpMatrix(proj * view * mModelMat);
 }
 
 void Bucket::loadFile(const std::string& filename)
@@ -51,9 +55,11 @@ void Bucket::loadFile(const std::string& filename)
     BtgFile btgFile;
     if (btgFile.load(filename)) {
         mMesh = btgFile.generateTriangles();
-        mModelMat = glm::translate(glm::mat4(1.0), glm::vec3(-btgFile.getBoundingSphere().getCenterX(),
-                                                             -btgFile.getBoundingSphere().getCenterY(),
-                                                             -btgFile.getBoundingSphere().getCenterZ()));
+        // BTG vertices are already offsets from the bounding-sphere center.
+        mCenter = glm::dvec3(btgFile.getBoundingSphere().getCenterX(),
+                             btgFile.getBoundingSphere().getCenterY(),
+                             btgFile.getBoundingSphere().getCenterZ());
+        mModelMat = glm::mat4(1.0f);
         mLoaded = true;
     }
 }

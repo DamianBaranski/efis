@@ -107,9 +107,9 @@ std::vector<Triangles> BtgFile::generateTriangles()
                 std::cout << "Damage btg file" << std::endl;
                 return triangles;
             }
-            triangle.vertex.push_back(VertexTexture({{-mVertices[obj.second[i].vertexIndex].x,
-                                                      -mVertices[obj.second[i].vertexIndex].y,
-                                                      -mVertices[obj.second[i].vertexIndex].z},
+            triangle.vertex.push_back(VertexTexture({{mVertices[obj.second[i].vertexIndex].x,
+                                                      mVertices[obj.second[i].vertexIndex].y,
+                                                      mVertices[obj.second[i].vertexIndex].z},
                                                      {mTextureCoordinates[obj.second[i].textureCoordIndex].x,
                                                       mTextureCoordinates[obj.second[i].textureCoordIndex].y}}));
             triangle.indices.push_back(i);

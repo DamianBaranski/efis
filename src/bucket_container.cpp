@@ -38,11 +38,11 @@ void BucketContainer::updateLocation(float lat, float lon)
     }
 }
 
-void BucketContainer::render(glm::mat4 mvpMat)
+void BucketContainer::render(const glm::mat4 &proj, const glm::dvec3 &eye, const glm::vec3 &forward, const glm::vec3 &up)
 {
     for (auto &tile : mMap)
     {
-        tile->setMvpMatrix(mvpMat);
+        tile->setCamera(proj, eye, forward, up);
         tile->render();
     }
 }

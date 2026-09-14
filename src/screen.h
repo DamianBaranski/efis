@@ -26,6 +26,15 @@ public:
         (void)y;
         return false;
     }
+
+    /// \brief Handles key-down events.
+    /// \param key The SDL key code.
+    /// \return True if the key event is handled, false otherwise.
+    virtual bool keyDown(SDL_Keycode key)
+    {
+        (void)key;
+        return false;
+    }
 };
 
 /// \class Screen
@@ -44,6 +53,9 @@ public:
     /// \brief Registers a renderer to be rendered on the screen.
     /// \param renderer A pointer to the renderer to be registered.
     void registerRenderer(IRenderer *renderer);
+
+    /// \brief Registers a controller that runs before widget rendering (input/sim tick).
+    void registerController(IRenderer *controller);
 
     /// \brief Enters the main event loop of the screen.
     void mainLoop();

@@ -8,6 +8,7 @@
 #include "shader.h"
 #include <thread>
 #include <atomic>
+#include <glm/glm.hpp>
 
 /// @brief Represents a geographic bucket for rendering terrain data.
 class Bucket
@@ -36,9 +37,8 @@ public:
     /// @return Distance from the point to the bucket in meters.
     double distanceTo(float lat, float lon) const;
 
-    /// @brief Sets the Model-View-Projection (MVP) matrix for rendering.
-    /// @param mvpMat The MVP matrix.
-    void setMvpMatrix(glm::mat4 mvpMat);
+    /// @brief Builds a tile-local view from an ECEF camera and uploads the MVP matrix.
+    void setCamera(const glm::mat4 &proj, const glm::dvec3 &eye, const glm::vec3 &forward, const glm::vec3 &up);
 
 private:
     /// @brief Loads terrain data from file.
@@ -62,7 +62,8 @@ private:
 
     float mLon;                   ///< Longitude of the bucket.
     float mLat;                   ///< Latitude of the bucket.
-    glm::mat4 mModelMat;          ///< Model matrix for rendering.
+    glm::mat4 mModelMat{1.0f};
+    glm::dvec3 mCenter{0.0};
     Shader mShader;               ///< Shader for rendering the bucket.
     long int mIndex;              ///< Index of the bucket.
     std::thread mLoadingThread;   ///< Thread for loading terrain data.

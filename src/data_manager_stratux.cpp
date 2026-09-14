@@ -1,5 +1,7 @@
 #include "data_manager_stratux.h"
 #include <chrono>
+#include <cmath>
+#include <iostream>
 #include <thread>
 
 DataManagerStratux::DataManagerStratux()
@@ -68,7 +70,7 @@ void DataManagerStratux::update_data()
     // Parse JSON data
     try
     {
-        nlohmann::json_abi_v3_11_2::json j = nlohmann::json_abi_v3_11_2::json::parse(response_data);
+        nlohmann::json j = nlohmann::json::parse(response_data);
 
         // Access individual fields
         float ahrs_gyro_heading = j["AHRSGyroHeading"];
@@ -87,24 +89,30 @@ void DataManagerStratux::update_data()
         notify(DataType::LOCATION_DATA);
 
         bool notifyAttitude = false;
-        if(mAttitudeData.pitch!=ahrs_pitch) {
+        if (mAttitudeData.pitch != ahrs_pitch)
+        {
             mAttitudeData.pitch = ahrs_pitch;
             notifyAttitude = true;
         }
-        if(mAttitudeData.roll != ahrs_roll) {
+        if (mAttitudeData.roll != ahrs_roll)
+        {
             mAttitudeData.roll = ahrs_roll;
             notifyAttitude = true;
         }
-        if(notifyAttitude) {
+        const float heading = ahrs_mag_heading / 180.0f * static_cast<float>(M_PI);
+        if (mAttitudeData.heading != heading)
+        {
+            mAttitudeData.heading = heading;
+            notifyAttitude = true;
+        }
+        if (notifyAttitude)
+        {
             notify(DataType::ATTITUDE_DATA);
         }
 
-        //ToDo add data to members
-        //ToDo notify when data was change
-        (void) ahrs_gyro_heading;
-        (void) ahrs_mag_heading;
-        (void) baro_vertical_speed;
-        (void) gps_vertical_speed;
+        (void)ahrs_gyro_heading;
+        (void)baro_vertical_speed;
+        (void)gps_vertical_speed;
     }
     catch (const std::exception &e)
     {

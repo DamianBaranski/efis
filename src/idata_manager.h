@@ -12,6 +12,7 @@
 /// This class defines the common interface for managing different types of data.
 class IDataManager : public Subject<DataType> {
 public:
+    virtual ~IDataManager() = default;
     /// \brief Gets the attitude data.
     ///
     /// \return A constant reference to the attitude data.
@@ -31,6 +32,9 @@ public:
     ///
     /// \return A constant reference to the location data.
     virtual const LocationData &getLocationData() const = 0;
+
+    /// \brief Starts background updates, if the implementation has any.
+    virtual void start() {}
 };
 
 #endif // IDATA_MANAGER_H

@@ -30,6 +30,50 @@ make && sudo make install
 
 Then reconfigure EFIS so `find_package(wgrib2)` succeeds. The default EFIS build does not require wgrib2.
 
+## FlightGear terrain
+
+The map loader reads FlightGear WS2 tiles from `resources/terrain/<10deg>/<1deg>/<index>.btg.gz`.
+
+Download tiles for a location (Mirosławice / EPMR example):
+
+```
+./scripts/download-fg-terrain.sh --lat 50.9578 --lon 16.7703 --radius-deg 1
+```
+
+`--radius-deg 1` pulls neighbouring 1° cells so the view is not cut off at the cell edge. Existing FlightGear/TerraSync scenery can be reused instead of downloading again:
+
+```
+./scripts/link-fg-terrain.sh
+./scripts/link-fg-terrain.sh --source ~/.fgfs/TerraSync/Terrain
+```
+
+Run `./efis` from the `build/` directory so `../resources/terrain` resolves.
+
+## Running
+
+```
+cd build
+./efis              # simulated Stratux (default)
+./efis --stratux    # live Stratux at 127.0.0.1:5000
+```
+
+HTTP mock of Stratux if you want to keep the real client path:
+
+```
+python3 scripts/stratux-sim.py --port 5000
+./efis --stratux
+```
+
+### Keyboard
+
+- `Tab` cycle views (combined / AHRS / terrain)
+- `1` / `F1` AHRS only
+- `2` / `F2` terrain only
+- `3` / `F3` both
+- `Esc` quit
+- Sim only: arrows pitch/roll, `Q`/`E` heading, `W`/`S` speed, `+`/`-` altitude, `R` reset attitude
+
+
 ## Building and Running
 
 To build the EFIS project, follow these steps:
