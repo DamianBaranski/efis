@@ -16,14 +16,25 @@ uniform float openAipFarN;
 
 vec4 sampleAtlas(sampler2D tex, vec4 atlas, float n)
 {
-    vec2 uv;
-    uv.x = (GeoCoord.x * n - atlas.x) / atlas.z;
-    uv.y = (GeoCoord.y * n - atlas.y) / atlas.w;
-    if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0)
+    vec2 tilePos = vec2(GeoCoord.x * n - atlas.x, GeoCoord.y * n - atlas.y);
+    if (tilePos.x < 0.0 || tilePos.y < 0.0 || tilePos.x >= atlas.z || tilePos.y >= atlas.w)
     {
-        return texture(tex, uv);
+        return vec4(0.0);
     }
-    return vec4(0.0);
+
+    vec2 uv = tilePos / atlas.zw;
+    vec2 halfTexel = 0.5 / vec2(textureSize(tex, 0));
+    vec2 uvClamp = clamp(uv, halfTexel, vec2(1.0) - halfTexel);
+    return textureGrad(tex, uvClamp, dFdx(uv), dFdy(uv));
+}
+
+vec3 atlasRgb(vec4 sampleColour, vec3 fallback)
+{
+    if (sampleColour.a > 0.5)
+    {
+        return sampleColour.rgb / max(sampleColour.a, 0.001);
+    }
+    return fallback;
 }
 
 void main() {
@@ -34,16 +45,24 @@ void main() {
         return;
     }
 
-    vec4 aip = vec4(0.0);
+    const vec3 kFallback = vec3(0.23, 0.30, 0.20);
+    vec4 farSample = vec4(0.0);
     if (useOpenAipFar == 1)
     {
-        aip = sampleAtlas(openAipFarSampler, openAipFarAtlas, openAipFarN);
+        farSample = sampleAtlas(openAipFarSampler, openAipFarAtlas, openAipFarN);
     }
     vec4 detail = sampleAtlas(openAipSampler, openAipAtlas, openAipN);
+    vec3 rgb = atlasRgb(farSample, kFallback);
+
+    vec2 nearPos = vec2(GeoCoord.x * openAipN - openAipAtlas.x, GeoCoord.y * openAipN - openAipAtlas.y);
+    float inNear = step(0.0, nearPos.x) * step(0.0, nearPos.y) *
+                   step(nearPos.x, openAipAtlas.z) * step(nearPos.y, openAipAtlas.w);
+    float edge = min(min(nearPos.x, openAipAtlas.z - nearPos.x), min(nearPos.y, openAipAtlas.w - nearPos.y));
+    float fade = inNear * smoothstep(0.0, 0.8, edge);
     if (detail.a > 0.5)
     {
-        aip = vec4(detail.rgb / detail.a, 1.0);
+        rgb = mix(rgb, atlasRgb(detail, rgb), fade);
     }
 
-    fragColour = vec4(mix(ground.rgb, aip.rgb, aip.a), 1.0);
+    fragColour = vec4(rgb, 1.0);
 }

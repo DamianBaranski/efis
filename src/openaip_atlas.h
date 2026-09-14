@@ -18,6 +18,8 @@ public:
     static constexpr int kWideZoom = 13;
     static constexpr int kWideRadius = 15;
     static constexpr int kTilePx = 256;
+    static constexpr int kFeatherPx = 2;
+    static constexpr int kMinParentZoom = 10;
 
     OpenAipAtlas(int zoom, int radius);
     ~OpenAipAtlas();
@@ -41,7 +43,9 @@ private:
     void ensureSurface();
     void shiftOrigin(int originX, int originY);
     bool blitSlot(int dx, int dy);
+    void featherSeams(SDL_Surface *dest) const;
     void upload();
+    void uploadMipmaps(SDL_Surface *src);
 
     GLuint mTexture = 0;
     SDL_Surface *mSurface = nullptr;

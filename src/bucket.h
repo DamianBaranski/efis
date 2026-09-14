@@ -44,6 +44,8 @@ private:
     /// @brief Loads terrain data from file.
     /// @param filename The filename of the terrain data file.
     void loadFile(const std::string &filename);
+    void tileBounds(double &lat0, double &lat1, double &lon0, double &lon1) const;
+    void appendUnderlay();
 
     /// @brief Generates the path for the tile based on latitude and longitude.
     /// @return The generated tile path.

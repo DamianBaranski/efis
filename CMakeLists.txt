@@ -47,6 +47,7 @@ set(SRC
     src/openaip_atlas.cpp
     src/openaip_widget.cpp
     src/runway_overlay.cpp
+    src/airport_scenery.cpp
 )
 
 # Header files
@@ -72,6 +73,7 @@ set(INC
     src/openaip_atlas.h
     src/openaip_widget.h
     src/runway_overlay.h
+    src/airport_scenery.h
 )
 
 # Add executable

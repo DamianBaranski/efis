@@ -5,6 +5,7 @@
 #define BUCKET_CONTAINER_H
 
 #include "bucket.h"
+#include "airport_scenery.h"
 #include <vector>
 #include <memory>
 #include <glm/glm.hpp>
@@ -40,6 +41,7 @@ private:
     };
 
     std::vector<std::unique_ptr<Bucket>> mMap;    ///< Vector containing pointers to Buckets.
+    AirportScenery mAirports;
     LocationData mCurrentTile;                    ///< Current location data.
     const double kTileDistanceLimit = 500 * 1000; ///< Distance limit for tiles (500 km).
     const float cTileSize = 0.1f;                 ///< Size of each tile in degrees.

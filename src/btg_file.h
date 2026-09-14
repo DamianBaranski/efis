@@ -311,7 +311,7 @@ public:
         /// @param objHeader The object header containing information about individual triangles.
         /// @param file The input compressed file stream.
         /// @return True if the individual triangles are successfully unserialized, false otherwise.
-        bool unserialize(const Header &header, const ObjectHeader &objHeader, gzFile &file);
+        bool unserialize(const Header &header, const ObjectHeader &objHeader, gzFile &file, ObjectType type);
 
         /// @brief Gets the material associated with the individual triangles.
         /// @return The material.
@@ -320,6 +320,9 @@ public:
         /// @brief Gets the indexes of the individual triangles.
         /// @return The indexes.
         const std::vector<VertexTextureIndex> &getIndexes() const;
+
+        /// Reads and discards indexed geometry (lights/points).
+        bool discard(const ObjectHeader &objHeader, gzFile &file);
 
         /// @brief Overloaded stream insertion operator to print IndividualTriangles information.
         /// @param os The output stream.

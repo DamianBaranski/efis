@@ -146,8 +146,8 @@ def fetch_dirindex(mirrors: Iterable[str], rel_path: str) -> tuple[str, str]:
     raise RuntimeError(f"could not fetch dirindex for {rel_path or '/'}: {last_error}")
 
 
-def is_bucket_btg(name: str) -> bool:
-    return name.endswith(".btg.gz") and name[:-7].isdigit()
+def is_scenery_btg(name: str) -> bool:
+    return name.endswith(".btg.gz")
 
 
 def download_cell(
@@ -160,9 +160,9 @@ def download_cell(
     rel = f"{block}/{cell}"
     text, mirror = fetch_dirindex(mirrors, rel)
     _, files = parse_dirindex(text)
-    wanted = [item for item in files if is_bucket_btg(item[0])]
+    wanted = [item for item in files if is_scenery_btg(item[0])]
     if not wanted:
-        log(f"no numeric .btg.gz files in {rel} on {mirror}")
+        log(f"no .btg.gz files in {rel} on {mirror}")
         return 0, 0
 
     out_dir = dest_root / block / cell

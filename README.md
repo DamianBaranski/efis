@@ -32,7 +32,7 @@ Then reconfigure EFIS so `find_package(wgrib2)` succeeds. The default EFIS build
 
 ## FlightGear terrain
 
-The map loader reads FlightGear WS2 tiles from `resources/terrain/<10deg>/<1deg>/<index>.btg.gz`.
+The map loader reads FlightGear WS2 tiles from `resources/terrain/<10deg>/<1deg>/<index>.btg.gz`. Large airports are separate `ICAO.btg.gz` files in the same folders (the terrain mesh has a hole that those files fill).
 
 Download tiles for a location (Mirosławice / EPMR example):
 

@@ -7,6 +7,7 @@ void BucketContainer::updateLocation(float lat, float lon)
 {
     if (std::abs(mCurrentTile.latitude - lat) < cTileSize && std::abs(mCurrentTile.longitude - lon) < cTileSize)
     {
+        mAirports.update(lat, lon);
         return;
     }
 
@@ -36,6 +37,7 @@ void BucketContainer::updateLocation(float lat, float lon)
             ++iter;
         }
     }
+    mAirports.update(lat, lon);
 }
 
 void BucketContainer::render(const glm::mat4 &proj, const glm::dvec3 &eye, const glm::vec3 &forward, const glm::vec3 &up)
@@ -45,6 +47,7 @@ void BucketContainer::render(const glm::mat4 &proj, const glm::dvec3 &eye, const
         tile->setCamera(proj, eye, forward, up);
         tile->render();
     }
+    mAirports.render(proj, eye, forward, up);
 }
 
 bool BucketContainer::checkTile(float lat, float lon)

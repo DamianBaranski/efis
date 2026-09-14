@@ -1,9 +1,14 @@
 #include "bucket.h"
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <iomanip>
 #include "geo_coord_utils.h"
 #include <glm/gtc/matrix_transform.hpp>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 Bucket::Bucket(float lat, float lon) : mLon(lon), mLat(lat), mLoaded(false)
 {
@@ -61,8 +66,124 @@ void Bucket::loadFile(const std::string& filename)
                              btgFile.getBoundingSphere().getCenterY(),
                              btgFile.getBoundingSphere().getCenterZ());
         mModelMat = glm::mat4(1.0f);
+        appendUnderlay();
         mLoaded = true;
     }
+}
+
+void Bucket::tileBounds(double &lat0, double &lat1, double &lon0, double &lon1) const
+{
+    const double span = getSpan(mLat);
+    const int baseY = static_cast<int>(std::floor(mLat));
+    const int y = static_cast<int>(std::trunc((static_cast<double>(mLat) - baseY) * 8.0));
+    const double baseX = std::floor(std::floor(static_cast<double>(mLon) / span) * span);
+    const int x = static_cast<int>(std::floor((static_cast<double>(mLon) - baseX) / span));
+    lat0 = static_cast<double>(baseY) + y / 8.0;
+    lat1 = static_cast<double>(baseY) + (y + 1) / 8.0;
+    lon0 = baseX + static_cast<double>(x) * span;
+    lon1 = baseX + static_cast<double>(x + 1) * span;
+}
+
+void Bucket::appendUnderlay()
+{
+    double lat0 = 0.0;
+    double lat1 = 0.0;
+    double lon0 = 0.0;
+    double lon1 = 0.0;
+    tileBounds(lat0, lat1, lon0, lon1);
+
+    const double midLat = 0.5 * (lat0 + lat1);
+    const double metersPerDegLat = 111320.0;
+    const double metersPerDegLon =
+        std::max(1000.0, metersPerDegLat * std::cos(midLat * (M_PI / 180.0)));
+    constexpr double kOverlapM = 40.0;
+    constexpr double kDropM = 10.0;
+    constexpr double kSkirtM = 40.0;
+    lat0 -= kOverlapM / metersPerDegLat;
+    lat1 += kOverlapM / metersPerDegLat;
+    lon0 -= kOverlapM / metersPerDegLon;
+    lon1 += kOverlapM / metersPerDegLon;
+
+    const auto centreLl = GeoCoordUtils::convertXYZToLatLon(mCenter.x, mCenter.y, mCenter.z);
+    const auto onEllipsoid =
+        GeoCoordUtils::convertLatLonToXYZ(centreLl.latitude, centreLl.longitude, 0.0);
+    const double groundAlt =
+        std::sqrt(mCenter.x * mCenter.x + mCenter.y * mCenter.y + mCenter.z * mCenter.z) -
+        std::sqrt(onEllipsoid.x * onEllipsoid.x + onEllipsoid.y * onEllipsoid.y +
+                  onEllipsoid.z * onEllipsoid.z);
+    const double patchAlt = groundAlt - kDropM;
+
+    auto makeVt = [&](double lat, double lon, double alt) {
+        const auto xyz = GeoCoordUtils::convertLatLonToXYZ(lat, lon, alt);
+        VertexTexture vt{};
+        vt.vertex.x = static_cast<float>(xyz.x - mCenter.x);
+        vt.vertex.y = static_cast<float>(xyz.y - mCenter.y);
+        vt.vertex.z = static_cast<float>(xyz.z - mCenter.z);
+        GeoCoordUtils::latLonToMercatorUv(lat, lon, vt.geoCoord.x, vt.geoCoord.y);
+        return vt;
+    };
+
+    constexpr int kDiv = 8;
+    Triangles patch;
+    patch.material = mMesh.empty() ? std::string("../resources/textures/unknown.png") : mMesh.front().material;
+    patch.vertex.reserve(static_cast<size_t>((kDiv + 1) * (kDiv + 1) + 4 * (kDiv + 1)));
+    for (int j = 0; j <= kDiv; ++j)
+    {
+        const double lat = lat0 + (lat1 - lat0) * (static_cast<double>(j) / kDiv);
+        for (int i = 0; i <= kDiv; ++i)
+        {
+            const double lon = lon0 + (lon1 - lon0) * (static_cast<double>(i) / kDiv);
+            patch.vertex.push_back(makeVt(lat, lon, patchAlt));
+        }
+    }
+    auto idxAt = [](int i, int j) { return static_cast<unsigned int>(j * (kDiv + 1) + i); };
+    for (int j = 0; j < kDiv; ++j)
+    {
+        for (int i = 0; i < kDiv; ++i)
+        {
+            const unsigned int a = idxAt(i, j);
+            const unsigned int b = idxAt(i + 1, j);
+            const unsigned int c = idxAt(i + 1, j + 1);
+            const unsigned int d = idxAt(i, j + 1);
+            patch.indices.push_back(a);
+            patch.indices.push_back(b);
+            patch.indices.push_back(c);
+            patch.indices.push_back(a);
+            patch.indices.push_back(c);
+            patch.indices.push_back(d);
+        }
+    }
+
+    auto addSkirt = [&](int i0, int j0, int i1, int j1) {
+        const double latA = lat0 + (lat1 - lat0) * (static_cast<double>(j0) / kDiv);
+        const double lonA = lon0 + (lon1 - lon0) * (static_cast<double>(i0) / kDiv);
+        const double latB = lat0 + (lat1 - lat0) * (static_cast<double>(j1) / kDiv);
+        const double lonB = lon0 + (lon1 - lon0) * (static_cast<double>(i1) / kDiv);
+    const unsigned int topA = idxAt(i0, j0);
+    const unsigned int topB = idxAt(i1, j1);
+    const unsigned int botA = static_cast<unsigned int>(patch.vertex.size());
+    patch.vertex.push_back(makeVt(latA, lonA, patchAlt - kSkirtM));
+    const unsigned int botB = static_cast<unsigned int>(patch.vertex.size());
+    patch.vertex.push_back(makeVt(latB, lonB, patchAlt - kSkirtM));
+    patch.indices.push_back(topA);
+    patch.indices.push_back(topB);
+    patch.indices.push_back(botB);
+    patch.indices.push_back(topA);
+    patch.indices.push_back(botB);
+    patch.indices.push_back(botA);
+};
+    for (int i = 0; i < kDiv; ++i)
+    {
+        addSkirt(i, 0, i + 1, 0);
+        addSkirt(i, kDiv, i + 1, kDiv);
+    }
+    for (int j = 0; j < kDiv; ++j)
+    {
+        addSkirt(0, j, 0, j + 1);
+        addSkirt(kDiv, j, kDiv, j + 1);
+    }
+
+    mMesh.insert(mMesh.begin(), std::move(patch));
 }
 
 std::string Bucket::generateTilePath()

@@ -59,26 +59,37 @@ bool BtgFile::load(const std::string &filename)
         }
 
         case ObjectType::INDIVIDUAL_TRIANGLES:
+        case ObjectType::TRIANGLES_STRIPS:
+        case ObjectType::TRIANGLES_FANS:
         {
             IndividualTriangles triangles;
-            triangles.unserialize(header, objHeader, file);
+            triangles.unserialize(header, objHeader, file, objHeader.getObjectType());
             auto tmp = triangles.getIndexes();
-            //Clean invalid triangles
-            for (int q = tmp.size() - 3; q >= 0; q -= 3) {
-            if (tmp[q].vertexIndex == tmp[q + 1].vertexIndex ||
-                tmp[q].vertexIndex == tmp[q + 2].vertexIndex ||
-                tmp[q + 1].vertexIndex == tmp[q + 2].vertexIndex) {
-                    tmp.erase(tmp.begin() + q, tmp.begin() + q + 3);
+            if (objHeader.getObjectType() == ObjectType::INDIVIDUAL_TRIANGLES)
+            {
+                for (int q = static_cast<int>(tmp.size()) - 3; q >= 0; q -= 3)
+                {
+                    if (tmp[static_cast<size_t>(q)].vertexIndex == tmp[static_cast<size_t>(q) + 1].vertexIndex ||
+                        tmp[static_cast<size_t>(q)].vertexIndex == tmp[static_cast<size_t>(q) + 2].vertexIndex ||
+                        tmp[static_cast<size_t>(q) + 1].vertexIndex == tmp[static_cast<size_t>(q) + 2].vertexIndex)
+                    {
+                        tmp.erase(tmp.begin() + q, tmp.begin() + q + 3);
+                    }
                 }
             }
-            mVerticesIdxs.push_back(std::make_pair(triangles.getMaterial(), tmp));
+            if (!tmp.empty())
+            {
+                mVerticesIdxs.push_back(std::make_pair(triangles.getMaterial(), tmp));
+            }
             break;
         }
-
-        // Add cases for other object types as needed
+        case ObjectType::POINTS:
         default:
-            std::cerr << "Unsupported object type: " << static_cast<int>(objHeader.getObjectType()) << std::endl;
-            return false;
+        {
+            IndividualTriangles skip;
+            skip.discard(objHeader, file);
+            break;
+        }
         }
     }
 
@@ -325,7 +336,8 @@ std::ostream &operator<<(std::ostream &os, const BtgFile::Properties &props)
     return os;
 }
 
-bool BtgFile::IndividualTriangles::unserialize(const BtgFile::Header &header, const ObjectHeader &objHeader, gzFile &file)
+bool BtgFile::IndividualTriangles::unserialize(const BtgFile::Header &header, const ObjectHeader &objHeader,
+                                               gzFile &file, ObjectType type)
 {
     size_t dataWidth = header.getDataWidth();
     Properties properties;
@@ -340,6 +352,7 @@ bool BtgFile::IndividualTriangles::unserialize(const BtgFile::Header &header, co
     {
         unsigned int listSize = 0;
         loadObject(file, listSize);
+        std::vector<VertexTextureIndex> primitive;
         for (size_t j = 0; j < listSize;)
         {
             unsigned int index;
@@ -360,8 +373,63 @@ bool BtgFile::IndividualTriangles::unserialize(const BtgFile::Header &header, co
             {
                 j += loadObject(file, index, dataWidth);
                 vertexTextureIndex.textureCoordIndex = index;
-                mIndexes.push_back(vertexTextureIndex);
+                primitive.push_back(vertexTextureIndex);
             }
+        }
+        if (type == ObjectType::POINTS)
+        {
+            continue;
+        }
+        if (type == ObjectType::TRIANGLES_STRIPS)
+        {
+            for (size_t i = 2; i < primitive.size(); ++i)
+            {
+                if ((i & 1) != 0)
+                {
+                    mIndexes.push_back(primitive[i - 1]);
+                    mIndexes.push_back(primitive[i - 2]);
+                    mIndexes.push_back(primitive[i]);
+                }
+                else
+                {
+                    mIndexes.push_back(primitive[i - 2]);
+                    mIndexes.push_back(primitive[i - 1]);
+                    mIndexes.push_back(primitive[i]);
+                }
+            }
+        }
+        else if (type == ObjectType::TRIANGLES_FANS)
+        {
+            for (size_t i = 2; i < primitive.size(); ++i)
+            {
+                mIndexes.push_back(primitive[0]);
+                mIndexes.push_back(primitive[i - 1]);
+                mIndexes.push_back(primitive[i]);
+            }
+        }
+        else
+        {
+            mIndexes.insert(mIndexes.end(), primitive.begin(), primitive.end());
+        }
+    }
+    return true;
+}
+
+bool BtgFile::IndividualTriangles::discard(const ObjectHeader &objHeader, gzFile &file)
+{
+    Properties properties;
+    if (!properties.unserialize(objHeader, file))
+    {
+        return false;
+    }
+    for (size_t i = 0; i < objHeader.getNumberOfElements(); ++i)
+    {
+        unsigned int listSize = 0;
+        loadObject(file, listSize);
+        if (listSize > 0)
+        {
+            std::vector<unsigned char> blob(listSize);
+            loadObject(file, blob[0], listSize);
         }
     }
     return true;
