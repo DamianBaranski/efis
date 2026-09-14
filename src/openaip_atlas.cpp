@@ -3,18 +3,22 @@
 #include "openaip_client.h"
 #include <SDL.h>
 #include <SDL_image.h>
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <string>
+#include <vector>
 
-OpenAipAtlas::OpenAipAtlas()
+namespace
 {
-    mN = static_cast<float>(std::exp2(kZoom));
+constexpr unsigned char kHasBase = 1;
+constexpr unsigned char kHasOverlay = 2;
 }
 
-int OpenAipAtlas::zoomForStyle(const std::string &style)
+OpenAipAtlas::OpenAipAtlas(int zoom, int radius)
+    : mTiles(2 * radius + 1), mN(static_cast<float>(std::exp2(zoom))), mZoom(zoom), mRadius(radius),
+      mSlot(static_cast<size_t>(mTiles) * static_cast<size_t>(mTiles), 0)
 {
-    return (style == "satellite") ? kSatelliteZoom : kZoom;
 }
 
 OpenAipAtlas::~OpenAipAtlas()
@@ -22,6 +26,10 @@ OpenAipAtlas::~OpenAipAtlas()
     if (mTexture != 0)
     {
         glDeleteTextures(1, &mTexture);
+    }
+    if (mSurface != nullptr)
+    {
+        SDL_FreeSurface(mSurface);
     }
 }
 
@@ -31,108 +39,115 @@ void OpenAipAtlas::ensureTexture()
     {
         return;
     }
+    const int width = mTiles * kTilePx;
+    const int height = mTiles * kTilePx;
     glGenTextures(1, &mTexture);
     glBindTexture(GL_TEXTURE_2D, mTexture);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    const unsigned char pixel[4] = {0, 0, 0, 0};
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixel);
+    std::vector<unsigned char> empty(static_cast<size_t>(width) * static_cast<size_t>(height) * 4, 0);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, empty.data());
+    glGenerateMipmap(GL_TEXTURE_2D);
 }
 
-int OpenAipAtlas::countCached() const
+void OpenAipAtlas::ensureSurface()
 {
-    auto &client = OpenAipClient::instance();
-    int count = 0;
-    for (int dy = 0; dy < mTiles; ++dy)
+    if (mSurface != nullptr)
     {
-        for (int dx = 0; dx < mTiles; ++dx)
-        {
-            const int tileX = mOriginX + dx;
-            const int tileY = mOriginY + dy;
-            if (client.isCached(mZoom, tileX, tileY, client.basemapLayer()) ||
-                client.isCached(mZoom, tileX, tileY, "openaip"))
-            {
-                ++count;
-            }
-        }
-    }
-    return count;
-}
-
-void OpenAipAtlas::update(float latitude, float longitude)
-{
-    auto &client = OpenAipClient::instance();
-    const int zoom = zoomForStyle(client.basemapStyle());
-    mN = static_cast<float>(std::exp2(zoom));
-    client.fetchAround(latitude, longitude, zoom, kRadius);
-
-    const std::string layer = client.basemapLayer();
-    const auto center = OpenAipClient::latLonToTile(latitude, longitude, zoom);
-    const int originX = center.first - kRadius;
-    const int originY = center.second - kRadius;
-    const bool originChanged =
-        (originX != mOriginX || originY != mOriginY || layer != mBasemapLayer || zoom != mZoom);
-    if (originChanged)
-    {
-        mOriginX = originX;
-        mOriginY = originY;
-        mBasemapLayer = layer;
-        mZoom = zoom;
-        mCachedCount = -1;
-        mFramesUntilRetry = 0;
-    }
-
-    if (mFramesUntilRetry > 0)
-    {
-        --mFramesUntilRetry;
-        if (!originChanged)
-        {
-            return;
-        }
-    }
-
-    const int cached = countCached();
-    if (!originChanged && cached == mCachedCount && mTexture != 0)
-    {
-        mFramesUntilRetry = 20;
         return;
     }
-
-    mCachedCount = cached;
-    rebuild();
-    mFramesUntilRetry = (cached == mTiles * mTiles) ? 60 : 15;
-}
-
-void OpenAipAtlas::rebuild()
-{
-    ensureTexture();
-
-    int flags = IMG_INIT_PNG;
-    if ((IMG_Init(flags) & flags) == 0)
-    {
-        std::cerr << "OpenAIP atlas: PNG loader missing" << std::endl;
-        return;
-    }
-
     const int width = mTiles * kTilePx;
     const int height = mTiles * kTilePx;
-    SDL_Surface *atlas = SDL_CreateRGBSurfaceWithFormat(0, width, height, 32, SDL_PIXELFORMAT_RGBA32);
-    if (!atlas)
+    mSurface = SDL_CreateRGBSurfaceWithFormat(0, width, height, 32, SDL_PIXELFORMAT_RGBA32);
+    if (mSurface == nullptr)
     {
         std::cerr << "OpenAIP atlas: SDL_CreateRGBSurfaceWithFormat failed" << std::endl;
         return;
     }
-    SDL_FillRect(atlas, nullptr, SDL_MapRGBA(atlas->format, 230, 230, 220, 255));
+    SDL_FillRect(mSurface, nullptr, SDL_MapRGBA(mSurface->format, 0, 0, 0, 0));
+}
 
-    auto &client = OpenAipClient::instance();
-    auto blitLayer = [&](int tileX, int tileY, int dx, int dy, const std::string &layer, SDL_BlendMode blend) {
-        if (!client.isCached(mZoom, tileX, tileY, layer))
+void OpenAipAtlas::shiftOrigin(int originX, int originY)
+{
+    const int dx = originX - mOriginX;
+    const int dy = originY - mOriginY;
+    mOriginX = originX;
+    mOriginY = originY;
+    if (mSurface == nullptr || (dx == 0 && dy == 0))
+    {
+        return;
+    }
+    if (std::abs(dx) >= mTiles || std::abs(dy) >= mTiles)
+    {
+        SDL_FillRect(mSurface, nullptr, SDL_MapRGBA(mSurface->format, 0, 0, 0, 0));
+        std::fill(mSlot.begin(), mSlot.end(), 0);
+        return;
+    }
+
+    SDL_Surface *tmp = SDL_CreateRGBSurfaceWithFormat(0, mSurface->w, mSurface->h, 32, SDL_PIXELFORMAT_RGBA32);
+    if (tmp == nullptr)
+    {
+        SDL_FillRect(mSurface, nullptr, SDL_MapRGBA(mSurface->format, 0, 0, 0, 0));
+        std::fill(mSlot.begin(), mSlot.end(), 0);
+        return;
+    }
+    SDL_FillRect(tmp, nullptr, SDL_MapRGBA(tmp->format, 0, 0, 0, 0));
+    SDL_Rect src;
+    src.x = std::max(dx, 0) * kTilePx;
+    src.y = std::max(dy, 0) * kTilePx;
+    src.w = (mTiles - std::abs(dx)) * kTilePx;
+    src.h = (mTiles - std::abs(dy)) * kTilePx;
+    SDL_Rect dst;
+    dst.x = std::max(-dx, 0) * kTilePx;
+    dst.y = std::max(-dy, 0) * kTilePx;
+    dst.w = src.w;
+    dst.h = src.h;
+    SDL_SetSurfaceBlendMode(mSurface, SDL_BLENDMODE_NONE);
+    SDL_BlitSurface(mSurface, &src, tmp, &dst);
+    SDL_SetSurfaceBlendMode(tmp, SDL_BLENDMODE_NONE);
+    SDL_BlitSurface(tmp, nullptr, mSurface, nullptr);
+    SDL_FreeSurface(tmp);
+
+    std::vector<unsigned char> next(mSlot.size(), 0);
+    for (int y = 0; y < mTiles; ++y)
+    {
+        for (int x = 0; x < mTiles; ++x)
         {
-            return false;
+            const int ox = x + dx;
+            const int oy = y + dy;
+            if (ox >= 0 && ox < mTiles && oy >= 0 && oy < mTiles)
+            {
+                next[static_cast<size_t>(y * mTiles + x)] = mSlot[static_cast<size_t>(oy * mTiles + ox)];
+            }
         }
+    }
+    mSlot.swap(next);
+}
+
+bool OpenAipAtlas::blitSlot(int dx, int dy)
+{
+    auto &client = OpenAipClient::instance();
+    const int tileX = mOriginX + dx;
+    const int tileY = mOriginY + dy;
+    unsigned char wanted = 0;
+    if (client.isCached(mZoom, tileX, tileY, client.basemapLayer()))
+    {
+        wanted |= kHasBase;
+    }
+    if (client.isCached(mZoom, tileX, tileY, "openaip"))
+    {
+        wanted |= kHasOverlay;
+    }
+    unsigned char &have = mSlot[static_cast<size_t>(dy * mTiles + dx)];
+    if (wanted == have)
+    {
+        return false;
+    }
+
+    auto blitLayer = [&](const std::string &layer, SDL_BlendMode blend) {
         SDL_Surface *tile = IMG_Load(client.cachePath(mZoom, tileX, tileY, layer).c_str());
         if (!tile)
         {
@@ -146,36 +161,99 @@ void OpenAipAtlas::rebuild()
         }
         SDL_Rect dest{dx * kTilePx, dy * kTilePx, kTilePx, kTilePx};
         SDL_SetSurfaceBlendMode(rgba, blend);
-        SDL_BlitSurface(rgba, nullptr, atlas, &dest);
+        SDL_BlitSurface(rgba, nullptr, mSurface, &dest);
         SDL_FreeSurface(rgba);
         return true;
     };
 
-    int blitted = 0;
+    const unsigned char missing = static_cast<unsigned char>(wanted & ~have);
+    bool changed = false;
+    if ((missing & kHasBase) != 0)
+    {
+        if (blitLayer(client.basemapLayer(), SDL_BLENDMODE_NONE))
+        {
+            have |= kHasBase;
+            changed = true;
+        }
+    }
+    if ((missing & kHasOverlay) != 0)
+    {
+        if (blitLayer("openaip", SDL_BLENDMODE_BLEND))
+        {
+            have |= kHasOverlay;
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+void OpenAipAtlas::upload()
+{
+    if (mTexture == 0 || mSurface == nullptr)
+    {
+        return;
+    }
+    glBindTexture(GL_TEXTURE_2D, mTexture);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    const int rowPixels = mSurface->pitch / 4;
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, rowPixels);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, mSurface->w, mSurface->h, GL_RGBA, GL_UNSIGNED_BYTE, mSurface->pixels);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    glGenerateMipmap(GL_TEXTURE_2D);
+}
+
+void OpenAipAtlas::update(float latitude, float longitude)
+{
+    auto &client = OpenAipClient::instance();
+    mN = static_cast<float>(std::exp2(mZoom));
+    client.fetchAround(latitude, longitude, mZoom, mRadius);
+    ensureSurface();
+    ensureTexture();
+    if (mSurface == nullptr)
+    {
+        return;
+    }
+
+    const std::string layer = client.basemapLayer();
+    const auto center = OpenAipClient::latLonToTile(latitude, longitude, mZoom);
+    const int originX = center.first - mRadius;
+    const int originY = center.second - mRadius;
+    bool dirty = false;
+    if (originX != mOriginX || originY != mOriginY || layer != mBasemapLayer)
+    {
+        if (layer != mBasemapLayer)
+        {
+            SDL_FillRect(mSurface, nullptr, SDL_MapRGBA(mSurface->format, 0, 0, 0, 0));
+            std::fill(mSlot.begin(), mSlot.end(), 0);
+            mOriginX = originX;
+            mOriginY = originY;
+        }
+        else
+        {
+            shiftOrigin(originX, originY);
+        }
+        mBasemapLayer = layer;
+        dirty = true;
+    }
+
+    int flags = IMG_INIT_PNG;
+    if ((IMG_Init(flags) & flags) == 0)
+    {
+        return;
+    }
+
     for (int dy = 0; dy < mTiles; ++dy)
     {
         for (int dx = 0; dx < mTiles; ++dx)
         {
-            const int tileX = mOriginX + dx;
-            const int tileY = mOriginY + dy;
-            const bool base = blitLayer(tileX, tileY, dx, dy, client.basemapLayer(), SDL_BLENDMODE_NONE);
-            const bool aip = blitLayer(tileX, tileY, dx, dy, "openaip", SDL_BLENDMODE_BLEND);
-            if (base || aip)
+            if (blitSlot(dx, dy))
             {
-                ++blitted;
+                dirty = true;
             }
         }
     }
-
-    glBindTexture(GL_TEXTURE_2D, mTexture);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, atlas->pixels);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glGenerateMipmap(GL_TEXTURE_2D);
-    SDL_FreeSurface(atlas);
-
-    std::cout << "OpenAIP atlas " << mTiles << "x" << mTiles << " at "
-              << mZoom << "/" << mOriginX << "/" << mOriginY
-              << " tiles " << blitted << "/" << (mTiles * mTiles) << std::endl;
+    if (dirty)
+    {
+        upload();
+    }
 }

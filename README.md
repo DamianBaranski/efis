@@ -49,6 +49,42 @@ Download tiles for a location (Mirosławice / EPMR example):
 
 Run `./efis` from the `build/` directory so `../resources/terrain` resolves.
 
+## OpenAIP tiles
+
+Aeronautical overlay tiles come from [OpenAIP](https://www.openaip.net) (CC BY-NC 4.0). F4 drapes Esri World Imagery plus the OpenAIP overlay onto the 3D terrain.
+
+Put your OpenAIP client API key in `resources/openaip/api.key` or in `OPENAIP_API_KEY`.
+
+`GET https://api.tiles.openaip.net/api/data/openaip/{z}/{x}/{y}.png` (overlay)
+
+The prefetch script also downloads Esri World Imagery under `cache/satellite/`. Overlay goes to `cache/openaip/`. F4 drapes two zooms: **16** near the aircraft (~1.5 m/pixel) and **13** out to the FlightGear scenery window.
+
+```
+python3 scripts/download-openaip-tiles.py --lat 50.959167 --lon 16.770278 --zoom 16 --radius 7
+python3 scripts/download-openaip-tiles.py --lat 50.959167 --lon 16.770278 --zoom 13 --radius 15
+```
+
+`--no-basemap` skips the imagery; `--no-openaip` skips the aviation overlay.
+
+## Airport / runway CSV
+
+OpenAIP country exports include small civil airfields, ultralight sites, and unnamed strips (not only ICAO airports). One CSV row per runway:
+
+```
+python3 scripts/download-airports.py --country PL --check EPMR,EPWS
+```
+
+Output: `resources/airports/airports.csv` (`icao,name,country,type,lat,lon,elev_m,runway,heading_deg,length_m,width_m,surface`). Add more countries with `--country PL,CZ,DE`. Data is OpenAIP CC BY-NC 4.0.
+
+Runway **centerlines** come from OpenStreetMap (`aeroway=runway` ways), not from OpenAIP points or map tiles:
+
+```
+python3 scripts/download-osm-runways.py
+python3 scripts/download-osm-runways.py --icao EPMR,EPWS
+```
+
+F2/F3/F4 draw nearby strips from the OpenAIP list, with OSM endpoints when `resources/airports/osm_runways.csv` is present.
+
 ## Running
 
 ```
@@ -66,10 +102,11 @@ python3 scripts/stratux-sim.py --port 5000
 
 ### Keyboard
 
-- `Tab` cycle views (combined / AHRS / terrain)
+- `Tab` cycle views (combined / AHRS / terrain / OpenAIP)
 - `1` / `F1` AHRS only
 - `2` / `F2` terrain only
 - `3` / `F3` both
+- `4` / `F4` 3D terrain with OpenAIP tiles draped on the ground
 - `Esc` quit
 - Sim only: arrows pitch/roll, `Q`/`E` heading, `W`/`S` speed, `+`/`-` altitude, `R` reset attitude
 

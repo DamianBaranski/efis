@@ -8,7 +8,8 @@ std::unordered_map<std::string, Shader::TextureData> Shader::mTextureCache = {};
 Shader::OpenAipGroundState Shader::sOpenAip = {};
 
 void Shader::setOpenAipGround(bool active, GLuint texture, float originX, float originY,
-                              float tilesX, float tilesY, float n)
+                              float tilesX, float tilesY, float n, GLuint farTexture,
+                              float farOriginX, float farOriginY, float farTilesX, float farTilesY, float farN)
 {
     sOpenAip.active = active;
     sOpenAip.texture = texture;
@@ -17,6 +18,12 @@ void Shader::setOpenAipGround(bool active, GLuint texture, float originX, float 
     sOpenAip.tilesX = tilesX;
     sOpenAip.tilesY = tilesY;
     sOpenAip.n = n;
+    sOpenAip.farTexture = farTexture;
+    sOpenAip.farOriginX = farOriginX;
+    sOpenAip.farOriginY = farOriginY;
+    sOpenAip.farTilesX = farTilesX;
+    sOpenAip.farTilesY = farTilesY;
+    sOpenAip.farN = farN;
 }
 
 Shader::Shader() : mShaderProgram(0)
@@ -59,6 +66,29 @@ void Shader::render() const
         }
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, sOpenAip.texture);
+        const bool farOverlay = sOpenAip.farTexture != 0;
+        if (mUseOpenAipFarLoc >= 0)
+        {
+            glUniform1i(mUseOpenAipFarLoc, farOverlay ? 1 : 0);
+        }
+        if (farOverlay)
+        {
+            if (mOpenAipFarSamplerLoc >= 0)
+            {
+                glUniform1i(mOpenAipFarSamplerLoc, 2);
+            }
+            if (mOpenAipFarAtlasLoc >= 0)
+            {
+                glUniform4f(mOpenAipFarAtlasLoc, sOpenAip.farOriginX, sOpenAip.farOriginY, sOpenAip.farTilesX,
+                            sOpenAip.farTilesY);
+            }
+            if (mOpenAipFarNLoc >= 0)
+            {
+                glUniform1f(mOpenAipFarNLoc, sOpenAip.farN);
+            }
+            glActiveTexture(GL_TEXTURE2);
+            glBindTexture(GL_TEXTURE_2D, sOpenAip.farTexture);
+        }
         glActiveTexture(GL_TEXTURE0);
     }
 
@@ -332,9 +362,17 @@ void Shader::initializeShaderProgram()
     mOpenAipSamplerLoc = glGetUniformLocation(mShaderProgram, "openAipSampler");
     mOpenAipAtlasLoc = glGetUniformLocation(mShaderProgram, "openAipAtlas");
     mOpenAipNLoc = glGetUniformLocation(mShaderProgram, "openAipN");
+    mUseOpenAipFarLoc = glGetUniformLocation(mShaderProgram, "useOpenAipFar");
+    mOpenAipFarSamplerLoc = glGetUniformLocation(mShaderProgram, "openAipFarSampler");
+    mOpenAipFarAtlasLoc = glGetUniformLocation(mShaderProgram, "openAipFarAtlas");
+    mOpenAipFarNLoc = glGetUniformLocation(mShaderProgram, "openAipFarN");
     if (mOpenAipSamplerLoc >= 0)
     {
         glUniform1i(mOpenAipSamplerLoc, 1);
+    }
+    if (mOpenAipFarSamplerLoc >= 0)
+    {
+        glUniform1i(mOpenAipFarSamplerLoc, 2);
     }
     GLint texSamplerUniformLoc = glGetUniformLocation(mShaderProgram, "texSampler");
     if (texSamplerUniformLoc >= 0)

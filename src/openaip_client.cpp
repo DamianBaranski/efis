@@ -16,8 +16,6 @@ namespace
 constexpr char kBaseUrl[] = "https://api.tiles.openaip.net/api/data";
 constexpr char kCacheRoot[] = "../resources/openaip/cache";
 constexpr char kKeyFile[] = "../resources/openaip/api.key";
-constexpr char kCartoKeyFile[] = "../resources/openaip/carto.key";
-constexpr char kStyleFile[] = "../resources/openaip/basemap.style";
 
 bool fileExists(const std::string &path)
 {
@@ -77,48 +75,6 @@ std::string loadKey(const char *envName, const char *path)
     return readKeyFile(path);
 }
 
-std::string normalizeStyle(std::string style)
-{
-    for (char &ch : style)
-    {
-        if (ch >= 'A' && ch <= 'Z')
-        {
-            ch = static_cast<char>(ch - 'A' + 'a');
-        }
-    }
-    if (style == "dark" || style == "darkmatter" || style == "night")
-    {
-        return "dark";
-    }
-    if (style == "satellite" || style == "sat" || style == "imagery")
-    {
-        return "satellite";
-    }
-    return "voyager";
-}
-
-std::string cacheLayerForStyle(const std::string &style)
-{
-    if (style == "dark")
-    {
-        return "dark";
-    }
-    if (style == "satellite")
-    {
-        return "satellite";
-    }
-    return "osm";
-}
-
-void saveStyleFile(const std::string &style)
-{
-    std::ofstream file(kStyleFile, std::ios::trunc);
-    if (file)
-    {
-        file << style << '\n';
-    }
-}
-
 size_t writeFile(char *ptr, size_t size, size_t nmemb, void *userdata)
 {
     auto *out = static_cast<std::ofstream *>(userdata);
@@ -138,22 +94,6 @@ OpenAipClient::OpenAipClient() : mCacheRoot(kCacheRoot)
 {
     curl_global_init(CURL_GLOBAL_DEFAULT);
     mApiKey = loadKey("OPENAIP_API_KEY", kKeyFile);
-    mCartoKey = loadKey("CARTO_API_KEY", kCartoKeyFile);
-    std::string style = "voyager";
-    if (const char *env = std::getenv("EFIS_BASEMAP"))
-    {
-        style = env;
-    }
-    else
-    {
-        const std::string fromFile = readKeyFile(kStyleFile);
-        if (!fromFile.empty())
-        {
-            style = fromFile;
-        }
-    }
-    mBasemapStyle = normalizeStyle(style);
-    mBasemapLayer = cacheLayerForStyle(mBasemapStyle);
     if (mApiKey.empty())
     {
         std::cerr << "OpenAIP: no API key (set OPENAIP_API_KEY or " << kKeyFile << ")" << std::endl;
@@ -162,50 +102,12 @@ OpenAipClient::OpenAipClient() : mCacheRoot(kCacheRoot)
     {
         std::cout << "OpenAIP tiles: https://www.openaip.net (CC BY-NC 4.0)" << std::endl;
     }
-    if (mCartoKey.empty())
-    {
-        std::cerr << "Carto: no API key (set CARTO_API_KEY or " << kCartoKeyFile << ")" << std::endl;
-    }
-    else
-    {
-        std::cout << "Carto Voyager streets: https://carto.com/basemaps" << std::endl;
-    }
-    std::cout << "Basemap: " << mBasemapStyle << std::endl;
+    std::cout << "Basemap: Esri World Imagery" << std::endl;
 }
 
 std::string OpenAipClient::loadApiKey() const
 {
     return loadKey("OPENAIP_API_KEY", kKeyFile);
-}
-
-void OpenAipClient::setBasemapStyle(const std::string &style)
-{
-    const std::string normalized = normalizeStyle(style);
-    std::lock_guard<std::mutex> lock(mMutex);
-    if (normalized == mBasemapStyle)
-    {
-        return;
-    }
-    mBasemapStyle = normalized;
-    mBasemapLayer = cacheLayerForStyle(mBasemapStyle);
-    mLastZ = -1;
-    saveStyleFile(mBasemapStyle);
-    std::cout << "Basemap: " << mBasemapStyle << std::endl;
-}
-
-std::string OpenAipClient::cycleBasemapStyle()
-{
-    std::string next = "dark";
-    if (mBasemapStyle == "dark")
-    {
-        next = "satellite";
-    }
-    else if (mBasemapStyle == "satellite")
-    {
-        next = "voyager";
-    }
-    setBasemapStyle(next);
-    return mBasemapStyle;
 }
 
 std::pair<int, int> OpenAipClient::latLonToTile(float latitude, float longitude, int zoom)
@@ -335,39 +237,16 @@ std::string OpenAipClient::fetchTile(int z, int x, int y, const std::string &lay
 
 std::string OpenAipClient::fetchBasemap(int z, int x, int y)
 {
-    const std::string layer = mBasemapLayer;
-    const std::string style = mBasemapStyle;
-    const std::string path = cachePath(z, x, y, layer);
+    const std::string path = cachePath(z, x, y, mBasemapLayer);
     if (fileExists(path))
     {
         return path;
     }
 
     std::ostringstream url;
-    if (style == "satellite")
-    {
-        url << "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/"
-            << z << '/' << y << '/' << x;
-    }
-    else
-    {
-        const char sub = static_cast<char>('a' + ((x + y) & 3));
-        url << "https://" << sub << ".basemaps.cartocdn.com/";
-        if (style == "dark")
-        {
-            url << "dark_all/";
-        }
-        else
-        {
-            url << "rastertiles/voyager/";
-        }
-        url << z << '/' << x << '/' << y << ".png";
-        if (!mCartoKey.empty())
-        {
-            url << "?key=" << mCartoKey;
-        }
-    }
-    std::cout << "Basemap fetch " << style << " " << z << "/" << x << "/" << y << std::endl;
+    url << "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/"
+        << z << '/' << y << '/' << x;
+    std::cout << "Basemap fetch satellite " << z << "/" << x << "/" << y << std::endl;
     if (!downloadToFile(url.str(), path, false))
     {
         return {};
@@ -380,13 +259,12 @@ void OpenAipClient::fetchAround(float latitude, float longitude, int zoom, int r
     const auto tile = latLonToTile(latitude, longitude, zoom);
     {
         std::lock_guard<std::mutex> lock(mMutex);
-        if (mLastZ == zoom && mLastX == tile.first && mLastY == tile.second)
+        auto it = mLastTile.find(zoom);
+        if (it != mLastTile.end() && it->second == tile)
         {
             return;
         }
-        mLastZ = zoom;
-        mLastX = tile.first;
-        mLastY = tile.second;
+        mLastTile[zoom] = tile;
     }
 
     const bool haveKey = !mApiKey.empty();

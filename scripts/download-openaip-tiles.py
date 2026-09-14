@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prefetch OpenAIP overlay plus a street/dark/satellite basemap into resources/openaip/cache."""
+"""Prefetch OpenAIP overlay plus Esri World Imagery into resources/openaip/cache."""
 
 from __future__ import annotations
 
@@ -13,11 +13,7 @@ from pathlib import Path
 
 OPENAIP_BASE_URL = "https://api.tiles.openaip.net/api/data"
 USER_AGENT = "efis-openaip/1.0"
-STYLES = {
-    "voyager": "osm",
-    "dark": "dark",
-    "satellite": "satellite",
-}
+BASEMAP_LAYER = "satellite"
 
 
 def log(message: str) -> None:
@@ -32,12 +28,6 @@ def load_key(repo_root: Path, env_name: str, filename: str) -> str:
     if key_path.is_file():
         return key_path.read_text(encoding="utf-8").strip().splitlines()[0].strip()
     return ""
-
-
-def save_style(repo_root: Path, style: str) -> None:
-    path = repo_root / "resources" / "openaip" / "basemap.style"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(style + "\n", encoding="utf-8")
 
 
 def lat_lon_to_tile(lat: float, lon: float, zoom: int) -> tuple[int, int]:
@@ -94,24 +84,16 @@ def download_openaip(key: str, dest: Path, layer: str, z: int, x: int, y: int) -
     return True
 
 
-def download_basemap(dest: Path, style: str, carto_key: str, z: int, x: int, y: int) -> bool:
-    layer = STYLES[style]
-    if tile_exists(dest, layer, z, x, y):
-        log(f"skip {layer}/{z}/{x}/{y}.png")
+def download_basemap(dest: Path, z: int, x: int, y: int) -> bool:
+    if tile_exists(dest, BASEMAP_LAYER, z, x, y):
+        log(f"skip {BASEMAP_LAYER}/{z}/{x}/{y}.png")
         return True
-    if style == "satellite":
-        url = f"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-        log(f"fetch satellite/{z}/{x}/{y}.png")
-        data = fetch_url(url, {"User-Agent": USER_AGENT})
-    else:
-        sub = chr(ord("a") + ((x + y) & 3))
-        carto_style = "dark_all" if style == "dark" else "rastertiles/voyager"
-        url = f"https://{sub}.basemaps.cartocdn.com/{carto_style}/{z}/{x}/{y}.png?key={carto_key}"
-        log(f"fetch {style}/{z}/{x}/{y}.png")
-        data = fetch_url(url, {"User-Agent": USER_AGENT})
+    url = f"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+    log(f"fetch satellite/{z}/{x}/{y}.png")
+    data = fetch_url(url, {"User-Agent": USER_AGENT})
     if not data:
         return False
-    save_tile(dest, layer, z, x, y, data)
+    save_tile(dest, BASEMAP_LAYER, z, x, y, data)
     return True
 
 
@@ -120,39 +102,24 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--lat", type=float, required=True)
     parser.add_argument("--lon", type=float, required=True)
-    parser.add_argument("--zoom", type=int, default=None, help="tile zoom (default 13, or 16 for satellite)")
+    parser.add_argument("--zoom", type=int, default=16, help="tile zoom (default 16 near the aircraft; use 13 for the wide layer)")
     parser.add_argument("--radius", type=int, default=7, help="tiles around the center tile")
     parser.add_argument("--layer", default="openaip", help="OpenAIP overlay layer name")
-    parser.add_argument(
-        "--style",
-        choices=sorted(STYLES),
-        default="voyager",
-        help="basemap: voyager (Carto streets), dark (Carto Dark Matter), satellite (Esri imagery)",
-    )
     parser.add_argument("--dest", default=str(repo_root / "resources" / "openaip" / "cache"))
-    parser.add_argument("--no-basemap", action="store_true", help="skip street/dark/satellite tiles")
+    parser.add_argument("--no-basemap", action="store_true", help="skip Esri satellite tiles")
     parser.add_argument("--no-openaip", action="store_true", help="skip OpenAIP overlay tiles")
     args = parser.parse_args()
-    zoom = args.zoom if args.zoom is not None else (16 if args.style == "satellite" else 13)
 
     dest = Path(args.dest)
-    cx, cy = lat_lon_to_tile(args.lat, args.lon, zoom)
-    log(f"center tile {zoom}/{cx}/{cy} style={args.style}")
+    cx, cy = lat_lon_to_tile(args.lat, args.lon, args.zoom)
+    log(f"center tile {args.zoom}/{cx}/{cy} satellite")
 
     key = ""
-    carto_key = ""
     if not args.no_openaip:
         key = load_key(repo_root, "OPENAIP_API_KEY", "api.key")
         if not key:
             print("missing OpenAIP API key: set OPENAIP_API_KEY or resources/openaip/api.key", file=sys.stderr)
             return 1
-    if not args.no_basemap and args.style != "satellite":
-        carto_key = load_key(repo_root, "CARTO_API_KEY", "carto.key")
-        if not carto_key:
-            print("missing Carto API key: set CARTO_API_KEY or resources/openaip/carto.key", file=sys.stderr)
-            return 1
-    if not args.no_basemap:
-        save_style(repo_root, args.style)
 
     ok = 0
     fail = 0
@@ -161,12 +128,12 @@ def main() -> int:
             tx = cx + dx
             ty = cy + dy
             if not args.no_basemap:
-                if download_basemap(dest, args.style, carto_key, zoom, tx, ty):
+                if download_basemap(dest, args.zoom, tx, ty):
                     ok += 1
                 else:
                     fail += 1
             if not args.no_openaip:
-                if download_openaip(key, dest, args.layer, zoom, tx, ty):
+                if download_openaip(key, dest, args.layer, args.zoom, tx, ty):
                     ok += 1
                 else:
                     fail += 1

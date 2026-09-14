@@ -3,7 +3,6 @@
 
 #include "ahrs_widget.h"
 #include "data_manager_sim.h"
-#include "openaip_client.h"
 #include "screen.h"
 #include "terrain_widget.h"
 #include <chrono>
@@ -25,7 +24,7 @@ public:
     {
         screen.registerController(this);
         applyView();
-        std::cout << "Keys: Tab/1/2/3/4 views, F5 basemap, Esc quit\n";
+        std::cout << "Keys: Tab/1/2/3/4 views, Esc quit\n";
         if (mSim)
         {
             std::cout << "Sim: arrows pitch/roll, Q/E heading, W/S speed, +/- alt, R reset\n";
@@ -83,10 +82,6 @@ public:
         case SDLK_4:
         case SDLK_F4:
             setView(ViewMode::OpenAip);
-            return true;
-        case SDLK_5:
-        case SDLK_F5:
-            OpenAipClient::instance().cycleBasemapStyle();
             return true;
         case SDLK_r:
             if (mSim)

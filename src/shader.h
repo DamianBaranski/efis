@@ -59,7 +59,9 @@ public:
     void enableOpenAipOverlay(bool enable) { mOpenAipOverlay = enable; }
 
     static void setOpenAipGround(bool active, GLuint texture, float originX, float originY,
-                                 float tilesX, float tilesY, float n);
+                                 float tilesX, float tilesY, float n, GLuint farTexture = 0,
+                                 float farOriginX = 0.0f, float farOriginY = 0.0f, float farTilesX = 1.0f,
+                                 float farTilesY = 1.0f, float farN = 1.0f);
 
 private:
     /// @brief Loads a texture from file.
@@ -115,6 +117,10 @@ private:
     GLint mOpenAipSamplerLoc = -1;
     GLint mOpenAipAtlasLoc = -1;
     GLint mOpenAipNLoc = -1;
+    GLint mUseOpenAipFarLoc = -1;
+    GLint mOpenAipFarSamplerLoc = -1;
+    GLint mOpenAipFarAtlasLoc = -1;
+    GLint mOpenAipFarNLoc = -1;
     bool mOpenAipOverlay = false;
     static std::unordered_map<std::string, TextureData> mTextureCache; ///< Cache for loaded textures.
 
@@ -127,6 +133,12 @@ private:
         float tilesX = 1.0f;
         float tilesY = 1.0f;
         float n = 1.0f;
+        GLuint farTexture = 0;
+        float farOriginX = 0.0f;
+        float farOriginY = 0.0f;
+        float farTilesX = 1.0f;
+        float farTilesY = 1.0f;
+        float farN = 1.0f;
     };
     static OpenAipGroundState sOpenAip;
 };

@@ -3,19 +3,23 @@
 
 #include <GLES3/gl3.h>
 #include <string>
+#include <vector>
+
+struct SDL_Surface;
 
 /// Stitches cached OpenAIP PNG tiles into one texture for draping on terrain.
 class OpenAipAtlas
 {
 public:
-    static constexpr int kZoom = 13;
-    static constexpr int kSatelliteZoom = 16;
-    static constexpr int kRadius = 7;
+    /// High-res clip around the aircraft (~1.5 m/pixel, a few km).
+    static constexpr int kDetailZoom = 16;
+    static constexpr int kDetailRadius = 7;
+    /// Wide clip matching the FlightGear ±1° scenery window.
+    static constexpr int kWideZoom = 13;
+    static constexpr int kWideRadius = 15;
     static constexpr int kTilePx = 256;
 
-    static int zoomForStyle(const std::string &style);
-
-    OpenAipAtlas();
+    OpenAipAtlas(int zoom, int radius);
     ~OpenAipAtlas();
 
     OpenAipAtlas(const OpenAipAtlas &) = delete;
@@ -29,21 +33,26 @@ public:
     float tilesX() const { return static_cast<float>(mTiles); }
     float tilesY() const { return static_cast<float>(mTiles); }
     float n() const { return mN; }
+    int zoom() const { return mZoom; }
+    int radius() const { return mRadius; }
 
 private:
     void ensureTexture();
-    void rebuild();
-    int countCached() const;
+    void ensureSurface();
+    void shiftOrigin(int originX, int originY);
+    bool blitSlot(int dx, int dy);
+    void upload();
 
     GLuint mTexture = 0;
+    SDL_Surface *mSurface = nullptr;
     int mOriginX = -100000;
     int mOriginY = -100000;
-    int mTiles = 2 * kRadius + 1;
-    float mN = 8192.0f;
-    int mZoom = kZoom;
-    int mCachedCount = -1;
-    int mFramesUntilRetry = 0;
+    int mTiles = 1;
+    float mN = 1.0f;
+    int mZoom = 0;
+    int mRadius = 0;
     std::string mBasemapLayer;
+    std::vector<unsigned char> mSlot;
 };
 
 #endif

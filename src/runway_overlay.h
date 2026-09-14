@@ -15,6 +15,7 @@ public:
         std::string name;
         std::string ident;
         std::string runway;
+        std::string runwayRecip;
         double latitude;
         double longitude;
         float headingDeg;
@@ -31,8 +32,13 @@ public:
 private:
     void loadCatalog();
     void rebuild(double latitude, double longitude);
-    void addRectangle(Triangles &out, double lat, double lon, float headingDeg, float lengthM, float widthM,
-                      float elevationM, float heightBiasM);
+    void addRectangle(Triangles &out, double lat, double lon, float headingDeg, float alongM, float lengthM,
+                      float widthM, float elevationM, float heightBiasM);
+    void addLabelQuad(Triangles &out, double lat, double lon, float headingDeg, float alongM, float lengthM,
+                      float widthM, float elevationM, float heightBiasM);
+    void addDashes(Triangles &out, const Strip &strip);
+    void addNumbers(std::vector<Triangles> &mesh, const Strip &strip);
+    bool ensureLabelTexture(const std::string &label);
 
     Shader mShader;
     glm::dvec3 mCenter{0.0};

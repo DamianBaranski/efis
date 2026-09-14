@@ -6,9 +6,25 @@ out vec4 fragColour;
 
 uniform sampler2D texSampler;
 uniform sampler2D openAipSampler;
+uniform sampler2D openAipFarSampler;
 uniform int useOpenAip;
+uniform int useOpenAipFar;
 uniform vec4 openAipAtlas;
+uniform vec4 openAipFarAtlas;
 uniform float openAipN;
+uniform float openAipFarN;
+
+vec4 sampleAtlas(sampler2D tex, vec4 atlas, float n)
+{
+    vec2 uv;
+    uv.x = (GeoCoord.x * n - atlas.x) / atlas.z;
+    uv.y = (GeoCoord.y * n - atlas.y) / atlas.w;
+    if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0)
+    {
+        return texture(tex, uv);
+    }
+    return vec4(0.0);
+}
 
 void main() {
     vec4 ground = texture(texSampler, TexCoord);
@@ -18,13 +34,15 @@ void main() {
         return;
     }
 
-    vec2 uv;
-    uv.x = (GeoCoord.x * openAipN - openAipAtlas.x) / openAipAtlas.z;
-    uv.y = (GeoCoord.y * openAipN - openAipAtlas.y) / openAipAtlas.w;
     vec4 aip = vec4(0.0);
-    if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0)
+    if (useOpenAipFar == 1)
     {
-        aip = texture(openAipSampler, uv);
+        aip = sampleAtlas(openAipFarSampler, openAipFarAtlas, openAipFarN);
+    }
+    vec4 detail = sampleAtlas(openAipSampler, openAipAtlas, openAipN);
+    if (detail.a > 0.5)
+    {
+        aip = vec4(detail.rgb / detail.a, 1.0);
     }
 
     fragColour = vec4(mix(ground.rgb, aip.rgb, aip.a), 1.0);

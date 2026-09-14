@@ -43,7 +43,8 @@ private:
     LocationData mCurrentTile;                    ///< Current location data.
     const double kTileDistanceLimit = 500 * 1000; ///< Distance limit for tiles (500 km).
     const float cTileSize = 0.1f;                 ///< Size of each tile in degrees.
-    const float cTileAddingRangeDeg = 1.0f;
+    /// Full width of loaded scenery. 2° = ±1°, matching download-fg-terrain.sh --radius-deg 1.
+    const float cTileAddingRangeDeg = 2.0f;
 };
 
 #endif // BUCKET_CONTAINER_H
