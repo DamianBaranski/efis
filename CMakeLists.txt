@@ -13,67 +13,82 @@ set(JSON_BuildTests OFF CACHE INTERNAL "")
 set(JSON_Install OFF CACHE INTERNAL "")
 add_subdirectory(nlohmann_json)
 
+set(EFIS_INCLUDE_DIRS
+    src/app
+    src/flight
+    src/ahrs
+    src/world
+    src/terrain
+    src/map
+    src/overlays
+    src/voice
+    src/ui
+    src/platform
+)
+
 set(SRC
-    src/data_manager_sim.cpp
-    src/main.cpp
-    src/screen.cpp
-    src/shader.cpp
-    src/render2d.cpp
-    src/btg_file.cpp
-    src/ahrs_widget.cpp
-    src/bucket.cpp
-    src/bucket_container.cpp
-    src/terrain_download.cpp
-    src/europe_borders.cpp
-    src/europe_map.cpp
-    src/geo_coord_utils.cpp
-    src/openaip_client.cpp
-    src/openaip_atlas.cpp
-    src/sat_clipmap.cpp
-    src/openaip_widget.cpp
-    src/runway_overlay.cpp
-    src/airspace_overlay.cpp
-    src/vrp_overlay.cpp
-    src/voice_announcer.cpp
-    src/nav_voice.cpp
-    src/airport_scenery.cpp
-    src/asset_path.cpp
+    src/app/main.cpp
+    src/app/screen.cpp
+    src/flight/data_manager_sim.cpp
+    src/ahrs/ahrs_widget.cpp
+    src/terrain/bucket.cpp
+    src/terrain/bucket_container.cpp
+    src/terrain/btg_file.cpp
+    src/terrain/terrain_download.cpp
+    src/terrain/airport_scenery.cpp
+    src/map/openaip_client.cpp
+    src/map/openaip_atlas.cpp
+    src/map/sat_clipmap.cpp
+    src/map/openaip_widget.cpp
+    src/overlays/runway_overlay.cpp
+    src/overlays/airspace_overlay.cpp
+    src/overlays/vrp_overlay.cpp
+    src/overlays/obstacle_overlay.cpp
+    src/voice/voice_announcer.cpp
+    src/voice/nav_voice.cpp
+    src/ui/shader.cpp
+    src/ui/render2d.cpp
+    src/ui/europe_borders.cpp
+    src/ui/europe_map.cpp
+    src/platform/geo_coord_utils.cpp
+    src/platform/asset_path.cpp
 )
 
 set(INC
-    src/data_manager_sim.h
-    src/app_controller.h
-    src/data_type.h
-    src/idata_manager.h
-    src/iobserver.h
-    src/iwidget.h
-    src/screen.h
-    src/subject.h
-    src/shader.h
-    src/terrain_widget.h
-    src/render2d.h
-    src/popup.h
-    src/tab_window.h
-    src/btg_file.h
-    src/ahrs_widget.h
-    src/bucket.h
-    src/bucket_container.h
-    src/terrain_download.h
-    src/europe_borders.h
-    src/europe_map.h
-    src/geo_coord_utils.h
-    src/openaip_client.h
-    src/openaip_atlas.h
-    src/sat_clipmap.h
-    src/openaip_widget.h
-    src/runway_overlay.h
-    src/airspace_overlay.h
-    src/vrp_overlay.h
-    src/voice_announcer.h
-    src/nav_voice.h
-    src/airport_scenery.h
-    src/asset_path.h
-    src/sdl_compat.h
+    src/app/app_controller.h
+    src/app/iwidget.h
+    src/app/screen.h
+    src/app/sdl_compat.h
+    src/flight/data_manager_sim.h
+    src/flight/data_type.h
+    src/flight/idata_manager.h
+    src/flight/iobserver.h
+    src/flight/subject.h
+    src/ahrs/ahrs_widget.h
+    src/world/terrain_widget.h
+    src/terrain/bucket.h
+    src/terrain/bucket_container.h
+    src/terrain/btg_file.h
+    src/terrain/terrain_download.h
+    src/terrain/airport_scenery.h
+    src/map/openaip_client.h
+    src/map/openaip_atlas.h
+    src/map/sat_clipmap.h
+    src/map/openaip_widget.h
+    src/overlays/runway_overlay.h
+    src/overlays/airspace_overlay.h
+    src/overlays/vrp_overlay.h
+    src/overlays/obstacle_overlay.h
+    src/voice/voice_announcer.h
+    src/voice/nav_voice.h
+    src/ui/shader.h
+    src/ui/render2d.h
+    src/ui/popup.h
+    src/ui/tab_window.h
+    src/ui/europe_borders.h
+    src/ui/europe_map.h
+    src/platform/geo_coord_utils.h
+    src/platform/asset_path.h
 )
 
 if(ANDROID)
@@ -109,6 +124,7 @@ if(ANDROID)
     add_subdirectory("${EFIS_THIRD_PARTY}/glm" glm)
 
     add_library(main SHARED ${SRC} ${INC})
+    target_include_directories(main PRIVATE ${EFIS_INCLUDE_DIRS})
     target_link_libraries(main
         SDL2::SDL2
         SDL2_image::SDL2_image
@@ -132,14 +148,15 @@ else()
     find_package(wgrib2 QUIET)
 
     add_compile_definitions(EFIS_HAS_CURL=1)
-    list(APPEND SRC src/data_manager_stratux.cpp)
-    list(APPEND INC src/data_manager_stratux.h)
+    list(APPEND SRC src/flight/data_manager_stratux.cpp)
+    list(APPEND INC src/flight/data_manager_stratux.h)
 
     include_directories(${SDL2_INCLUDE_DIRS} ${SDL2_IMAGE_INCLUDE_DIRS})
     include_directories(${CURL_INCLUDE_DIRS})
     include_directories(${OPENGL_INCLUDE_DIRS})
 
     add_executable(efis ${SRC} ${INC})
+    target_include_directories(efis PRIVATE ${EFIS_INCLUDE_DIRS})
     if(TARGET SDL2::SDL2)
         get_target_property(_sdl2_incs SDL2::SDL2 INTERFACE_INCLUDE_DIRECTORIES)
         foreach(_inc IN LISTS _sdl2_incs)

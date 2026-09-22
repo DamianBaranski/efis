@@ -1,6 +1,6 @@
 #!/bin/bash
-
-# Check if an SVG file argument has been provided
+## Export each Inkscape layer of an SVG to its own PNG.
+## \param SVG_FILE Source drawing. One argument is required.
 if [ "$#" -ne 1 ]; then
     echo "Usage: $0 <SVG_FILE>"
     exit 1

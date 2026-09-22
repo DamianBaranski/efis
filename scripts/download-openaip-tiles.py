@@ -17,10 +17,12 @@ BASEMAP_LAYER = "satellite"
 
 
 def log(message: str) -> None:
+    """Print a progress line to stdout."""
     print(message, flush=True)
 
 
 def load_key(repo_root: Path, env_name: str, filename: str) -> str:
+    """API key from the environment or a file. Empty when neither is set."""
     env = os.environ.get(env_name, "").strip()
     if env:
         return env
@@ -31,6 +33,7 @@ def load_key(repo_root: Path, env_name: str, filename: str) -> str:
 
 
 def lat_lon_to_tile(lat: float, lon: float, zoom: int) -> tuple[int, int]:
+    """XYZ tile that contains the point at zoom."""
     n = 2 ** zoom
     x = int((lon + 180.0) / 360.0 * n)
     lat_rad = math.radians(lat)
@@ -40,6 +43,7 @@ def lat_lon_to_tile(lat: float, lon: float, zoom: int) -> tuple[int, int]:
 
 
 def fetch_url(url: str, headers: dict[str, str]) -> bytes | None:
+    """Response body, or None on HTTP failure."""
     request = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
@@ -55,17 +59,20 @@ def fetch_url(url: str, headers: dict[str, str]) -> bytes | None:
 
 
 def save_tile(dest: Path, layer: str, z: int, x: int, y: int, data: bytes) -> None:
+    """Write one PNG into the cache tree."""
     target = dest / layer / str(z) / str(x) / f"{y}.png"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(data)
 
 
 def tile_exists(dest: Path, layer: str, z: int, x: int, y: int) -> bool:
+    """True when that PNG is already in the cache."""
     target = dest / layer / str(z) / str(x) / f"{y}.png"
     return target.is_file() and target.stat().st_size > 0
 
 
 def download_openaip(key: str, dest: Path, layer: str, z: int, x: int, y: int) -> bool:
+    """Fetch one OpenAIP overlay tile. True when the file is stored."""
     if tile_exists(dest, layer, z, x, y):
         log(f"skip {layer}/{z}/{x}/{y}.png")
         return True
@@ -85,6 +92,7 @@ def download_openaip(key: str, dest: Path, layer: str, z: int, x: int, y: int) -
 
 
 def download_basemap(dest: Path, z: int, x: int, y: int) -> bool:
+    """Fetch one Esri satellite tile. True when the file is stored."""
     if tile_exists(dest, BASEMAP_LAYER, z, x, y):
         log(f"skip {BASEMAP_LAYER}/{z}/{x}/{y}.png")
         return True
@@ -98,6 +106,7 @@ def download_basemap(dest: Path, z: int, x: int, y: int) -> bool:
 
 
 def main() -> int:
+    """Prefetch the disk of tiles around the requested point. Returns 0."""
     repo_root = Path(__file__).resolve().parent.parent
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--lat", type=float, required=True)

@@ -1,3 +1,7 @@
+/**
+ * \file EfisActivity.java
+ * Android host. Speaks with the UK voice and downloads tiles for native code.
+ */
 package com.efis.app;
 
 import android.speech.tts.TextToSpeech;
@@ -16,6 +20,10 @@ import java.util.Collections;
 import java.util.Locale;
 import java.util.Set;
 
+/**
+ * Tablet host. Owns UK text-to-speech and HTTP downloads for native code.
+ * Native code calls the public static methods through JNI.
+ */
 public class EfisActivity extends SDLActivity {
     private static TextToSpeech sTts;
     private static boolean sTtsReady;
@@ -24,6 +32,9 @@ public class EfisActivity extends SDLActivity {
     private static volatile String sVoiceCatalog = "";
     private static String sSelectedVoice = "";
 
+    /**
+     * Stops and releases the speech engine before the activity goes away.
+     */
     @Override
     protected void onDestroy() {
         if (sTts != null) {
@@ -130,6 +141,10 @@ public class EfisActivity extends SDLActivity {
         }
     }
 
+    /**
+     * Names of the installed UK voices, one per line.
+     * Empty until the engine has reported its voice list.
+     */
     public static String voiceCatalog() {
         final SDLActivity activity = mSingleton;
         if (activity != null) {
@@ -138,6 +153,12 @@ public class EfisActivity extends SDLActivity {
         return sVoiceCatalog == null ? "" : sVoiceCatalog;
     }
 
+    /**
+     * Selects a voice by the label voiceCatalog() printed.
+     * Applied when the engine is ready.
+     *
+     * @param name Label from voiceCatalog(). Empty keeps the current voice.
+     */
     public static void selectVoice(final String name) {
         sSelectedVoice = name == null ? "" : name;
         final SDLActivity activity = mSingleton;
@@ -150,6 +171,13 @@ public class EfisActivity extends SDLActivity {
         });
     }
 
+    /**
+     * Speaks one phrase on the UK voice.
+     * A call before the engine is ready is kept and spoken when the engine starts.
+     *
+     * @param text Spoken text. Empty is ignored.
+     * @param flush True replaces the current phrase. False waits its turn.
+     */
     public static void speak(final String text, final boolean flush) {
         final SDLActivity activity = mSingleton;
         if (activity == null || text == null || text.isEmpty()) {
@@ -184,6 +212,14 @@ public class EfisActivity extends SDLActivity {
         };
     }
 
+    /**
+     * Downloads url into destPath.
+     *
+     * @param url Source URL.
+     * @param destPath Absolute file path on the device. Parent directories must exist.
+     * @param apiKey Sent as the x-openaip-api-key header. Empty skips the header.
+     * @return True when the file was written. False on any HTTP or IO failure.
+     */
     public static boolean downloadUrl(String url, String destPath, String apiKey) {
         HttpURLConnection conn = null;
         InputStream in = null;

@@ -17,10 +17,12 @@ USER_AGENT = "efis-terrain-script/1.0"
 
 
 def log(message: str) -> None:
+    """Print a progress line to stdout."""
     print(message, flush=True)
 
 
 def log_err(message: str) -> None:
+    """Print a progress line to stderr."""
     print(message, file=sys.stderr, flush=True)
 
 
@@ -39,10 +41,12 @@ DEFAULT_SOURCES = [
 
 
 def toward_zero_int(value: float) -> int:
+    """Truncate toward zero. Tile indexes use this, not floor."""
     return int(value)
 
 
 def origin_10deg(value: float) -> int:
+    """Ten-degree directory origin that contains value, in degrees."""
     origin = toward_zero_int(value / 10)
     if value < 0 and origin * 10 != value:
         origin -= 1
@@ -64,6 +68,7 @@ def tile_names(lat: float, lon: float) -> tuple[str, str]:
 
 
 def cells_in_radius(lat: float, lon: float, radius_deg: float) -> list[tuple[str, str]]:
+    """Tile names whose centers fall inside radius_deg of the point."""
     lat_min = lat - radius_deg
     lat_max = lat + radius_deg
     lon_min = lon - radius_deg
@@ -84,6 +89,7 @@ def cells_in_radius(lat: float, lon: float, radius_deg: float) -> list[tuple[str
 
 
 def parse_dirindex(text: str) -> tuple[list[str], list[tuple[str, str, int]]]:
+    """File names and sizes listed in a FlightGear dirindex."""
     directories: list[str] = []
     files: list[tuple[str, str, int]] = []
     for raw in text.splitlines():
@@ -109,6 +115,7 @@ def parse_dirindex(text: str) -> tuple[list[str], list[tuple[str, str, int]]]:
 
 
 def sha1_file(path: Path) -> str:
+    """SHA-1 hex digest of path."""
     digest = hashlib.sha1()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
@@ -117,12 +124,14 @@ def sha1_file(path: Path) -> str:
 
 
 def fetch_bytes(url: str, timeout: int = 60) -> bytes:
+    """Response body, or an exception on HTTP failure."""
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return response.read()
 
 
 def download_to_file(url: str, dest: Path, timeout: int = 180) -> None:
+    """Write url to dest. Replaces a partial file."""
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(request, timeout=timeout) as response, dest.open("wb") as handle:
         while True:
@@ -133,6 +142,7 @@ def download_to_file(url: str, dest: Path, timeout: int = 180) -> None:
 
 
 def fetch_dirindex(mirrors: Iterable[str], rel_path: str) -> tuple[str, str]:
+    """dirindex.xml body from the first mirror that answers."""
     last_error: Exception | None = None
     suffix = "" if not rel_path else rel_path.strip("/") + "/"
     for base in mirrors:
@@ -147,6 +157,7 @@ def fetch_dirindex(mirrors: Iterable[str], rel_path: str) -> tuple[str, str]:
 
 
 def is_scenery_btg(name: str) -> bool:
+    """True for a terrain .btg.gz name, not an airport ICAO mesh."""
     return name.endswith(".btg.gz")
 
 
@@ -157,6 +168,7 @@ def download_cell(
     mirrors: list[str],
     dry_run: bool,
 ) -> tuple[int, int]:
+    """Download one tile into resources/terrain. Skips a file that is already present."""
     rel = f"{block}/{cell}"
     text, mirror = fetch_dirindex(mirrors, rel)
     _, files = parse_dirindex(text)
@@ -198,6 +210,7 @@ def download_cell(
 
 
 def cmd_download(args: argparse.Namespace) -> int:
+    """Download every tile named by the command line. Returns 0 when all are present."""
     dest = Path(args.dest).resolve()
     mirrors = [args.base_url] if args.base_url else list(DEFAULT_MIRRORS)
     cells = cells_in_radius(args.lat, args.lon, args.radius_deg)
@@ -225,6 +238,7 @@ def cmd_download(args: argparse.Namespace) -> int:
 
 
 def find_existing_terrain(explicit: str | None) -> Path | None:
+    """First FlightGear Terrain directory that exists, or None."""
     if explicit:
         path = Path(explicit).expanduser().resolve()
         return path if path.is_dir() else None
@@ -235,6 +249,7 @@ def find_existing_terrain(explicit: str | None) -> Path | None:
 
 
 def cmd_link(args: argparse.Namespace) -> int:
+    """Symlink resources/terrain at an existing Terrain tree. Returns 0 on success."""
     dest = Path(args.dest).resolve()
     source = find_existing_terrain(args.source)
     if source is None:
@@ -258,6 +273,7 @@ def cmd_link(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Command line for download and link."""
     repo_root = Path(__file__).resolve().parent.parent
     default_dest = repo_root / "resources" / "terrain"
 
@@ -282,6 +298,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run download or link. Returns the command status."""
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(line_buffering=True)
         sys.stderr.reconfigure(line_buffering=True)

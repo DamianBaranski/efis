@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Install scenery into the app-private files dir (internal storage).
-# Honor/scoped storage blocks adb-pushed trees under Android/data.
+## Copy scenery into the app-private files directory.
+## Scoped storage blocks a plain adb push under Android/data.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

@@ -70,10 +70,12 @@ CSV_FIELDS = [
 
 
 def log(message: str) -> None:
+    """Print a progress line to stdout."""
     print(message, flush=True)
 
 
 def fetch_json(url: str) -> list | dict:
+    """JSON body from the OpenAIP airports endpoint."""
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=60) as response:
@@ -85,6 +87,7 @@ def fetch_json(url: str) -> list | dict:
 
 
 def measure(obj: dict | None, key: str) -> str:
+    """Numeric measure as text, or empty when the object has no value."""
     if not obj:
         return ""
     value = obj.get(key) or {}
@@ -94,6 +97,7 @@ def measure(obj: dict | None, key: str) -> str:
 
 
 def airport_rows(airport: dict) -> list[dict]:
+    """One CSV row per runway of this airport."""
     coords = (airport.get("geometry") or {}).get("coordinates") or [None, None]
     lon, lat = coords[0], coords[1]
     elevation = airport.get("elevation") or {}
@@ -127,6 +131,7 @@ def airport_rows(airport: dict) -> list[dict]:
 
 
 def parse_countries(value: str) -> list[str]:
+    """ISO country codes from a comma-separated list."""
     codes = []
     for part in value.replace(";", ",").split(","):
         code = part.strip().upper()
@@ -136,6 +141,7 @@ def parse_countries(value: str) -> list[str]:
 
 
 def main() -> int:
+    """Write resources/airports/airports.csv. Returns 0."""
     repo_root = Path(__file__).resolve().parent.parent
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(

@@ -17,6 +17,7 @@ MIN_AREA = 1e-4
 
 
 def load() -> dict:
+    """Natural Earth 110m countries as GeoJSON."""
     if not CACHE.exists() or CACHE.stat().st_size < 1000:
         urllib.request.urlretrieve(SRC, CACHE)
     with CACHE.open() as handle:
@@ -24,6 +25,7 @@ def load() -> dict:
 
 
 def iso_of(props: dict) -> str:
+    """ISO code from the feature properties."""
     a3 = str(props.get("ADM0_A3") or "")
     a2 = str(props.get("ISO_A2") or "")
     if a2 and a2 != "-99" and len(a2) == 2:
@@ -32,6 +34,7 @@ def iso_of(props: dict) -> str:
 
 
 def want(props: dict) -> bool:
+    """True for a European country the chart keeps."""
     iso = iso_of(props)
     if iso in {"TR", "CY"}:
         return True
@@ -39,6 +42,7 @@ def want(props: dict) -> bool:
 
 
 def ring_coords(coords) -> list[tuple[float, float]]:
+    """Longitude and latitude pairs of one ring."""
     ring = [(float(x), float(y)) for x, y in coords]
     if len(ring) >= 2 and ring[0] == ring[-1]:
         ring = ring[:-1]
@@ -46,6 +50,7 @@ def ring_coords(coords) -> list[tuple[float, float]]:
 
 
 def iter_polys(geom):
+    """Polygon parts of a geometry, including MultiPolygon members."""
     if geom is None or geom.is_empty:
         return
     kind = geom.geom_type
@@ -61,6 +66,7 @@ def iter_polys(geom):
 
 
 def clip_feature(geom: dict):
+    """Rings that remain after the chart longitude window."""
     from shapely.geometry import box, shape
     from shapely.validation import make_valid
 
@@ -70,6 +76,7 @@ def clip_feature(geom: dict):
 
 
 def ensure_ccw(ring: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """Ring wound counter-clockwise."""
     acc = 0.0
     n = len(ring)
     for i in range(n):
@@ -80,6 +87,7 @@ def ensure_ccw(ring: list[tuple[float, float]]) -> list[tuple[float, float]]:
 
 
 def triangulate(ring: list[tuple[float, float]]) -> list[tuple[int, int, int]]:
+    """Triangle indexes for one ring. No holes."""
     import numpy as np
     import mapbox_earcut as earcut
 
@@ -99,6 +107,7 @@ def triangulate(ring: list[tuple[float, float]]) -> list[tuple[int, int, int]]:
 
 
 def append_mesh(verts: list[tuple[float, float]], tris: list[int], ring: list[tuple[float, float]]) -> int:
+    """Append one ring to the shared vertex and index lists."""
     local = triangulate(ring)
     if not local:
         return 0
@@ -110,6 +119,7 @@ def append_mesh(verts: list[tuple[float, float]], tris: list[int], ring: list[tu
 
 
 def emit_cpp(countries: list[dict], land_rings: list[list[tuple[float, float]]], dest_h: Path, dest_cc: Path) -> None:
+    """Write europe_borders.h and europe_borders.cpp."""
     verts: list[tuple[float, float]] = []
     rings_meta = []
     countries_meta = []
@@ -250,6 +260,7 @@ extern const float kEuropeLat1;
 
 
 def main() -> int:
+    """Regenerate the border tables. Returns 0."""
     from shapely.ops import unary_union
     from shapely.validation import make_valid
 

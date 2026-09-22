@@ -22,6 +22,7 @@ INCLUDE_DIRS = [
     "resources/airports",
     "resources/airspaces",
     "resources/vrp",
+    "resources/obstacles",
 ]
 INCLUDE_FILES = [
     "resources/textures/unknown.png",
@@ -29,6 +30,7 @@ INCLUDE_FILES = [
 
 
 def copy_tree(src: Path, dest: Path, manifest: list[str], prefix: str) -> None:
+    """Copy files under src into dest and record each relative path."""
     if not src.exists():
         return
     dest.mkdir(parents=True, exist_ok=True)
@@ -43,6 +45,7 @@ def copy_tree(src: Path, dest: Path, manifest: list[str], prefix: str) -> None:
 
 
 def main() -> int:
+    """Replace the APK asset tree with the lightweight resources. Returns 0."""
     repo = Path(__file__).resolve().parent.parent
     dest_root = repo / "android" / "app" / "src" / "main" / "assets"
     if dest_root.exists():

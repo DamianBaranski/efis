@@ -13,6 +13,7 @@ from typing import Any
 
 
 class Situation:
+    """Keyboard-free situation document served at /getSituation."""
     def __init__(self, lat: float, lon: float, alt: float) -> None:
         self.lat = lat
         self.lon = lon
@@ -50,6 +51,7 @@ class Situation:
 
 
 def main() -> int:
+    """Serve the stand-in on port 5000. Returns 0."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=5000)

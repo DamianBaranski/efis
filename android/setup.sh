@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Download Android SDK/NDK, SDL, and generate the Gradle wrapper.
+## Download Android SDK/NDK, SDL, and generate the Gradle wrapper.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -19,6 +19,9 @@ CMDLINE_ZIP="commandlinetools-linux-11076708_latest.zip"
 
 mkdir -p "$SDK_DIR" "$THIRD"
 
+## Download url to dest when dest is missing.
+## \param url Source URL.
+## \param dest Local path.
 download() {
     local url="$1"
     local dest="$2"
@@ -69,6 +72,9 @@ set -o pipefail
     "emulator" \
     "system-images;android-${API};google_apis;x86_64"
 
+## Unpack a third-party zip under android/third_party when it is not there yet.
+## \param name Directory name.
+## \param url Zip URL.
 unpack_src() {
     local name="$1"
     local url="$2"

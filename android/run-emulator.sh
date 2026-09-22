@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Create (if needed) and start the local EFIS Android emulator, then install the APK.
+## Create the local EFIS emulator if needed, then install the debug APK.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

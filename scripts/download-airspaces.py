@@ -34,10 +34,12 @@ TYPE_NAMES = {
 
 
 def log(message: str) -> None:
+    """Print a progress line to stdout."""
     print(message, flush=True)
 
 
 def fetch_bytes(url: str) -> bytes:
+    """Response body from the OpenAIP export."""
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=120) as response:
@@ -49,6 +51,7 @@ def fetch_bytes(url: str) -> bytes:
 
 
 def parse_countries(value: str) -> list[str]:
+    """ISO country codes from a comma-separated list."""
     codes = []
     for part in value.replace(";", ",").split(","):
         code = part.strip().lower()
@@ -58,6 +61,7 @@ def parse_countries(value: str) -> list[str]:
 
 
 def summarize(payload: dict) -> None:
+    """Print how many polygons the file contains."""
     features = payload.get("features") or []
     kept = 0
     samples: list[str] = []
@@ -81,6 +85,7 @@ def summarize(payload: dict) -> None:
 
 
 def main() -> int:
+    """Write one GeoJSON per requested country. Returns 0."""
     repo_root = Path(__file__).resolve().parent.parent
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--country", default="PL,CZ", help="ISO alpha-2 codes, comma-separated")

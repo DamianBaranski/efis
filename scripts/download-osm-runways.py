@@ -26,10 +26,12 @@ CSV_FIELDS = ["icao", "ref", "lat", "lon", "heading_deg", "length_m", "width_m",
 
 
 def log(message: str) -> None:
+    """Print a progress line to stdout."""
     print(message, flush=True)
 
 
 def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance in metres."""
     r = 6371000.0
     p1, p2 = math.radians(lat1), math.radians(lat2)
     dlat = p2 - p1
@@ -39,6 +41,7 @@ def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 
 def heading_deg(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Initial bearing in degrees, clockwise from north."""
     p1, p2 = math.radians(lat1), math.radians(lat2)
     dlon = math.radians(lon2 - lon1)
     x = math.sin(dlon) * math.cos(p2)
@@ -47,6 +50,7 @@ def heading_deg(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 
 def unique_airports(airports_csv: Path) -> list[tuple[str, float, float]]:
+    """ICAO and position pairs from the airport CSV."""
     seen: dict[str, tuple[float, float]] = {}
     with airports_csv.open(encoding="utf-8") as handle:
         for row in csv.DictReader(handle):
@@ -61,6 +65,7 @@ def unique_airports(airports_csv: Path) -> list[tuple[str, float, float]]:
 
 
 def fetch_bbox(lat: float, lon: float, pad_deg: float) -> str:
+    """Overpass XML for runways in the box around the field."""
     url = OSM_MAP.format(
         minlon=f"{lon - pad_deg:.5f}",
         minlat=f"{lat - pad_deg:.5f}",
@@ -73,6 +78,7 @@ def fetch_bbox(lat: float, lon: float, pad_deg: float) -> str:
 
 
 def parse_runways(xml_text: str, icao: str) -> list[dict[str, str]]:
+    """Runway rows parsed from one Overpass response."""
     root = ET.fromstring(xml_text)
     nodes = {
         node.get("id"): (float(node.get("lat")), float(node.get("lon")))
@@ -126,6 +132,7 @@ def parse_runways(xml_text: str, icao: str) -> list[dict[str, str]]:
 
 
 def main() -> int:
+    """Write resources/airports/osm_runways.csv. Returns 0."""
     repo_root = Path(__file__).resolve().parent.parent
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
