@@ -14,6 +14,7 @@
 #include "airspace_overlay.h"
 #include "runway_overlay.h"
 #include "vrp_overlay.h"
+#include "nav_voice.h"
 #include "asset_path.h"
 #include <algorithm>
 #include <cmath>
@@ -116,6 +117,7 @@ public:
             mProjMat = glm::perspective(glm::radians(60.0f), (float)mProjW / std::max(1, mProjH), 10.0f, 250000.0f);
         }
         mLocation = mDataManager.getLocationData();
+        NavVoice::instance().setPosition(mLocation.latitude, mLocation.longitude);
         mMap.updateLocation(mLocation.latitude, mLocation.longitude);
         glm::dvec3 eye;
         glm::vec3 forward;
@@ -179,6 +181,7 @@ public:
         }
         mVrps.update(mLocation.latitude, mLocation.longitude);
         mVrps.render(mProjMat, eye, forward, up);
+        NavVoice::instance().updateReporting(mLocation.latitude, mLocation.longitude, mVrps.nearby());
         Shader::setSatClip(false, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16, 13, 11, 8, nullptr, 8, nullptr, 0, 0);
         glEnable(GL_BLEND);
     }

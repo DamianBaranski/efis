@@ -25,6 +25,8 @@ public:
         bool compulsory = false;
     };
 
+    const std::vector<Point> &nearby() const { return mNearby; }
+
 private:
     void loadCatalog();
     void loadJson(const std::string &path);

@@ -1,6 +1,7 @@
 #include "airspace_overlay.h"
 #include "asset_path.h"
 #include "geo_coord_utils.h"
+#include "nav_voice.h"
 #include <SDL_ttf.h>
 #include <algorithm>
 #include <cmath>
@@ -1044,7 +1045,8 @@ void AirspaceOverlay::updateInside(double latitude, double longitude, float alti
     for (const auto &volume : mNearby)
     {
         const bool onHeight = altitudeM + 30.0f >= volume.lowerM && altitudeM - 30.0f <= volume.upperM;
-        const bool inVolume = onHeight && pointInPolygon(latitude, longitude, volume.ring);
+        const bool horizontal = pointInPolygon(latitude, longitude, volume.ring);
+        const bool inVolume = onHeight && horizontal;
         if (inVolume)
         {
             now.insert(volume.name);
@@ -1118,6 +1120,19 @@ void AirspaceOverlay::updateInside(double latitude, double longitude, float alti
         state.kind = kind;
         state.distTenths = tenths;
         state.lastDistM = distM;
+        if (!volume.name.empty())
+        {
+            int vertical = 0;
+            if (altitudeM + 30.0f < volume.lowerM)
+            {
+                vertical = -1;
+            }
+            else if (altitudeM - 30.0f > volume.upperM)
+            {
+                vertical = 1;
+            }
+            NavVoice::instance().noteAirspace(volume.name, volume.type, volume.lowerLabel, distM, horizontal, vertical);
+        }
     }
 
     for (const auto &name : now)

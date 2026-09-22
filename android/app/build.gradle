@@ -1,0 +1,61 @@
+plugins {
+    id "com.android.application"
+}
+
+android {
+    namespace "com.efis.app"
+    compileSdk 34
+    ndkVersion "26.3.11579264"
+
+    defaultConfig {
+        applicationId "com.efis.app"
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName "0.1"
+        externalNativeBuild {
+            cmake {
+                arguments "-DANDROID_STL=c++_shared"
+                abiFilters "arm64-v8a", "x86_64"
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+        debug {
+            debuggable true
+            jniDebuggable true
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path file("../../CMakeLists.txt")
+            version "3.22.1"
+        }
+    }
+
+    sourceSets {
+        main {
+            assets.srcDirs = ["src/main/assets"]
+        }
+    }
+}
+
+dependencies {
+}
+
+tasks.register("packAssets", Exec) {
+    workingDir rootProject.projectDir.parentFile
+    commandLine "python3", "scripts/android-pack-assets.py"
+}
+
+preBuild.dependsOn packAssets

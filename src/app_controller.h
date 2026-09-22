@@ -11,6 +11,7 @@
 #include "screen.h"
 #include "terrain_download.h"
 #include "terrain_widget.h"
+#include "nav_voice.h"
 #include <GLES3/gl3.h>
 #include <algorithm>
 #include <atomic>
@@ -230,6 +231,15 @@ public:
                 if (control >= 0)
                 {
                     adjustRender(control);
+                    return true;
+                }
+            }
+            if (mGeneral.activeTab() == 2)
+            {
+                const int control = mGeneral.hitButton(x, y);
+                if (control >= 0)
+                {
+                    adjustSound(control);
                     return true;
                 }
             }
@@ -526,6 +536,7 @@ private:
             else if (item.row == 3)
             {
                 mEnrPage = EnrPage::Nearest;
+                NavVoice::instance().announceNearest();
             }
             else
             {
@@ -1234,6 +1245,105 @@ private:
         mPreloadKey.clear();
     }
 
+    void adjustSound(int control)
+    {
+        NavVoice &voice = NavVoice::instance();
+        switch (control)
+        {
+        case 0:
+            voice.setNarration(!voice.narration());
+            break;
+        case 1:
+            voice.stepVoice(-1);
+            break;
+        case 2:
+            voice.stepVoice(1);
+            break;
+        case 3:
+            voice.setAirspace(!voice.airspace());
+            break;
+        case 4:
+            voice.setReporting(!voice.reporting());
+            break;
+        case 5:
+            voice.setNearest(!voice.nearest());
+            break;
+        default:
+            voice.preview();
+            break;
+        }
+        mGeneralKey.clear();
+    }
+
+    void drawSoundPage(int screenH)
+    {
+        NavVoice &voice = NavVoice::instance();
+        const int boxX = mGeneral.contentX();
+        const int boxY = mGeneral.contentY();
+        const int boxW = mGeneral.contentW();
+        const int boxH = mGeneral.contentH();
+        constexpr int kRows = 6;
+        const int rowH = std::max(1, boxH / kRows);
+        const int btnH = std::clamp(rowH * 2 / 3, 40, 72);
+        const int btnW = std::clamp(boxW / 5, 96, 160);
+        const float font = static_cast<float>(std::clamp(btnH / 3, 16, 28));
+        const char *names[kRows] = {"NARRATION", "VOICE", "AIRSPACE", "REPORTS", "NEAREST", "TEST"};
+        const int labelX = boxX + boxW * 22 / 100;
+        const int btnX = boxX + boxW - btnW - boxW / 14;
+        for (int row = 0; row < kRows; ++row)
+        {
+            if (row == 1)
+            {
+                continue;
+            }
+            const int sdlRowTop = boxY + row * rowH;
+            const int btnY = sdlRowTop + (rowH - btnH) / 2;
+            const float textY = static_cast<float>(screenH - (sdlRowTop + rowH / 2));
+            const std::string nameKey = std::string("efis-sound-name-") + std::to_string(row);
+            mGeneral.setText(row, names[row], font, static_cast<float>(labelX), textY, nameKey.c_str());
+            const char *label = "ON";
+            int slot = row;
+            if (row == 0)
+            {
+                label = voice.narration() ? "ON" : "OFF";
+            }
+            else if (row == 2)
+            {
+                label = voice.airspace() ? "ON" : "OFF";
+                slot = 3;
+            }
+            else if (row == 3)
+            {
+                label = voice.reporting() ? "ON" : "OFF";
+                slot = 4;
+            }
+            else if (row == 4)
+            {
+                label = voice.nearest() ? "ON" : "OFF";
+                slot = 5;
+            }
+            else
+            {
+                label = "PLAY";
+                slot = 6;
+            }
+            const std::string buttonKey = std::string("efis-sound-btn-") + std::to_string(slot) + "-" + label;
+            mGeneral.setButton(slot, btnX, btnY, btnW, btnH, label, font, buttonKey.c_str());
+        }
+
+        const int voiceTop = boxY + rowH;
+        const int voiceY = voiceTop + (rowH - btnH) / 2;
+        const float voiceTextY = static_cast<float>(screenH - (voiceTop + rowH / 2));
+        const std::string voiceName = voice.voiceLabel();
+        const int step = std::min(btnH, 64);
+        const int voiceCenter = boxX + boxW * 62 / 100;
+        mGeneral.setText(1, "VOICE", font, static_cast<float>(labelX), voiceTextY, "efis-sound-name-1");
+        mGeneral.setText(6, voiceName, font, static_cast<float>(voiceCenter), voiceTextY,
+                         (std::string("efis-sound-voice-") + voiceName).c_str());
+        mGeneral.setButton(1, voiceCenter - step * 3, voiceY, step, btnH, "-", font, "efis-sound-voice-minus");
+        mGeneral.setButton(2, voiceCenter + step * 2, voiceY, step, btnH, "+", font, "efis-sound-voice-plus");
+    }
+
     void drawGeneralPopup()
     {
         if (!mGeneralOpen)
@@ -1244,6 +1354,7 @@ private:
         const int screenH = std::max(1, mScreen.getHeight());
         mGeneral.setTabLabel(0, "RENDER");
         mGeneral.setTabLabel(1, "MAPS");
+        mGeneral.setTabLabel(2, "SOUND");
         mGeneral.layout(screenW, screenH);
         char farDist[16];
         char nearDist[16];
@@ -1253,7 +1364,11 @@ private:
         char nearZoom[8];
         std::snprintf(farZoom, sizeof(farZoom), "Z%d", mFarZoom);
         std::snprintf(nearZoom, sizeof(nearZoom), "Z%d", mSatZoom);
-        const std::string key = std::to_string(mGeneral.activeTab()) + farDist + farZoom + nearDist + nearZoom +
+        const NavVoice &voice = NavVoice::instance();
+        const std::string sound = std::string(voice.narration() ? "1" : "0") + (voice.airspace() ? "1" : "0") +
+                                  (voice.reporting() ? "1" : "0") + (voice.nearest() ? "1" : "0") +
+                                  NavVoice::instance().voiceLabel();
+        const std::string key = std::to_string(mGeneral.activeTab()) + farDist + farZoom + nearDist + nearZoom + sound +
                                 std::to_string(mGeneral.width()) + std::to_string(mGeneral.height());
         if (key != mGeneralKey)
         {
@@ -1294,6 +1409,10 @@ private:
                     mGeneral.setButton(base + 2, zoomCenter - zoomGap - btn, btnY, btn, btn, "-", font, "efis-pop-minus");
                     mGeneral.setButton(base + 3, zoomCenter + zoomGap, btnY, btn, btn, "+", font, "efis-pop-plus");
                 }
+            }
+            else if (mGeneral.activeTab() == 2)
+            {
+                drawSoundPage(screenH);
             }
         }
         mGeneral.render();
@@ -1346,7 +1465,7 @@ private:
     int mNearGrid = 8;
     bool mGeneralOpen = false;
     std::string mGeneralKey;
-    TabWindow<2, 8, 8> mGeneral;
+    TabWindow<3, 10, 8> mGeneral;
     EuropeMap mEuropeMap;
     AipMode mAipMode = AipMode::Off;
     EnrPage mEnrPage = EnrPage::None;

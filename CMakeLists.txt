@@ -34,6 +34,8 @@ set(SRC
     src/runway_overlay.cpp
     src/airspace_overlay.cpp
     src/vrp_overlay.cpp
+    src/voice_announcer.cpp
+    src/nav_voice.cpp
     src/airport_scenery.cpp
     src/asset_path.cpp
 )
@@ -67,6 +69,8 @@ set(INC
     src/runway_overlay.h
     src/airspace_overlay.h
     src/vrp_overlay.h
+    src/voice_announcer.h
+    src/nav_voice.h
     src/airport_scenery.h
     src/asset_path.h
     src/sdl_compat.h
