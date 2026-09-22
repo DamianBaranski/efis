@@ -15,6 +15,7 @@
 class DataManagerStratux : public IDataManager
 {
 public:
+    /// Does not open the network. Call start() to begin polling.
     DataManagerStratux();
 
     /// Stops the poll thread before members are destroyed.

@@ -47,6 +47,13 @@ public class EfisActivity extends SDLActivity {
         super.onDestroy();
     }
 
+    /**
+     * Creates the speech engine on the UI thread when it does not exist yet.
+     * Language is UK and the rate is 0.9. A phrase queued before the engine
+     * is ready is spoken when the engine reports success.
+     *
+     * @param activity Host activity. Null is ignored.
+     */
     private static void ensureEngine(final SDLActivity activity) {
         if (sTts != null || activity == null) {
             return;
@@ -69,6 +76,12 @@ public class EfisActivity extends SDLActivity {
         });
     }
 
+    /**
+     * Short label for the sound page, such as "en-GB" or "en-GB ALAN".
+     *
+     * @param voice Installed voice. The locale must be present.
+     * @return Label text. Never null.
+     */
     private static String voiceLabel(final Voice voice) {
         final Locale locale = voice.getLocale();
         final String country = locale.getCountry() == null || locale.getCountry().isEmpty()
@@ -88,6 +101,10 @@ public class EfisActivity extends SDLActivity {
         return token.isEmpty() ? "en-" + country : "en-" + country + " " + token;
     }
 
+    /**
+     * Rebuilds the voice list from installed English voices that do not need a network.
+     * Each line is the engine name, a tab, then the short label. UK voices come first.
+     */
     private static void refreshVoiceCatalog() {
         if (sTts == null) {
             return;
@@ -125,6 +142,10 @@ public class EfisActivity extends SDLActivity {
         sVoiceCatalog = catalog.toString();
     }
 
+    /**
+     * Applies sSelectedVoice when the engine is ready.
+     * The value is matched against the engine voice name, not the short label.
+     */
     private static void applySelectedVoice() {
         if (!sTtsReady || sTts == null || sSelectedVoice == null || sSelectedVoice.isEmpty()) {
             return;
@@ -201,6 +222,10 @@ public class EfisActivity extends SDLActivity {
         });
     }
 
+    /**
+     * Native libraries SDL loads before the first frame.
+     * main is the EFIS library and must come after SDL.
+     */
     @Override
     protected String[] getLibraries() {
         return new String[] {

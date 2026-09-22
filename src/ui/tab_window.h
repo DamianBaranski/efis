@@ -18,6 +18,8 @@ template <int kTabs, int kTexts, int kButtons>
 class TabWindow
 {
 public:
+    /// Allocates the tab strip and the page drawables. Call layout before use.
+    /// \param screen Window whose height converts SDL coordinates to GL.
     explicit TabWindow(Screen &screen) : mScreen(screen)
     {
         mBox = std::make_unique<Render2D>(screen);
@@ -38,6 +40,9 @@ public:
         }
     }
 
+    /// Sizes the window and the tab strip. Call again when the screen size changes.
+    /// \param screenW Window width in pixels.
+    /// \param screenH Window height in pixels.
     void layout(int screenW, int screenH)
     {
         mScreenW = std::max(1, screenW);
@@ -58,17 +63,28 @@ public:
         rebuildTabs();
     }
 
+    /// Left edge of the window, SDL pixels.
     int sdlX() const { return mSdlX; }
+    /// Top edge of the window, SDL pixels.
     int sdlY() const { return mSdlY; }
+    /// Window width in pixels.
     int width() const { return mBoxW; }
+    /// Window height in pixels.
     int height() const { return mBoxH; }
+    /// Screen height in pixels. Used to flip SDL Y into GL Y.
     int screenHeight() const { return mScreenH; }
+    /// Left edge of the page, to the right of the tab strip. SDL pixels.
     int contentX() const { return mContentX; }
+    /// Top edge of the page, SDL pixels.
     int contentY() const { return mContentY; }
+    /// Page width in pixels.
     int contentW() const { return mContentW; }
+    /// Page height in pixels.
     int contentH() const { return mContentH; }
+    /// Index of the light-gray tab.
     int activeTab() const { return mActiveTab; }
 
+    /// Text drawn on one tab. Null is ignored.
     void setTabLabel(int slot, const char *label)
     {
         if (slot < 0 || slot >= kTabs || label == nullptr)
@@ -78,6 +94,7 @@ public:
         mTabNames[static_cast<size_t>(slot)] = label;
     }
 
+    /// Highlights one tab and leaves the page contents for the caller to refill.
     void setActiveTab(int slot)
     {
         if (slot < 0 || slot >= kTabs)
@@ -88,11 +105,13 @@ public:
         rebuildTabs();
     }
 
+    /// True when the SDL point is inside the window, including the tab strip.
     bool contains(int x, int y) const
     {
         return mBoxW > 0 && x >= mSdlX && y >= mSdlY && x < mSdlX + mBoxW && y < mSdlY + mBoxH;
     }
 
+    /// Tab index under the SDL point, or -1.
     int hitTab(int x, int y) const
     {
         for (int i = 0; i < kTabs; ++i)
@@ -106,6 +125,7 @@ public:
         return -1;
     }
 
+    /// Page button under the SDL point, or -1.
     int hitButton(int x, int y) const
     {
         for (int i = 0; i < kButtons; ++i)
@@ -123,6 +143,7 @@ public:
         return -1;
     }
 
+    /// Drops page labels and buttons. Tabs stay.
     void clearContent()
     {
         for (int i = 0; i < kButtons; ++i)
@@ -135,6 +156,8 @@ public:
         }
     }
 
+    /// Places one page label. centerX and centerY are GL pixels.
+    /// \param font Pixel height of the glyphs.
     void setText(int slot, const std::string &text, float font, float centerX, float centerY, const char *cacheKey)
     {
         if (slot < 0 || slot >= kTexts)
@@ -165,6 +188,7 @@ public:
                                                                    cacheKey);
     }
 
+    /// Draws the window, the tab strip, then the page buttons and labels.
     void render()
     {
         const int glY = mScreenH - mSdlY - mBoxH;

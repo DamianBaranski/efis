@@ -14,47 +14,74 @@ struct SDL_Surface;
 class OpenAipAtlas
 {
 public:
-    /// High-res clip around the aircraft (~1.5 m/pixel, a few km).
+    /// High-res clip around the aircraft, about 1.5 m per pixel.
     static constexpr int kDetailZoom = 16;
+    /// Tiles from the aircraft out to the edge of the high-res clip.
     static constexpr int kDetailRadius = 7;
     /// Wide clip matching the FlightGear ±1° scenery window.
     static constexpr int kWideZoom = 13;
+    /// Tiles from the aircraft out to the edge of the wide clip.
     static constexpr int kWideRadius = 15;
+    /// Pixels on one side of a source tile.
     static constexpr int kTilePx = 256;
+    /// Pixels blended across a tile seam.
     static constexpr int kFeatherPx = 2;
+    /// Coarsest zoom used to fill a hole in a missing tile.
     static constexpr int kMinParentZoom = 10;
 
+    /// Allocates the stitch for one zoom and radius. Tiles are not loaded yet.
+    /// \param zoom XYZ zoom.
+    /// \param radius Tiles from the center to the edge.
     OpenAipAtlas(int zoom, int radius);
+    /// Releases the GPU texture.
     ~OpenAipAtlas();
 
     OpenAipAtlas(const OpenAipAtlas &) = delete;
     OpenAipAtlas &operator=(const OpenAipAtlas &) = delete;
 
+    /// How much of the stitch is filled.
     struct Progress
     {
-        int done = 0;
-        int total = 0;
-        size_t cpuBytes = 0;
-        size_t gpuBytes = 0;
-        bool ready = false;
+        int done = 0;           ///< Tiles uploaded.
+        int total = 0;          ///< Tiles in the stitch.
+        size_t cpuBytes = 0;    ///< Decoded pixels still on the CPU.
+        size_t gpuBytes = 0;    ///< Bytes in the texture.
+        bool ready = false;     ///< True when done equals total.
     };
 
+    /// Decoded CPU bytes for a square of radius tiles.
     static size_t cpuBytesFor(int radius);
+    /// GPU bytes for a square of radius tiles.
     static size_t gpuBytesFor(int radius);
 
+    /// Chooses the satellite base map, the OpenAIP chart, or both.
     void setLayers(bool basemap, bool overlay);
+    /// Recenters the stitch on the aircraft. Does not upload.
+    /// \param latitude Degrees, north positive.
+    /// \param longitude Degrees, east positive.
     void update(float latitude, float longitude);
+    /// Uploads up to maxBlits tiles into the stitch.
     void pump(float latitude, float longitude, int maxBlits);
+    /// Tiles finished against tiles required.
     Progress progress() const;
+    /// True when every slot in the stitch has a tile.
     bool ready() const { return mReady; }
 
+    /// GPU texture of the stitch. 0 before the first upload.
     GLuint texture() const { return mTexture; }
+    /// XYZ column of the stitch origin.
     float originX() const { return static_cast<float>(mOriginX); }
+    /// XYZ row of the stitch origin.
     float originY() const { return static_cast<float>(mOriginY); }
+    /// Tiles across the stitch.
     float tilesX() const { return static_cast<float>(mTiles); }
+    /// Tiles down the stitch.
     float tilesY() const { return static_cast<float>(mTiles); }
+    /// World size of one tile at this zoom, in the shader's units.
     float n() const { return mN; }
+    /// XYZ zoom of this stitch.
     int zoom() const { return mZoom; }
+    /// Tiles from the center to the edge.
     int radius() const { return mRadius; }
 
 private:

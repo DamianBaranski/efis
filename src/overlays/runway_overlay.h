@@ -27,6 +27,7 @@ public:
         float elevationM;
     };
 
+    /// Empty overlay. The runway catalog is read on the first update.
     RunwayOverlay();
 
     /// Rebuilds rectangles near the aircraft.

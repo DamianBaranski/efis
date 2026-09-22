@@ -14,6 +14,7 @@
 class AirspaceOverlay
 {
 public:
+    /// Empty overlay. The catalog is read on the first update.
     AirspaceOverlay();
 
     /// Rebuilds walls near the aircraft and notes which volume is current.

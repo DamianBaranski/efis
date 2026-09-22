@@ -14,6 +14,8 @@
 class EuropeMap
 {
 public:
+    /// Allocates the land and border meshes. Call layout before the first draw.
+    /// \param screen Window the chart is drawn into.
     explicit EuropeMap(Screen &screen);
 
     /// Fits the chart in the page rectangle. Call again when the window changes.

@@ -14,6 +14,7 @@ public:
     /// Call once after SDL_Init.
     static void init();
 
+    /// Absolute asset root. Empty until init().
     static const std::string &root();
 
     /// `rel` is repo-relative, e.g. `resources/fonts/B612Mono-Regular.ttf`.

@@ -54,17 +54,24 @@ public:
     void noteAirspace(const std::string &name, int type, const std::string &lowerLabel, double distM, bool horizontal,
                       int vertical);
 
+    /// Speaks a reporting point when the aircraft reaches 2 NM, and again overhead.
+    /// The first sample is a baseline and is not spoken.
+    /// \param latitude Degrees, north positive.
+    /// \param longitude Degrees, east positive.
     void updateReporting(double latitude, double longitude, const std::vector<VrpOverlay::Point> &points);
 
+    /// One obstacle the voice logic may speak.
     struct ObstacleCue
     {
         std::string name;
-        double latitude = 0.0;
-        double longitude = 0.0;
-        float heightM = 0.0f;
-        int kind = 0;
+        double latitude = 0.0;  ///< Degrees, north positive.
+        double longitude = 0.0; ///< Degrees, east positive.
+        float heightM = 0.0f;   ///< Metres AGL. 0 when the source has no height.
+        int kind = 0;           ///< 0 wind, 1 chimney, 2 tower, 3 building.
     };
 
+    /// Speaks the nearest relevant obstacle inside 3 NM.
+    /// Wind farms collapse to one phrase. The first sample is a baseline.
     void updateObstacles(double latitude, double longitude, const std::vector<ObstacleCue> &points);
 
     /// ENR nearest. Speaks the closest field in the airport catalog.

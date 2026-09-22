@@ -12,27 +12,36 @@
 class SatClipmap
 {
 public:
+    /// Default tiles on one side of a ring.
     static constexpr int kGrid = 8;
+    /// Largest ring the mask arrays can hold.
     static constexpr int kMaxGrid = 16;
+    /// Words in a presence mask for kMaxGrid.
     static constexpr int kMaskWords = (kMaxGrid * kMaxGrid) / 32;
+    /// Pixels on one side of a source tile.
     static constexpr int kTilePx = 256;
+    /// Zoom of the outermost ring.
     static constexpr int kWideZoom = 11;
+    /// Zoom of the middle ring.
     static constexpr int kMidZoom = 13;
+    /// Zoom of the close-in ring.
     static constexpr int kFineZoom = 16;
 
     SatClipmap() = default;
+    /// Releases the three ring textures.
     ~SatClipmap();
 
     SatClipmap(const SatClipmap &) = delete;
     SatClipmap &operator=(const SatClipmap &) = delete;
 
+    /// How much of one ring is filled.
     struct Progress
     {
-        int done = 0;
-        int total = 0;
-        size_t cpuBytes = 0;
-        size_t gpuBytes = 0;
-        bool ready = false;
+        int done = 0;        ///< Tiles uploaded.
+        int total = 0;       ///< Tiles in the ring.
+        size_t cpuBytes = 0; ///< Decoded pixels still on the CPU.
+        size_t gpuBytes = 0; ///< Bytes in the ring texture.
+        bool ready = false;  ///< True when done equals total.
     };
 
     /// Samples the OpenAIP chart in addition to the satellite base map.
@@ -45,10 +54,15 @@ public:
     void setMidZoom(int zoom);
     /// Tile count on one side of the mid ring.
     void setMidGrid(int grid);
+    /// Close-in zoom currently in use.
     int detailZoom() const { return mDetailZoom; }
+    /// Tiles on one side of the close-in ring.
     int fineGrid() const;
+    /// Tiles on one side of the mid ring.
     int midGrid() const;
+    /// Mid-ring zoom currently in use.
     int midZoom() const;
+    /// Default ring width for a zoom. Higher zooms use a smaller grid.
     static int gridForZoom(int zoom);
     /// Uploads up to maxUploads tiles around the camera.
     /// \param latitude Degrees.
@@ -57,11 +71,14 @@ public:
 
     /// True when every slot in the active rings has a tile.
     bool ready() const;
+    /// Tiles finished in the close-in ring.
     Progress fineProgress() const;
+    /// Tiles finished in the mid and wide rings.
     Progress coarseProgress() const;
     /// GPU bytes held by the three rings.
     size_t gpuBytes() const;
 
+    /// Texture ids and tile origins the terrain shader samples this frame.
     struct View
     {
         bool active = false;

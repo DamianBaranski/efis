@@ -13,6 +13,7 @@
 class VrpOverlay
 {
 public:
+    /// Empty overlay. The reporting-point catalog is read on the first update.
     VrpOverlay();
 
     /// Rebuilds marks near the aircraft.

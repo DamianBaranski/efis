@@ -62,12 +62,17 @@ public:
     /// Terrain meshes sample the satellite clipmap when the global overlay is active.
     void enableOpenAipOverlay(bool enable) { mOpenAipOverlay = enable; }
 
+    /// Binds the three satellite rings for every terrain mesh drawn after this call.
+    /// Origins are XYZ tile columns and rows. Masks mark which slots hold a tile.
+    /// \param camU Mercator U of the camera, in [0, 1].
+    /// \param camV Mercator V of the camera, in [0, 1]. Y grows south.
     static void setSatClip(bool active, GLuint fineTex, GLuint midTex, GLuint wideTex, int fineOriginX,
                            int fineOriginY, int midOriginX, int midOriginY, int wideOriginX, int wideOriginY,
                            int fineZoom, int midZoom, int wideZoom, int fineGrid, const uint32_t *fineMask, int midGrid,
                            const uint32_t *midMask, uint32_t wideMask0, uint32_t wideMask1, float camU = 0.0f,
                            float camV = 0.0f);
 
+    /// GPU bytes held by textures loaded through setTexture.
     static size_t textureCacheBytes();
 
 private:

@@ -18,6 +18,7 @@
 class OpenAipClient
 {
 public:
+    /// Process-wide tile client.
     static OpenAipClient &instance();
 
     /// Downloads one PNG tile if it is not already cached.
@@ -27,6 +28,7 @@ public:
     /// Esri World Imagery base map (same XYZ grid as OpenAIP).
     std::string fetchBasemap(int z, int x, int y);
 
+    /// Cache folder name of the satellite layer.
     const std::string &basemapLayer() const { return mBasemapLayer; }
 
     /// Fetches a disk of tiles around a geographic position (no-op if already queued).
@@ -36,24 +38,37 @@ public:
     /// Queued jobs plus in-flight HTTP. Atlas uses this to keep retrying empty slots.
     int pendingDownloads() const;
 
+    /// Absolute path of one cached PNG. The file may not exist yet.
+    /// \param z XYZ zoom.
+    /// \param x Tile column.
+    /// \param y Tile row.
+    /// \param layer Cache folder. `openaip` is the chart.
     std::string cachePath(int z, int x, int y, const std::string &layer = "openaip") const;
 
+    /// True when that PNG is already on disk.
     bool isCached(int z, int x, int y, const std::string &layer = "openaip") const;
 
+    /// True when resources hold an OpenAIP API key.
     bool hasApiKey() const { return !mApiKey.empty(); }
 
+    /// Download counts since process start.
     struct DownloadStats
     {
-        int sattOk = 0;
-        int sattFail = 0;
-        int aipOk = 0;
-        int aipFail = 0;
-        int inFlight = 0;
+        int sattOk = 0;      ///< Satellite tiles stored.
+        int sattFail = 0;    ///< Satellite requests that failed.
+        int aipOk = 0;       ///< Chart tiles stored.
+        int aipFail = 0;     ///< Chart requests that failed.
+        int inFlight = 0;    ///< HTTP requests running now.
         bool hasAipKey = false;
     };
+    /// Snapshot of downloadStats fields.
     DownloadStats downloadStats() const;
 
+    /// XYZ tile that contains the point at zoom.
+    /// \param latitude Degrees, north positive.
+    /// \param longitude Degrees, east positive.
     static std::pair<int, int> latLonToTile(float latitude, float longitude, int zoom);
+    /// Pixel position inside the world map at zoom. Y grows south.
     static void latLonToPixels(float latitude, float longitude, int zoom, double &pixelX, double &pixelY);
 
 private:

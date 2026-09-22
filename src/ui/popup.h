@@ -18,6 +18,8 @@ template <int kTexts, int kButtons>
 class Popup
 {
 public:
+    /// Allocates the panel, label, and button drawables. Call layout before use.
+    /// \param screen Window whose height converts SDL coordinates to GL.
     explicit Popup(Screen &screen) : mScreen(screen)
     {
         mBox = std::make_unique<Render2D>(screen);
@@ -44,12 +46,18 @@ public:
         mSdlY = (mScreenH - mBoxH) / 2;
     }
 
+    /// Left edge of the panel, SDL pixels.
     int sdlX() const { return mSdlX; }
+    /// Top edge of the panel, SDL pixels.
     int sdlY() const { return mSdlY; }
+    /// Panel width in pixels.
     int width() const { return mBoxW; }
+    /// Panel height in pixels.
     int height() const { return mBoxH; }
+    /// Window height in pixels. Used to flip SDL Y into GL Y.
     int screenHeight() const { return mScreenH; }
 
+    /// True when the SDL point is inside the panel.
     bool contains(int x, int y) const
     {
         return mBoxW > 0 && x >= mSdlX && y >= mSdlY && x < mSdlX + mBoxW && y < mSdlY + mBoxH;
@@ -73,6 +81,8 @@ public:
         return -1;
     }
 
+    /// Places one label. centerX and centerY are GL pixels, origin at the bottom left.
+    /// \param font Pixel height of the glyphs.
     void setText(int slot, const std::string &text, float font, float centerX, float centerY, const char *cacheKey)
     {
         if (slot < 0 || slot >= kTexts)
@@ -102,6 +112,7 @@ public:
                                                                    cacheKey);
     }
 
+    /// Draws the panel, then the buttons and labels that were set.
     void render()
     {
         const int glY = mScreenH - mSdlY - mBoxH;
