@@ -13,6 +13,7 @@
 #include "openaip_client.h"
 #include "airspace_overlay.h"
 #include "runway_overlay.h"
+#include "vrp_overlay.h"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -113,6 +114,8 @@ public:
                               mScreen.getWidth(), mScreen.getHeight());
             mAirspaces.render(mProjMat, eye, forward, up);
         }
+        mVrps.update(mLocation.latitude, mLocation.longitude);
+        mVrps.render(mProjMat, eye, forward, up);
         Shader::setOpenAipGround(false, 0, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f);
         glEnable(GL_BLEND);
     }
@@ -206,6 +209,7 @@ private:
     OpenAipAtlas mOpenAipFar{OpenAipAtlas::kWideZoom, OpenAipAtlas::kWideRadius};
     RunwayOverlay mRunways;
     AirspaceOverlay mAirspaces;
+    VrpOverlay mVrps;
 };
 
 #endif
