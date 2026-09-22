@@ -296,10 +296,20 @@ OpenAipAtlas::OpenAipAtlas(int zoom, int radius)
     : mTiles(2 * radius + 1), mN(static_cast<float>(std::exp2(zoom))), mZoom(zoom), mRadius(radius),
       mSlot(static_cast<size_t>(mTiles) * static_cast<size_t>(mTiles), 0)
 {
+    // Wide atlases never keep a second full copy in RAM. Disk cache is the backing store.
+    mReleasedCpu = mTiles * kTilePx >= 4096;
 }
 
 OpenAipAtlas::~OpenAipAtlas()
 {
+    if (mShiftFbo != 0)
+    {
+        glDeleteFramebuffers(1, &mShiftFbo);
+    }
+    if (mRowTex != 0)
+    {
+        glDeleteTextures(1, &mRowTex);
+    }
     if (mTexture != 0)
     {
         glDeleteTextures(1, &mTexture);
@@ -326,19 +336,27 @@ void OpenAipAtlas::ensureTexture()
                   << maxSize << std::endl;
         return;
     }
+    mUseMips = width < 4096;
     glGenTextures(1, &mTexture);
     glBindTexture(GL_TEXTURE_2D, mTexture);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, mUseMips ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     GLfloat maxAniso = 1.0f;
     glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &maxAniso);
-    if (maxAniso > 1.0f)
+    if (maxAniso > 1.0f && mUseMips)
     {
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, std::min(8.0f, maxAniso));
     }
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    if (!mUseMips)
+    {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        std::cout << "SAT atlas z=" << mZoom << " vram-only " << width << "x" << height << std::endl;
+        return;
+    }
     int levelW = width;
     int levelH = height;
     int level = 0;
@@ -354,6 +372,18 @@ void OpenAipAtlas::ensureTexture()
         ++level;
     }
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, level);
+    std::cout << "SAT atlas z=" << mZoom << " cpu+vram " << width << "x" << height << " mips=" << level << std::endl;
+}
+
+void OpenAipAtlas::releaseCpuStore()
+{
+    if (mSurface != nullptr)
+    {
+        std::cout << "SAT atlas z=" << mZoom << " released CPU store" << std::endl;
+        SDL_FreeSurface(mSurface);
+        mSurface = nullptr;
+    }
+    mReleasedCpu = true;
 }
 
 void OpenAipAtlas::ensureSurface()
@@ -373,46 +403,136 @@ void OpenAipAtlas::ensureSurface()
     SDL_FillRect(mSurface, nullptr, SDL_MapRGBA(mSurface->format, 0, 0, 0, 0));
 }
 
+bool OpenAipAtlas::shiftGpuTiles(int dx, int dy)
+{
+    if (mTexture == 0 || (dx == 0 && dy == 0))
+    {
+        return true;
+    }
+    if (std::abs(dx) >= mTiles || std::abs(dy) >= mTiles)
+    {
+        return false;
+    }
+    const int texW = mTiles * kTilePx;
+    if (mRowTex == 0)
+    {
+        glGenTextures(1, &mRowTex);
+        glBindTexture(GL_TEXTURE_2D, mRowTex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, texW, kTilePx, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    }
+    if (mShiftFbo == 0)
+    {
+        glGenFramebuffers(1, &mShiftFbo);
+    }
+
+    GLint prevFbo = 0;
+    GLint prevTex = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prevFbo);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &prevTex);
+
+    const int srcX = std::max(dx, 0) * kTilePx;
+    const int dstX = std::max(-dx, 0) * kTilePx;
+    const int copyW = (mTiles - std::abs(dx)) * kTilePx;
+    const int rowCount = mTiles - std::abs(dy);
+    const int yStep = dy >= 0 ? 1 : -1;
+    const int iBegin = dy >= 0 ? 0 : rowCount - 1;
+    const int iEnd = dy >= 0 ? rowCount : -1;
+
+    bool ok = copyW > 0 && rowCount > 0;
+    for (int i = iBegin; i != iEnd && ok; i += yStep)
+    {
+        const int srcY = (i + std::max(dy, 0)) * kTilePx;
+        const int dstY = (i + std::max(-dy, 0)) * kTilePx;
+
+        glBindFramebuffer(GL_FRAMEBUFFER, mShiftFbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mTexture, 0);
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        {
+            ok = false;
+            break;
+        }
+        glBindTexture(GL_TEXTURE_2D, mRowTex);
+        glCopyTexSubImage2D(GL_TEXTURE_2D, 0, dstX, 0, srcX, srcY, copyW, kTilePx);
+
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mRowTex, 0);
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        {
+            ok = false;
+            break;
+        }
+        glBindTexture(GL_TEXTURE_2D, mTexture);
+        glCopyTexSubImage2D(GL_TEXTURE_2D, 0, dstX, dstY, dstX, 0, copyW, kTilePx);
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(prevFbo));
+    glBindTexture(GL_TEXTURE_2D, mTexture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+    mUseMips = false;
+    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(prevTex));
+    if (!ok)
+    {
+        std::cerr << "SAT atlas gpu-shift failed z=" << mZoom << std::endl;
+    }
+    return ok;
+}
+
 void OpenAipAtlas::shiftOrigin(int originX, int originY)
 {
     const int dx = originX - mOriginX;
     const int dy = originY - mOriginY;
+    const bool hadOrigin = mOriginX > -10000;
     mOriginX = originX;
     mOriginY = originY;
-    if (mSurface == nullptr || (dx == 0 && dy == 0))
+    if (dx == 0 && dy == 0)
     {
         return;
     }
-    if (std::abs(dx) >= mTiles || std::abs(dy) >= mTiles)
+    if (!hadOrigin || std::abs(dx) >= mTiles || std::abs(dy) >= mTiles)
     {
-        SDL_FillRect(mSurface, nullptr, SDL_MapRGBA(mSurface->format, 0, 0, 0, 0));
+        if (mSurface != nullptr)
+        {
+            SDL_FillRect(mSurface, nullptr, SDL_MapRGBA(mSurface->format, 0, 0, 0, 0));
+        }
         std::fill(mSlot.begin(), mSlot.end(), 0);
         return;
     }
 
-    SDL_Surface *tmp = SDL_CreateRGBSurfaceWithFormat(0, mSurface->w, mSurface->h, 32, SDL_PIXELFORMAT_RGBA32);
-    if (tmp == nullptr)
+    if (mSurface != nullptr)
     {
-        SDL_FillRect(mSurface, nullptr, SDL_MapRGBA(mSurface->format, 0, 0, 0, 0));
+        SDL_Surface *tmp = SDL_CreateRGBSurfaceWithFormat(0, mSurface->w, mSurface->h, 32, SDL_PIXELFORMAT_RGBA32);
+        if (tmp == nullptr)
+        {
+            SDL_FillRect(mSurface, nullptr, SDL_MapRGBA(mSurface->format, 0, 0, 0, 0));
+            std::fill(mSlot.begin(), mSlot.end(), 0);
+            return;
+        }
+        SDL_FillRect(tmp, nullptr, SDL_MapRGBA(tmp->format, 0, 0, 0, 0));
+        SDL_Rect src;
+        src.x = std::max(dx, 0) * kTilePx;
+        src.y = std::max(dy, 0) * kTilePx;
+        src.w = (mTiles - std::abs(dx)) * kTilePx;
+        src.h = (mTiles - std::abs(dy)) * kTilePx;
+        SDL_Rect dst;
+        dst.x = std::max(-dx, 0) * kTilePx;
+        dst.y = std::max(-dy, 0) * kTilePx;
+        dst.w = src.w;
+        dst.h = src.h;
+        SDL_SetSurfaceBlendMode(mSurface, SDL_BLENDMODE_NONE);
+        SDL_BlitSurface(mSurface, &src, tmp, &dst);
+        SDL_SetSurfaceBlendMode(tmp, SDL_BLENDMODE_NONE);
+        SDL_BlitSurface(tmp, nullptr, mSurface, nullptr);
+        SDL_FreeSurface(tmp);
+    }
+    else if (!shiftGpuTiles(dx, dy))
+    {
         std::fill(mSlot.begin(), mSlot.end(), 0);
         return;
     }
-    SDL_FillRect(tmp, nullptr, SDL_MapRGBA(tmp->format, 0, 0, 0, 0));
-    SDL_Rect src;
-    src.x = std::max(dx, 0) * kTilePx;
-    src.y = std::max(dy, 0) * kTilePx;
-    src.w = (mTiles - std::abs(dx)) * kTilePx;
-    src.h = (mTiles - std::abs(dy)) * kTilePx;
-    SDL_Rect dst;
-    dst.x = std::max(-dx, 0) * kTilePx;
-    dst.y = std::max(-dy, 0) * kTilePx;
-    dst.w = src.w;
-    dst.h = src.h;
-    SDL_SetSurfaceBlendMode(mSurface, SDL_BLENDMODE_NONE);
-    SDL_BlitSurface(mSurface, &src, tmp, &dst);
-    SDL_SetSurfaceBlendMode(tmp, SDL_BLENDMODE_NONE);
-    SDL_BlitSurface(tmp, nullptr, mSurface, nullptr);
-    SDL_FreeSurface(tmp);
 
     std::vector<unsigned char> next(mSlot.size(), 0);
     for (int y = 0; y < mTiles; ++y)
@@ -450,22 +570,41 @@ bool OpenAipAtlas::blitSlot(int dx, int dy)
     SDL_Surface *overlay =
         mWantOverlay ? loadNativeOrParent(mZoom, tileX, tileY, "openaip", overlayFromParent) : nullptr;
 
+    SDL_Surface *owned = nullptr;
+    SDL_Surface *destSurf = mSurface;
     SDL_Rect dest{dx * kTilePx, dy * kTilePx, kTilePx, kTilePx};
+    if (destSurf == nullptr)
+    {
+        owned = SDL_CreateRGBSurfaceWithFormat(0, kTilePx, kTilePx, 32, SDL_PIXELFORMAT_RGBA32);
+        destSurf = owned;
+        dest = {0, 0, kTilePx, kTilePx};
+    }
+    if (destSurf == nullptr)
+    {
+        SDL_FreeSurface(base);
+        SDL_FreeSurface(overlay);
+        return false;
+    }
     if (base != nullptr)
     {
         SDL_SetSurfaceBlendMode(base, SDL_BLENDMODE_NONE);
-        SDL_BlitSurface(base, nullptr, mSurface, &dest);
+        SDL_BlitSurface(base, nullptr, destSurf, &dest);
         SDL_FreeSurface(base);
     }
     else
     {
-        SDL_FillRect(mSurface, &dest, SDL_MapRGBA(mSurface->format, 0, 0, 0, 0));
+        SDL_FillRect(destSurf, &dest, SDL_MapRGBA(destSurf->format, 0, 0, 0, 0));
     }
     if (overlay != nullptr)
     {
         SDL_SetSurfaceBlendMode(overlay, SDL_BLENDMODE_BLEND);
-        SDL_BlitSurface(overlay, nullptr, mSurface, &dest);
+        SDL_BlitSurface(overlay, nullptr, destSurf, &dest);
         SDL_FreeSurface(overlay);
+    }
+    if (owned != nullptr)
+    {
+        uploadTileFrom(owned, dx, dy);
+        SDL_FreeSurface(owned);
     }
     have = wanted;
     return true;
@@ -584,6 +723,21 @@ void OpenAipAtlas::setLayers(bool basemap, bool overlay)
     std::fill(mSlot.begin(), mSlot.end(), 0);
 }
 
+void OpenAipAtlas::uploadTileFrom(SDL_Surface *tile, int dx, int dy)
+{
+    if (mTexture == 0 || tile == nullptr)
+    {
+        return;
+    }
+    const int bpp = tile->format ? tile->format->BytesPerPixel : 4;
+    glBindTexture(GL_TEXTURE_2D, mTexture);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, bpp > 0 ? tile->pitch / bpp : 0);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, dx * kTilePx, dy * kTilePx, kTilePx, kTilePx, GL_RGBA, GL_UNSIGNED_BYTE,
+                    tile->pixels);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+}
+
 void OpenAipAtlas::uploadTile(int dx, int dy)
 {
     if (mTexture == 0 || mSurface == nullptr)
@@ -602,7 +756,7 @@ void OpenAipAtlas::uploadTile(int dx, int dy)
 
 int OpenAipAtlas::countPending() const
 {
-    if (mSurface == nullptr)
+    if (mOriginX < -10000)
     {
         return mTiles * mTiles;
     }
@@ -634,7 +788,7 @@ OpenAipAtlas::Progress OpenAipAtlas::progress() const
     }
     if (mTexture != 0)
     {
-        p.gpuBytes = gpuBytesFor(mRadius);
+        p.gpuBytes = mUseMips ? gpuBytesFor(mRadius) : cpuBytesFor(mRadius);
     }
     p.ready = mReady;
     return p;
@@ -650,11 +804,18 @@ void OpenAipAtlas::pump(float latitude, float longitude, int maxBlits)
     auto &client = OpenAipClient::instance();
     mN = static_cast<float>(std::exp2(mZoom));
     client.fetchAround(latitude, longitude, mZoom, mRadius);
-    ensureSurface();
     ensureTexture();
-    if (mSurface == nullptr)
+    if (!mReleasedCpu)
+    {
+        ensureSurface();
+    }
+    if (mTexture == 0)
     {
         return;
+    }
+    if (!mReleasedCpu && mSurface == nullptr)
+    {
+        mReleasedCpu = true;
     }
 
     const std::string layer = client.basemapLayer();
@@ -665,7 +826,10 @@ void OpenAipAtlas::pump(float latitude, float longitude, int maxBlits)
     {
         if (layer != mBasemapLayer)
         {
-            SDL_FillRect(mSurface, nullptr, SDL_MapRGBA(mSurface->format, 0, 0, 0, 0));
+            if (mSurface != nullptr)
+            {
+                SDL_FillRect(mSurface, nullptr, SDL_MapRGBA(mSurface->format, 0, 0, 0, 0));
+            }
             std::fill(mSlot.begin(), mSlot.end(), 0);
             mOriginX = originX;
             mOriginY = originY;
@@ -695,7 +859,10 @@ void OpenAipAtlas::pump(float latitude, float longitude, int maxBlits)
         const int dy = idx / mTiles;
         if (blitSlot(dx, dy))
         {
-            uploadTile(dx, dy);
+            if (mSurface != nullptr)
+            {
+                uploadTile(dx, dy);
+            }
             mNeedMips = true;
             mReady = false;
             ++blits;
@@ -703,11 +870,15 @@ void OpenAipAtlas::pump(float latitude, float longitude, int maxBlits)
         }
     }
 
-    if (blits < maxBlits && mNeedMips && countPending() == 0)
+    if (blits < maxBlits && !mReady && countPending() == 0)
     {
-        glBindTexture(GL_TEXTURE_2D, mTexture);
-        uploadMipmaps(mSurface);
+        if (mSurface != nullptr && mNeedMips && mUseMips)
+        {
+            glBindTexture(GL_TEXTURE_2D, mTexture);
+            uploadMipmaps(mSurface);
+        }
         mNeedMips = false;
+        releaseCpuStore();
         mReady = true;
     }
 }

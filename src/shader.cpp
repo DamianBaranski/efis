@@ -7,25 +7,48 @@
 #include <fstream>
 
 std::unordered_map<std::string, Shader::TextureData> Shader::mTextureCache = {};
-Shader::OpenAipGroundState Shader::sOpenAip = {};
+Shader::SatClipState Shader::sSat = {};
 
-void Shader::setOpenAipGround(bool active, GLuint texture, float originX, float originY,
-                              float tilesX, float tilesY, float n, GLuint farTexture,
-                              float farOriginX, float farOriginY, float farTilesX, float farTilesY, float farN)
+void Shader::setSatClip(bool active, GLuint fineTex, GLuint midTex, GLuint wideTex, int fineOriginX, int fineOriginY,
+                        int midOriginX, int midOriginY, int wideOriginX, int wideOriginY, int fineZoom, int midZoom,
+                        int wideZoom, int fineGrid, const uint32_t *fineMask, int midGrid, const uint32_t *midMask,
+                        uint32_t wideMask0, uint32_t wideMask1)
 {
-    sOpenAip.active = active;
-    sOpenAip.texture = texture;
-    sOpenAip.originX = originX;
-    sOpenAip.originY = originY;
-    sOpenAip.tilesX = tilesX;
-    sOpenAip.tilesY = tilesY;
-    sOpenAip.n = n;
-    sOpenAip.farTexture = farTexture;
-    sOpenAip.farOriginX = farOriginX;
-    sOpenAip.farOriginY = farOriginY;
-    sOpenAip.farTilesX = farTilesX;
-    sOpenAip.farTilesY = farTilesY;
-    sOpenAip.farN = farN;
+    sSat.active = active;
+    sSat.fineTex = fineTex;
+    sSat.midTex = midTex;
+    sSat.wideTex = wideTex;
+    sSat.fineOriginX = fineOriginX;
+    sSat.fineOriginY = fineOriginY;
+    sSat.midOriginX = midOriginX;
+    sSat.midOriginY = midOriginY;
+    sSat.wideOriginX = wideOriginX;
+    sSat.wideOriginY = wideOriginY;
+    sSat.fineZoom = fineZoom;
+    sSat.midZoom = midZoom;
+    sSat.wideZoom = wideZoom;
+    sSat.fineGrid = fineGrid > 0 ? fineGrid : 8;
+    sSat.midGrid = midGrid > 0 ? midGrid : 8;
+    for (int i = 0; i < 8; ++i)
+    {
+        sSat.fineMask[i] = fineMask != nullptr ? fineMask[i] : 0u;
+        sSat.midMask[i] = midMask != nullptr ? midMask[i] : 0u;
+    }
+    sSat.wideMask0 = wideMask0;
+    sSat.wideMask1 = wideMask1;
+}
+
+size_t Shader::textureCacheBytes()
+{
+    size_t bytes = 0;
+    for (const auto &entry : mTextureCache)
+    {
+        if (entry.second.mWidth > 0 && entry.second.mHeight > 0)
+        {
+            bytes += static_cast<size_t>(entry.second.mWidth) * static_cast<size_t>(entry.second.mHeight) * 4u;
+        }
+    }
+    return bytes;
 }
 
 namespace
@@ -33,13 +56,22 @@ namespace
 GLuint gSharedProgram = 0;
 GLint gMvpMatrixLoc = -1;
 GLint gUseOpenAipLoc = -1;
-GLint gOpenAipSamplerLoc = -1;
-GLint gOpenAipAtlasLoc = -1;
-GLint gOpenAipNLoc = -1;
-GLint gUseOpenAipFarLoc = -1;
-GLint gOpenAipFarSamplerLoc = -1;
-GLint gOpenAipFarAtlasLoc = -1;
-GLint gOpenAipFarNLoc = -1;
+GLint gSatFineLoc = -1;
+GLint gSatMidLoc = -1;
+GLint gSatWideLoc = -1;
+GLint gSatFineOriginLoc = -1;
+GLint gSatMidOriginLoc = -1;
+GLint gSatWideOriginLoc = -1;
+GLint gSatFineMaskLoc = -1;
+GLint gSatMidMaskLoc = -1;
+GLint gSatWideMaskLoc = -1;
+GLint gSatFineZoomLoc = -1;
+GLint gSatMidZoomLoc = -1;
+GLint gSatWideZoomLoc = -1;
+GLint gSatFineGridLoc = -1;
+GLint gSatFineBitsLoc = -1;
+GLint gSatMidGridLoc = -1;
+GLint gSatMidBitsLoc = -1;
 }
 
 Shader::Shader() : mShaderProgram(0)
@@ -60,49 +92,77 @@ void Shader::render() const
 {
     glUseProgram(mShaderProgram);
 
-    const bool overlay = mOpenAipOverlay && sOpenAip.active && sOpenAip.texture != 0;
+    const bool overlay = mOpenAipOverlay && sSat.active && (sSat.midTex != 0 || sSat.fineTex != 0);
     if (mUseOpenAipLoc >= 0)
     {
         glUniform1i(mUseOpenAipLoc, overlay ? 1 : 0);
     }
     if (overlay)
     {
-        if (mOpenAipSamplerLoc >= 0)
+        if (mSatFineLoc >= 0)
         {
-            glUniform1i(mOpenAipSamplerLoc, 1);
+            glUniform1i(mSatFineLoc, 1);
         }
-        if (mOpenAipAtlasLoc >= 0)
+        if (mSatMidLoc >= 0)
         {
-            glUniform4f(mOpenAipAtlasLoc, sOpenAip.originX, sOpenAip.originY, sOpenAip.tilesX, sOpenAip.tilesY);
+            glUniform1i(mSatMidLoc, 2);
         }
-        if (mOpenAipNLoc >= 0)
+        if (mSatWideLoc >= 0)
         {
-            glUniform1f(mOpenAipNLoc, sOpenAip.n);
+            glUniform1i(mSatWideLoc, 3);
+        }
+        if (mSatFineOriginLoc >= 0)
+        {
+            glUniform2i(mSatFineOriginLoc, sSat.fineOriginX, sSat.fineOriginY);
+        }
+        if (mSatMidOriginLoc >= 0)
+        {
+            glUniform2i(mSatMidOriginLoc, sSat.midOriginX, sSat.midOriginY);
+        }
+        if (mSatWideOriginLoc >= 0)
+        {
+            glUniform2i(mSatWideOriginLoc, sSat.wideOriginX, sSat.wideOriginY);
+        }
+        if (mSatFineGridLoc >= 0)
+        {
+            glUniform1i(mSatFineGridLoc, sSat.fineGrid);
+        }
+        if (mSatFineBitsLoc >= 0)
+        {
+            glUniform1uiv(mSatFineBitsLoc, 8, sSat.fineMask);
+        }
+        if (mSatMidGridLoc >= 0)
+        {
+            glUniform1i(mSatMidGridLoc, sSat.midGrid);
+        }
+        if (mSatMidBitsLoc >= 0)
+        {
+            glUniform1uiv(mSatMidBitsLoc, 8, sSat.midMask);
+        }
+        if (mSatWideMaskLoc >= 0)
+        {
+            glUniform2ui(mSatWideMaskLoc, sSat.wideMask0, sSat.wideMask1);
+        }
+        if (mSatFineZoomLoc >= 0)
+        {
+            glUniform1i(mSatFineZoomLoc, sSat.fineZoom);
+        }
+        if (mSatMidZoomLoc >= 0)
+        {
+            glUniform1i(mSatMidZoomLoc, sSat.midZoom);
+        }
+        if (mSatWideZoomLoc >= 0)
+        {
+            glUniform1i(mSatWideZoomLoc, sSat.wideZoom);
         }
         glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, sOpenAip.texture);
-        const bool farOverlay = sOpenAip.farTexture != 0;
-        if (mUseOpenAipFarLoc >= 0)
+        glBindTexture(GL_TEXTURE_2D_ARRAY, sSat.fineTex);
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, sSat.midTex);
+        if (sSat.wideTex != 0)
         {
-            glUniform1i(mUseOpenAipFarLoc, farOverlay ? 1 : 0);
-        }
-        if (farOverlay)
-        {
-            if (mOpenAipFarSamplerLoc >= 0)
-            {
-                glUniform1i(mOpenAipFarSamplerLoc, 2);
-            }
-            if (mOpenAipFarAtlasLoc >= 0)
-            {
-                glUniform4f(mOpenAipFarAtlasLoc, sOpenAip.farOriginX, sOpenAip.farOriginY, sOpenAip.farTilesX,
-                            sOpenAip.farTilesY);
-            }
-            if (mOpenAipFarNLoc >= 0)
-            {
-                glUniform1f(mOpenAipFarNLoc, sOpenAip.farN);
-            }
-            glActiveTexture(GL_TEXTURE2);
-            glBindTexture(GL_TEXTURE_2D, sOpenAip.farTexture);
+            glActiveTexture(GL_TEXTURE3);
+            glBindTexture(GL_TEXTURE_2D_ARRAY, sSat.wideTex);
         }
         glActiveTexture(GL_TEXTURE0);
     }
@@ -304,7 +364,6 @@ void Shader::setColor(const std::string &name, uint32_t rgba)
 
 GLuint Shader::texLoad(const std::string &filename)
 {
-    SDL_Log("Loading image %s", filename.c_str());
     auto it = mTextureCache.find(filename);
     if (it != mTextureCache.end())
     {
@@ -380,20 +439,33 @@ void Shader::initializeShaderProgram()
         }
 
         gUseOpenAipLoc = glGetUniformLocation(gSharedProgram, "useOpenAip");
-        gOpenAipSamplerLoc = glGetUniformLocation(gSharedProgram, "openAipSampler");
-        gOpenAipAtlasLoc = glGetUniformLocation(gSharedProgram, "openAipAtlas");
-        gOpenAipNLoc = glGetUniformLocation(gSharedProgram, "openAipN");
-        gUseOpenAipFarLoc = glGetUniformLocation(gSharedProgram, "useOpenAipFar");
-        gOpenAipFarSamplerLoc = glGetUniformLocation(gSharedProgram, "openAipFarSampler");
-        gOpenAipFarAtlasLoc = glGetUniformLocation(gSharedProgram, "openAipFarAtlas");
-        gOpenAipFarNLoc = glGetUniformLocation(gSharedProgram, "openAipFarN");
-        if (gOpenAipSamplerLoc >= 0)
+        gSatFineLoc = glGetUniformLocation(gSharedProgram, "satFine");
+        gSatMidLoc = glGetUniformLocation(gSharedProgram, "satMid");
+        gSatWideLoc = glGetUniformLocation(gSharedProgram, "satWide");
+        gSatFineOriginLoc = glGetUniformLocation(gSharedProgram, "satFineOrigin");
+        gSatMidOriginLoc = glGetUniformLocation(gSharedProgram, "satMidOrigin");
+        gSatWideOriginLoc = glGetUniformLocation(gSharedProgram, "satWideOrigin");
+        gSatFineMaskLoc = glGetUniformLocation(gSharedProgram, "satFineMask");
+        gSatMidMaskLoc = glGetUniformLocation(gSharedProgram, "satMidMask");
+        gSatWideMaskLoc = glGetUniformLocation(gSharedProgram, "satWideMask");
+        gSatFineZoomLoc = glGetUniformLocation(gSharedProgram, "satFineZoom");
+        gSatMidZoomLoc = glGetUniformLocation(gSharedProgram, "satMidZoom");
+        gSatWideZoomLoc = glGetUniformLocation(gSharedProgram, "satWideZoom");
+        gSatFineGridLoc = glGetUniformLocation(gSharedProgram, "satFineGrid");
+        gSatFineBitsLoc = glGetUniformLocation(gSharedProgram, "satFineBits");
+        gSatMidGridLoc = glGetUniformLocation(gSharedProgram, "satMidGrid");
+        gSatMidBitsLoc = glGetUniformLocation(gSharedProgram, "satMidBits");
+        if (gSatFineLoc >= 0)
         {
-            glUniform1i(gOpenAipSamplerLoc, 1);
+            glUniform1i(gSatFineLoc, 1);
         }
-        if (gOpenAipFarSamplerLoc >= 0)
+        if (gSatMidLoc >= 0)
         {
-            glUniform1i(gOpenAipFarSamplerLoc, 2);
+            glUniform1i(gSatMidLoc, 2);
+        }
+        if (gSatWideLoc >= 0)
+        {
+            glUniform1i(gSatWideLoc, 3);
         }
         GLint texSamplerUniformLoc = glGetUniformLocation(gSharedProgram, "texSampler");
         if (texSamplerUniformLoc >= 0)
@@ -409,13 +481,22 @@ void Shader::initializeShaderProgram()
     mShaderProgram = gSharedProgram;
     mMvpMatrixLoc = gMvpMatrixLoc;
     mUseOpenAipLoc = gUseOpenAipLoc;
-    mOpenAipSamplerLoc = gOpenAipSamplerLoc;
-    mOpenAipAtlasLoc = gOpenAipAtlasLoc;
-    mOpenAipNLoc = gOpenAipNLoc;
-    mUseOpenAipFarLoc = gUseOpenAipFarLoc;
-    mOpenAipFarSamplerLoc = gOpenAipFarSamplerLoc;
-    mOpenAipFarAtlasLoc = gOpenAipFarAtlasLoc;
-    mOpenAipFarNLoc = gOpenAipFarNLoc;
+    mSatFineLoc = gSatFineLoc;
+    mSatMidLoc = gSatMidLoc;
+    mSatWideLoc = gSatWideLoc;
+    mSatFineOriginLoc = gSatFineOriginLoc;
+    mSatMidOriginLoc = gSatMidOriginLoc;
+    mSatWideOriginLoc = gSatWideOriginLoc;
+    mSatFineMaskLoc = gSatFineMaskLoc;
+    mSatMidMaskLoc = gSatMidMaskLoc;
+    mSatWideMaskLoc = gSatWideMaskLoc;
+    mSatFineZoomLoc = gSatFineZoomLoc;
+    mSatMidZoomLoc = gSatMidZoomLoc;
+    mSatWideZoomLoc = gSatWideZoomLoc;
+    mSatFineGridLoc = gSatFineGridLoc;
+    mSatFineBitsLoc = gSatFineBitsLoc;
+    mSatMidGridLoc = gSatMidGridLoc;
+    mSatMidBitsLoc = gSatMidBitsLoc;
 }
 
 GLuint Shader::iboCreate(const std::vector<GLuint> &indices)

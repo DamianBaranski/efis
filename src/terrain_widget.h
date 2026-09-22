@@ -9,7 +9,7 @@
 #include "render2d.h"
 #include "bucket_container.h"
 #include "geo_coord_utils.h"
-#include "openaip_atlas.h"
+#include "sat_clipmap.h"
 #include "openaip_client.h"
 #include "airspace_overlay.h"
 #include "runway_overlay.h"
@@ -44,6 +44,12 @@ public:
 
     void setChartOverlay(bool enable) { mChartOverlay = enable; }
 
+    void setSatDetailZoom(int zoom) { mSat.setDetailZoom(zoom); }
+    void setSatNearGrid(int grid) { mSat.setFineGrid(grid); }
+    void setSatFarZoom(int zoom) { mSat.setMidZoom(zoom); }
+    void setSatFarGrid(int grid) { mSat.setMidGrid(grid); }
+    float cameraLatitude() const { return mLocation.latitude; }
+
     void setAirspacesEnabled(bool enable) { mAirspacesEnabled = enable; }
 
     bool airspacesEnabled() const { return mAirspacesEnabled; }
@@ -57,30 +63,37 @@ public:
             mLocation.longitude = 16.770278f;
             mLocation.altitude = 800.0f;
         }
-        mOpenAipNear.setLayers(true, mChartOverlay);
-        mOpenAipFar.setLayers(true, mChartOverlay);
-        if (!mOpenAipNear.ready())
+        if (!mSatelliteGround && !mChartOverlay)
         {
-            mOpenAipNear.pump(mLocation.latitude, mLocation.longitude, 8);
+            return;
         }
-        else
-        {
-            mOpenAipFar.pump(mLocation.latitude, mLocation.longitude, 6);
-        }
+        mSat.setChartOverlay(mChartOverlay);
+        mSat.pump(mLocation.latitude, mLocation.longitude, 4);
     }
 
-    OpenAipAtlas::Progress nearPreload() const { return mOpenAipNear.progress(); }
-    OpenAipAtlas::Progress farPreload() const { return mOpenAipFar.progress(); }
+    bool mapPreloadReady() const
+    {
+        return (!mSatelliteGround && !mChartOverlay) || mSat.ready();
+    }
+
+    SatClipmap::Progress nearPreload() const { return mSat.fineProgress(); }
+    SatClipmap::Progress farPreload() const { return mSat.coarseProgress(); }
+    int terrainLoaded() const { return mMap.loadedCount(); }
+    int terrainDrawn() const { return mMap.drawnCount(); }
+    size_t mapGpuBytes() const { return mSat.gpuBytes(); }
 
     void update(DataType type) override {
         if(type != DataType::LOCATION_DATA) {
             return;
         }
         mLocation = mDataManager.getLocationData();
-        OpenAipClient::instance().fetchAround(mLocation.latitude, mLocation.longitude, OpenAipAtlas::kDetailZoom,
-                                              OpenAipAtlas::kDetailRadius);
-        OpenAipClient::instance().fetchAround(mLocation.latitude, mLocation.longitude, OpenAipAtlas::kWideZoom,
-                                              OpenAipAtlas::kWideRadius);
+        if (mSatelliteGround || mChartOverlay)
+        {
+            OpenAipClient::instance().fetchAround(mLocation.latitude, mLocation.longitude, mSat.detailZoom(),
+                                                  mSat.fineGrid() / 2, true, mChartOverlay);
+            OpenAipClient::instance().fetchAround(mLocation.latitude, mLocation.longitude, mSat.midZoom(),
+                                                  mSat.midGrid() / 2, true, mChartOverlay);
+        }
         if (!mLoggedPosition)
         {
             std::cout << "Terrain camera " << mLocation.latitude << " N, "
@@ -113,17 +126,15 @@ public:
         const bool drape = mSatelliteGround || mChartOverlay;
         if (drape)
         {
-            Shader::setOpenAipGround(true, mOpenAipNear.texture(),
-                                     mOpenAipNear.originX(), mOpenAipNear.originY(),
-                                     mOpenAipNear.tilesX(), mOpenAipNear.tilesY(),
-                                     mOpenAipNear.n(), mOpenAipFar.texture(),
-                                     mOpenAipFar.originX(), mOpenAipFar.originY(),
-                                     mOpenAipFar.tilesX(), mOpenAipFar.tilesY(),
-                                     mOpenAipFar.n());
+            const SatClipmap::View sat = mSat.view();
+            Shader::setSatClip(sat.active, sat.fineTex, sat.midTex, sat.wideTex, sat.fineOriginX, sat.fineOriginY,
+                               sat.midOriginX, sat.midOriginY, sat.wideOriginX, sat.wideOriginY, sat.fineZoom,
+                               sat.midZoom, sat.wideZoom, sat.fineGrid, sat.fineMask, sat.midGrid, sat.midMask,
+                               sat.wideMask0, sat.wideMask1);
         }
         else
         {
-            Shader::setOpenAipGround(false, 0, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f);
+            Shader::setSatClip(false, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16, 13, 11, 8, nullptr, 8, nullptr, 0, 0);
         }
 
         // Cube is Y-up in model space; rotate it onto local ENU so zenith follows geodetic up.
@@ -138,8 +149,12 @@ public:
         mSkybox.setMvpMatrix(mProjMat * skyView * skyModel);
         mSkybox.render();
         glDepthMask(GL_TRUE);
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+        glFrontFace(GL_CCW);
 
         mMap.render(mProjMat, eye, forward, up);
+        glDisable(GL_CULL_FACE);
         mRunways.update(mLocation.latitude, mLocation.longitude);
         mRunways.render(mProjMat, eye, forward, up);
         if (mAirspacesEnabled)
@@ -150,7 +165,7 @@ public:
         }
         mVrps.update(mLocation.latitude, mLocation.longitude);
         mVrps.render(mProjMat, eye, forward, up);
-        Shader::setOpenAipGround(false, 0, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f);
+        Shader::setSatClip(false, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16, 13, 11, 8, nullptr, 8, nullptr, 0, 0);
         glEnable(GL_BLEND);
     }
 
@@ -241,9 +256,8 @@ private:
     bool mLoggedPosition = false;
     bool mSatelliteGround = false;
     bool mChartOverlay = false;
-    bool mAirspacesEnabled = true;
-    OpenAipAtlas mOpenAipNear{OpenAipAtlas::kDetailZoom, OpenAipAtlas::kDetailRadius};
-    OpenAipAtlas mOpenAipFar{OpenAipAtlas::kWideZoom, OpenAipAtlas::kWideRadius};
+    bool mAirspacesEnabled = false;
+    SatClipmap mSat;
     RunwayOverlay mRunways;
     AirspaceOverlay mAirspaces;
     VrpOverlay mVrps;

@@ -11,11 +11,15 @@
 #ifdef __ANDROID__
 #include <jni.h>
 #endif
+#include <condition_variable>
+#include <cstdint>
+#include <deque>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <sys/stat.h>
 #include <thread>
+#include <unordered_set>
 #include <vector>
 
 namespace
@@ -119,6 +123,8 @@ bool androidDownloadToFile(const std::string &url, const std::string &path, cons
 }
 #endif
 
+constexpr int kDownloadWorkers = 4;
+
 std::string trim(std::string value)
 {
     const auto start = value.find_first_not_of(" \t\r\n");
@@ -190,7 +196,7 @@ OpenAipClient::OpenAipClient() : mCacheRoot(AssetPath::resolve(kCacheRel))
     {
         std::cout << "OpenAIP tiles: https://www.openaip.net (CC BY-NC 4.0)" << std::endl;
     }
-    std::cout << "Basemap: Esri World Imagery" << std::endl;
+    std::cout << "Basemap: Esri World Imagery cache=" << mCacheRoot << std::endl;
 }
 
 std::string OpenAipClient::loadApiKey() const
@@ -326,10 +332,13 @@ std::string OpenAipClient::fetchTile(int z, int x, int y, const std::string &lay
     std::ostringstream url;
     url << kBaseUrl << '/' << layer << '/' << z << '/' << x << '/' << y << ".png";
     std::cout << "OpenAIP fetch " << layer << " " << z << "/" << x << "/" << y << std::endl;
-    if (!downloadToFile(url.str(), path, true))
+    const bool ok = downloadToFile(url.str(), path, true);
+    if (!ok)
     {
+        ++mAipFail;
         return {};
     }
+    ++mAipOk;
     return path;
 }
 
@@ -344,39 +353,171 @@ std::string OpenAipClient::fetchBasemap(int z, int x, int y)
     std::ostringstream url;
     url << "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/"
         << z << '/' << y << '/' << x;
-    std::cout << "Basemap fetch satellite " << z << "/" << x << "/" << y << std::endl;
-    if (!downloadToFile(url.str(), path, false))
+    std::cout << "SATDBG http z=" << z << " osm=" << x << "," << y << " esri=" << z << "/" << y << "/" << x
+              << " path=" << path << std::endl;
+    const bool ok = downloadToFile(url.str(), path, false);
+    if (!ok)
     {
+        ++mSattFail;
+        std::cout << "SATDBG http-fail z=" << z << " osm=" << x << "," << y << " fail=" << mSattFail.load()
+                  << std::endl;
         return {};
     }
+    ++mSattOk;
+    std::cout << "SATDBG http-ok z=" << z << " osm=" << x << "," << y << " ok=" << mSattOk.load() << std::endl;
     return path;
 }
 
-void OpenAipClient::fetchAround(float latitude, float longitude, int zoom, int radius)
+OpenAipClient::DownloadStats OpenAipClient::downloadStats() const
+{
+    DownloadStats s;
+    s.sattOk = mSattOk.load();
+    s.sattFail = mSattFail.load();
+    s.aipOk = mAipOk.load();
+    s.aipFail = mAipFail.load();
+    s.inFlight = mInFlight.load();
+    s.hasAipKey = !mApiKey.empty();
+    return s;
+}
+
+int OpenAipClient::pendingDownloads() const
+{
+    std::lock_guard<std::mutex> lock(mMutex);
+    return static_cast<int>(mQueue.size()) + mInFlight.load();
+}
+
+uint64_t OpenAipClient::jobId(int z, int x, int y, bool aip)
+{
+    return (static_cast<uint64_t>(aip) << 63) | (static_cast<uint64_t>(z & 31) << 48) |
+           (static_cast<uint64_t>(static_cast<uint32_t>(x) & 0xFFFFFFu) << 24) |
+           (static_cast<uint32_t>(y) & 0xFFFFFFu);
+}
+
+void OpenAipClient::ensureWorker()
+{
+    bool expected = false;
+    if (mWorkerStarted.compare_exchange_strong(expected, true))
+    {
+        for (int i = 0; i < kDownloadWorkers; ++i)
+        {
+            std::thread(&OpenAipClient::workerLoop, this).detach();
+        }
+    }
+}
+
+void OpenAipClient::enqueueMissing(int zoom, int x, int y, bool aip)
+{
+    if (isCached(zoom, x, y, aip ? "openaip" : mBasemapLayer))
+    {
+        return;
+    }
+    const uint64_t id = jobId(zoom, x, y, aip);
+    if (mQueued.count(id) != 0)
+    {
+        return;
+    }
+    mQueued.insert(id);
+    mQueue.push_back(Job{zoom, x, y, aip});
+}
+
+void OpenAipClient::workerLoop()
+{
+    while (true)
+    {
+        Job job;
+        {
+            std::unique_lock<std::mutex> lock(mMutex);
+            mCv.wait(lock, [this] { return !mQueue.empty(); });
+            job = mQueue.front();
+            mQueue.pop_front();
+            mQueued.erase(jobId(job.z, job.x, job.y, job.aip));
+            ++mInFlight;
+            if (!mQueue.empty())
+            {
+                mCv.notify_one();
+            }
+        }
+        try
+        {
+            if (job.aip)
+            {
+                fetchTile(job.z, job.x, job.y, "openaip");
+            }
+            else
+            {
+                fetchBasemap(job.z, job.x, job.y);
+            }
+        }
+        catch (...)
+        {
+            std::cerr << "OpenAIP: download worker exception" << std::endl;
+        }
+        --mInFlight;
+    }
+}
+
+void OpenAipClient::fetchAround(float latitude, float longitude, int zoom, int radius, bool wantBasemap,
+                                bool wantOverlay)
 {
     const auto tile = latLonToTile(latitude, longitude, zoom);
+    const bool haveKey = !mApiKey.empty();
+    const bool overlay = wantOverlay && haveKey;
+    int cached = 0;
+    int missing = 0;
     {
         std::lock_guard<std::mutex> lock(mMutex);
-        auto it = mLastTile.find(zoom);
-        if (it != mLastTile.end() && it->second == tile)
+        auto it = mLastAround.find(zoom);
+        if (it != mLastAround.end() && it->second.x == tile.first && it->second.y == tile.second &&
+            it->second.base == wantBasemap && it->second.overlay == overlay)
         {
             return;
         }
-        mLastTile[zoom] = tile;
-    }
+        const bool tileMoved = it == mLastAround.end() || it->second.x != tile.first || it->second.y != tile.second;
+        mLastAround[zoom] = LastAround{tile.first, tile.second, wantBasemap, overlay};
 
-    const bool haveKey = !mApiKey.empty();
-    std::thread([this, zoom, radius, haveKey, cx = tile.first, cy = tile.second]() {
+        if (tileMoved)
+        {
+            std::deque<Job> keep;
+            std::unordered_set<uint64_t> keepIds;
+            for (const auto &job : mQueue)
+            {
+                if (job.z != zoom)
+                {
+                    keep.push_back(job);
+                    keepIds.insert(jobId(job.z, job.x, job.y, job.aip));
+                }
+            }
+            mQueue.swap(keep);
+            mQueued.swap(keepIds);
+        }
+
         for (int dy = -radius; dy <= radius; ++dy)
         {
             for (int dx = -radius; dx <= radius; ++dx)
             {
-                fetchBasemap(zoom, cx + dx, cy + dy);
-                if (haveKey)
+                if (wantBasemap)
                 {
-                    fetchTile(zoom, cx + dx, cy + dy, "openaip");
+                    if (isCached(zoom, tile.first + dx, tile.second + dy, mBasemapLayer))
+                    {
+                        ++cached;
+                    }
+                    else
+                    {
+                        ++missing;
+                        enqueueMissing(zoom, tile.first + dx, tile.second + dy, false);
+                    }
+                }
+                if (overlay)
+                {
+                    enqueueMissing(zoom, tile.first + dx, tile.second + dy, true);
                 }
             }
         }
-    }).detach();
+        std::cout << "SATDBG fetchAround z=" << zoom << " lat=" << latitude << " lon=" << longitude
+                  << " cam=" << tile.first << "," << tile.second << " r=" << radius << " cached=" << cached
+                  << " missing=" << missing << " queued=" << mQueue.size() << " inFlight=" << mInFlight.load()
+                  << " moved=" << (tileMoved ? 1 : 0) << " layer=" << mBasemapLayer << std::endl;
+    }
+    ensureWorker();
+    mCv.notify_all();
 }

@@ -31,6 +31,11 @@ public:
     /// @brief Renders the bucket.
     void render();
 
+    bool gpuReady() const { return mState.load(std::memory_order_acquire) == 3; }
+    long index() const { return mIndex; }
+    bool isVisible(const glm::dvec3 &eye, const glm::vec3 &forward) const;
+    static long int genIndex(float lat, float lon);
+
     /// @brief Checks if a geographic point is contained within the bucket.
     /// @param lat Latitude of the point.
     /// @param lon Longitude of the point.
@@ -57,12 +62,6 @@ private:
     /// @return The generated tile path.
     std::string generateTilePath();
 
-    /// @brief Generates the index for the bucket based on latitude and longitude.
-    /// @param lat Latitude of the bucket.
-    /// @param lon Longitude of the bucket.
-    /// @return The generated index.
-    long int genIndex(float lat, float lon);
-
     /// @brief Gets the span for a given latitude.
     /// @param l Latitude.
     /// @return The span value.
@@ -76,7 +75,7 @@ private:
     long int mIndex;              ///< Index of the bucket.
     std::string mFilename;
     std::thread mLoadingThread;   ///< Thread for loading terrain data.
-    std::atomic<uint8_t> mState{0}; ///< 0 idle, 1 loading, 2 cpu ready, 3 gpu ready.
+    std::atomic<uint8_t> mState{0}; ///< 0 idle, 1 loading, 2 cpu ready, 3 gpu ready, 4 missing.
     std::vector<Triangles> mMesh; ///< Mesh representing the terrain geometry.
 
     static constexpr char const cTileFileExt[] = ".btg.gz"; ///< File extension for terrain tiles.

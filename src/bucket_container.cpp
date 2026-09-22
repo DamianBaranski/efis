@@ -35,7 +35,9 @@ void BucketContainer::updateLocation(float lat, float lon)
     const int add = std::min(kAddBucketsPerFrame, static_cast<int>(missing.size()));
     for (int i = 0; i < add; ++i)
     {
-        mMap.push_back(std::make_unique<Bucket>(missing[i].lat, missing[i].lon));
+        auto tile = std::make_unique<Bucket>(missing[i].lat, missing[i].lon);
+        mIndices.insert(tile->index());
+        mMap.push_back(std::move(tile));
     }
     mCurrentTile.latitude = lat;
     mCurrentTile.longitude = lon;
@@ -46,6 +48,7 @@ void BucketContainer::updateLocation(float lat, float lon)
         if ((*iter)->distanceTo(lat, lon) > kTileDistanceLimit)
         {
             std::cout << "Remove tile" << std::endl;
+            mIndices.erase((*iter)->index());
             iter = mMap.erase(iter);
         }
         else
@@ -59,27 +62,26 @@ void BucketContainer::updateLocation(float lat, float lon)
 void BucketContainer::render(const glm::mat4 &proj, const glm::dvec3 &eye, const glm::vec3 &forward, const glm::vec3 &up)
 {
     int uploaded = 0;
+    mDrawn = 0;
     for (auto &tile : mMap)
     {
         tile->pumpLoad();
-        tile->setCamera(proj, eye, forward, up);
         if (uploaded < kUploadBucketsPerFrame && tile->uploadIfReady())
         {
             ++uploaded;
         }
+        if (!tile->isVisible(eye, forward))
+        {
+            continue;
+        }
+        tile->setCamera(proj, eye, forward, up);
         tile->render();
+        ++mDrawn;
     }
     mAirports.render(proj, eye, forward, up);
 }
 
 bool BucketContainer::hasTile(float lat, float lon) const
 {
-    for (const auto &tile : mMap)
-    {
-        if (tile->contain(lat, lon))
-        {
-            return true;
-        }
-    }
-    return false;
+    return mIndices.count(Bucket::genIndex(lat, lon)) != 0;
 }

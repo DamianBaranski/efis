@@ -114,6 +114,15 @@ void AirportScenery::loadFile(Model *model)
 
 void AirportScenery::update(float latitude, float longitude)
 {
+    const int cellLat = static_cast<int>(std::floor(latitude));
+    const int cellLon = static_cast<int>(std::floor(longitude));
+    if (cellLat == mScanLat && cellLon == mScanLon)
+    {
+        return;
+    }
+    mScanLat = cellLat;
+    mScanLon = cellLon;
+
     std::vector<std::string> wanted;
     const int lat0 = static_cast<int>(std::floor(latitude - 1.0f));
     const int lat1 = static_cast<int>(std::floor(latitude + 1.0f));
@@ -171,6 +180,10 @@ void AirportScenery::render(const glm::mat4 &proj, const glm::dvec3 &eye, const 
             model.uploaded = true;
         }
         if (!model.uploaded)
+        {
+            continue;
+        }
+        if (glm::length(model.center - eye) > 110000.0)
         {
             continue;
         }

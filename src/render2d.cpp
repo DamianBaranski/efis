@@ -53,7 +53,7 @@ void Render2D::setTransformationMatrix(glm::mat4 transform) {
     mShader.setMvpMatrix(mMvp);
 }
 
-void Render2D::drawText(std::string text, float size, float x, float y, uint32_t color)
+void Render2D::drawText(std::string text, float size, float x, float y, uint32_t color, const std::string &cacheName)
 {
     if (TTF_Init() != 0)
     {
@@ -75,7 +75,6 @@ void Render2D::drawText(std::string text, float size, float x, float y, uint32_t
     sdlColor.r = (color >> 8) & 0xFF;
     sdlColor.a = (color >> 0) & 0xFF;
 
-    // Create surface from text
     SDL_Surface *surface = TTF_RenderText_Blended(font, text.c_str(), sdlColor);
     if (!surface)
     {
@@ -85,17 +84,14 @@ void Render2D::drawText(std::string text, float size, float x, float y, uint32_t
     }
     int width = surface->w;
     int height = surface->h;
-
-    mShader.setTexture(text, surface);
-
-    // Draw texture
-    drawTexture(text, x, y, width, height);
-
-    // Cleanup
+    const std::string &key = cacheName.empty() ? text : cacheName;
+    mShader.setTexture(key, surface);
+    drawTexture(key, x, y, width, height);
     TTF_CloseFont(font);
 }
 
-void Render2D::drawTextCentered(std::string text, float size, float x, float y, uint32_t color)
+void Render2D::drawTextCentered(std::string text, float size, float x, float y, uint32_t color,
+                                const std::string &cacheName)
 {
     if (TTF_Init() != 0)
     {
@@ -136,8 +132,9 @@ void Render2D::drawTextCentered(std::string text, float size, float x, float y, 
     }
     const int width = surface->w;
     const int height = surface->h;
-    mShader.setTexture(text, surface);
-    drawTexture(text, static_cast<int>(x) - width / 2, static_cast<int>(y) - height / 2, width, height);
+    const std::string &key = cacheName.empty() ? text : cacheName;
+    mShader.setTexture(key, surface);
+    drawTexture(key, static_cast<int>(x) - width / 2, static_cast<int>(y) - height / 2, width, height);
     TTF_CloseFont(font);
 }
 

@@ -1,5 +1,6 @@
 #include "bucket.h"
 #include "asset_path.h"
+#include "terrain_download.h"
 #include <atomic>
 #include <algorithm>
 #include <cmath>
@@ -37,6 +38,18 @@ Bucket::~Bucket()
 
 void Bucket::pumpLoad()
 {
+    if (mState.load(std::memory_order_acquire) == 4)
+    {
+        if (!TerrainDownload::instance().takeReady(mFilename))
+        {
+            return;
+        }
+        if (mLoadingThread.joinable())
+        {
+            mLoadingThread.join();
+        }
+        mState.store(0);
+    }
     uint8_t expected = 0;
     if (!mState.compare_exchange_strong(expected, 1))
     {
@@ -66,6 +79,27 @@ bool Bucket::uploadIfReady()
 void Bucket::render()
 {
     mShader.render();
+}
+
+bool Bucket::isVisible(const glm::dvec3 &eye, const glm::vec3 &forward) const
+{
+    if (mState.load(std::memory_order_acquire) != 3)
+    {
+        return false;
+    }
+    const glm::dvec3 delta = mCenter - eye;
+    const double dist = glm::length(delta);
+    constexpr double kMaxDrawM = 110000.0;
+    constexpr double kTileRadiusM = 18000.0;
+    if (dist > kMaxDrawM + kTileRadiusM)
+    {
+        return false;
+    }
+    if (dist > kTileRadiusM && glm::dot(delta, glm::dvec3(forward)) < -kTileRadiusM * 0.35)
+    {
+        return false;
+    }
+    return true;
 }
 
 bool Bucket::contain(float lat, float lon)
@@ -101,6 +135,7 @@ void Bucket::loadFile(const std::string& filename)
     }
     else
     {
+        TerrainDownload::instance().request(filename);
         mState.store(4);
     }
     --gTerrainLoads;

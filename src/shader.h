@@ -5,6 +5,7 @@
 
 #include <GLES3/gl3.h>
 #include <glm/gtc/type_ptr.hpp>
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -55,13 +56,15 @@ public:
     /// @param rgba The color value in RGBA format.
     void setColor(const std::string &name, uint32_t rgba);
 
-    /// Terrain buckets sample the OpenAIP atlas with geographic UVs when the global overlay is active.
+    /// Terrain meshes sample the satellite clipmap when the global overlay is active.
     void enableOpenAipOverlay(bool enable) { mOpenAipOverlay = enable; }
 
-    static void setOpenAipGround(bool active, GLuint texture, float originX, float originY,
-                                 float tilesX, float tilesY, float n, GLuint farTexture = 0,
-                                 float farOriginX = 0.0f, float farOriginY = 0.0f, float farTilesX = 1.0f,
-                                 float farTilesY = 1.0f, float farN = 1.0f);
+    static void setSatClip(bool active, GLuint fineTex, GLuint midTex, GLuint wideTex, int fineOriginX,
+                           int fineOriginY, int midOriginX, int midOriginY, int wideOriginX, int wideOriginY,
+                           int fineZoom, int midZoom, int wideZoom, int fineGrid, const uint32_t *fineMask, int midGrid,
+                           const uint32_t *midMask, uint32_t wideMask0, uint32_t wideMask1);
+
+    static size_t textureCacheBytes();
 
 private:
     /// @brief Loads a texture from file.
@@ -114,33 +117,48 @@ private:
     glm::mat4 mMvpMat;                                                 ///< The model-view-projection matrix.
     GLint mMvpMatrixLoc;                                               ///< The location of the model-view-projection matrix in the shader.
     GLint mUseOpenAipLoc = -1;
-    GLint mOpenAipSamplerLoc = -1;
-    GLint mOpenAipAtlasLoc = -1;
-    GLint mOpenAipNLoc = -1;
-    GLint mUseOpenAipFarLoc = -1;
-    GLint mOpenAipFarSamplerLoc = -1;
-    GLint mOpenAipFarAtlasLoc = -1;
-    GLint mOpenAipFarNLoc = -1;
+    GLint mSatFineLoc = -1;
+    GLint mSatMidLoc = -1;
+    GLint mSatWideLoc = -1;
+    GLint mSatFineOriginLoc = -1;
+    GLint mSatMidOriginLoc = -1;
+    GLint mSatWideOriginLoc = -1;
+    GLint mSatFineMaskLoc = -1;
+    GLint mSatMidMaskLoc = -1;
+    GLint mSatWideMaskLoc = -1;
+    GLint mSatFineZoomLoc = -1;
+    GLint mSatMidZoomLoc = -1;
+    GLint mSatWideZoomLoc = -1;
+    GLint mSatFineGridLoc = -1;
+    GLint mSatFineBitsLoc = -1;
+    GLint mSatMidGridLoc = -1;
+    GLint mSatMidBitsLoc = -1;
     bool mOpenAipOverlay = false;
     static std::unordered_map<std::string, TextureData> mTextureCache; ///< Cache for loaded textures.
 
-    struct OpenAipGroundState
+    struct SatClipState
     {
         bool active = false;
-        GLuint texture = 0;
-        float originX = 0.0f;
-        float originY = 0.0f;
-        float tilesX = 1.0f;
-        float tilesY = 1.0f;
-        float n = 1.0f;
-        GLuint farTexture = 0;
-        float farOriginX = 0.0f;
-        float farOriginY = 0.0f;
-        float farTilesX = 1.0f;
-        float farTilesY = 1.0f;
-        float farN = 1.0f;
+        GLuint fineTex = 0;
+        GLuint midTex = 0;
+        GLuint wideTex = 0;
+        int fineOriginX = 0;
+        int fineOriginY = 0;
+        int midOriginX = 0;
+        int midOriginY = 0;
+        int wideOriginX = 0;
+        int wideOriginY = 0;
+        int fineZoom = 16;
+        int midZoom = 13;
+        int wideZoom = 11;
+        int fineGrid = 8;
+        int midGrid = 8;
+        uint32_t fineMask[8]{};
+        uint32_t midMask[8]{};
+        uint32_t wideMask0 = 0;
+        uint32_t wideMask1 = 0;
     };
-    static OpenAipGroundState sOpenAip;
+    static SatClipState sSat;
 };
 
 #endif // SHADER_H

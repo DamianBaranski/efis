@@ -44,6 +44,8 @@ private:
     void scanCell(double latitude, double longitude, std::vector<std::string> &wanted);
 
     std::unordered_map<std::string, std::unique_ptr<Model>> mAirports;
+    int mScanLat = -1000;
+    int mScanLon = -1000;
 };
 
 #endif

@@ -58,15 +58,20 @@ public:
 private:
     void ensureTexture();
     void ensureSurface();
+    void releaseCpuStore();
     void shiftOrigin(int originX, int originY);
+    bool shiftGpuTiles(int dx, int dy);
     bool blitSlot(int dx, int dy);
     void featherSeams(SDL_Surface *dest) const;
     void upload();
     void uploadTile(int dx, int dy);
+    void uploadTileFrom(SDL_Surface *tile, int dx, int dy);
     void uploadMipmaps(SDL_Surface *src);
     int countPending() const;
 
     GLuint mTexture = 0;
+    GLuint mRowTex = 0;
+    GLuint mShiftFbo = 0;
     SDL_Surface *mSurface = nullptr;
     int mOriginX = -100000;
     int mOriginY = -100000;
@@ -79,6 +84,8 @@ private:
     bool mWantOverlay = false;
     bool mReady = false;
     bool mNeedMips = false;
+    bool mReleasedCpu = false;
+    bool mUseMips = false;
     int mScan = 0;
     std::vector<unsigned char> mSlot;
 };

@@ -23,9 +23,11 @@ set(SRC
     src/ahrs_widget.cpp
     src/bucket.cpp
     src/bucket_container.cpp
+    src/terrain_download.cpp
     src/geo_coord_utils.cpp
     src/openaip_client.cpp
     src/openaip_atlas.cpp
+    src/sat_clipmap.cpp
     src/openaip_widget.cpp
     src/runway_overlay.cpp
     src/airspace_overlay.cpp
@@ -46,13 +48,16 @@ set(INC
     src/shader.h
     src/terrain_widget.h
     src/render2d.h
+    src/popup.h
     src/btg_file.h
     src/ahrs_widget.h
     src/bucket.h
     src/bucket_container.h
+    src/terrain_download.h
     src/geo_coord_utils.h
     src/openaip_client.h
     src/openaip_atlas.h
+    src/sat_clipmap.h
     src/openaip_widget.h
     src/runway_overlay.h
     src/airspace_overlay.h

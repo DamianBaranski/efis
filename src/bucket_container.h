@@ -8,6 +8,7 @@
 #include "airport_scenery.h"
 #include <vector>
 #include <memory>
+#include <unordered_set>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -26,6 +27,9 @@ public:
     /// @brief Renders all Buckets in the container using an ECEF camera.
     void render(const glm::mat4 &proj, const glm::dvec3 &eye, const glm::vec3 &forward, const glm::vec3 &up);
 
+    int loadedCount() const { return static_cast<int>(mMap.size()); }
+    int drawnCount() const { return mDrawn; }
+
 private:
     bool hasTile(float lat, float lon) const;
 
@@ -37,11 +41,13 @@ private:
     };
 
     std::vector<std::unique_ptr<Bucket>> mMap;    ///< Vector containing pointers to Buckets.
+    std::unordered_set<long> mIndices;
     AirportScenery mAirports;
     LocationData mCurrentTile;                    ///< Current location data.
-    const double kTileDistanceLimit = 500 * 1000; ///< Distance limit for tiles (500 km).
-    const float cTileSize = 0.1f;                 ///< Size of each tile in degrees.
-    /// Full width of loaded scenery. 2° = ±1°, matching download-fg-terrain.sh --radius-deg 1.
+    mutable int mDrawn = 0;
+    const double kTileDistanceLimit = 160 * 1000;
+    const float cTileSize = 0.1f;
+    /// Keep about ±1° in RAM; draw path culls to ~110 km.
     const float cTileAddingRangeDeg = 2.0f;
 };
 

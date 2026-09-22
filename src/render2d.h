@@ -44,10 +44,12 @@ public:
     /// @param size The font size.
     /// @param x The x-coordinate of the text position.
     /// @param y The y-coordinate of the text position.
-    void drawText(std::string text, float size, float x, float y, uint32_t color=0xFFFFFFFF);
+    void drawText(std::string text, float size, float x, float y, uint32_t color=0xFFFFFFFF,
+                  const std::string &cacheName = {});
 
     /// Centered text. `x`,`y` are the center of the baseline box.
-    void drawTextCentered(std::string text, float size, float x, float y, uint32_t color = 0xFFFFFFFF);
+    void drawTextCentered(std::string text, float size, float x, float y, uint32_t color = 0xFFFFFFFF,
+                          const std::string &cacheName = {});
 
     /// \brief Draws a texture on the screen.
     /// \param name The name of the texture.

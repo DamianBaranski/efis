@@ -1,44 +1,70 @@
 #version 300 es
 precision mediump float;
+precision highp int;
+precision highp sampler2DArray;
 
 in vec2 TexCoord;
 in highp vec2 GeoCoord;
 out vec4 fragColour;
 
 uniform sampler2D texSampler;
-uniform sampler2D openAipSampler;
-uniform sampler2D openAipFarSampler;
+uniform sampler2DArray satFine;
+uniform sampler2DArray satMid;
+uniform sampler2DArray satWide;
 uniform int useOpenAip;
-uniform int useOpenAipFar;
-uniform highp vec4 openAipAtlas;
-uniform highp vec4 openAipFarAtlas;
-uniform highp float openAipN;
-uniform highp float openAipFarN;
+uniform highp ivec2 satFineOrigin;
+uniform highp ivec2 satMidOrigin;
+uniform highp ivec2 satWideOrigin;
+uniform highp uint satFineBits[8];
+uniform highp uint satMidBits[8];
+uniform highp uvec2 satWideMask;
+uniform int satFineZoom;
+uniform int satMidZoom;
+uniform int satWideZoom;
+uniform int satFineGrid;
+uniform int satMidGrid;
 
-vec4 sampleAtlas(sampler2D tex, highp vec4 atlas, highp float n)
+int modN(int v, int n)
 {
-    highp vec2 tilePos = vec2(GeoCoord.x * n - atlas.x, GeoCoord.y * n - atlas.y);
-    if (tilePos.x < 0.0 || tilePos.y < 0.0 || tilePos.x >= atlas.z || tilePos.y >= atlas.w)
+    int m = v - (v / n) * n;
+    return m < 0 ? m + n : m;
+}
+
+bool resident(highp uint bits[8], int bit)
+{
+    int word = bit >> 5;
+    if (word < 0 || word >= 8)
+    {
+        return false;
+    }
+    return (bits[word] & (1u << uint(bit & 31))) != 0u;
+}
+
+vec4 sampleGrid(sampler2DArray tex, int zoom, highp ivec2 origin, int grid, highp uint bits[8])
+{
+    if (grid < 2)
     {
         return vec4(0.0);
     }
-
-    vec2 uv = tilePos / atlas.zw;
-    vec2 halfTexel = 0.5 / vec2(textureSize(tex, 0));
-    vec2 uvClamp = clamp(uv, halfTexel, vec2(1.0) - halfTexel);
-    return textureGrad(tex, uvClamp, dFdx(uv), dFdy(uv));
-}
-
-vec3 atlasRgb(vec4 sampleColour, vec3 fallback)
-{
-    if (sampleColour.a > 0.5)
+    highp float n = exp2(float(zoom));
+    highp vec2 tilePos = GeoCoord * n;
+    ivec2 tile = ivec2(floor(tilePos));
+    ivec2 rel = tile - origin;
+    if (rel.x < 0 || rel.y < 0 || rel.x >= grid || rel.y >= grid)
     {
-        return sampleColour.rgb / max(sampleColour.a, 0.001);
+        return vec4(0.0);
     }
-    return fallback;
+    if (!resident(bits, rel.x + rel.y * grid))
+    {
+        return vec4(0.0);
+    }
+    int layer = modN(tile.x, grid) + modN(tile.y, grid) * grid;
+    vec2 uv = clamp(vec2(tilePos.x - float(tile.x), tilePos.y - float(tile.y)), vec2(0.5 / 256.0), vec2(1.0 - 0.5 / 256.0));
+    return texture(tex, vec3(uv, float(layer)));
 }
 
-void main() {
+void main()
+{
     vec4 ground = texture(texSampler, TexCoord);
     if (useOpenAip == 0)
     {
@@ -46,23 +72,21 @@ void main() {
         return;
     }
 
-    vec4 farSample = vec4(0.0);
-    if (useOpenAipFar == 1)
-    {
-        farSample = sampleAtlas(openAipFarSampler, openAipFarAtlas, openAipFarN);
-    }
-    vec4 detail = sampleAtlas(openAipSampler, openAipAtlas, openAipN);
-    vec3 rgb = atlasRgb(farSample, ground.rgb);
+    highp vec2 deriv = max(abs(dFdx(GeoCoord)), abs(dFdy(GeoCoord)));
+    float pixel = max(max(deriv.x, deriv.y), 1e-12);
 
-    vec2 nearPos = vec2(GeoCoord.x * openAipN - openAipAtlas.x, GeoCoord.y * openAipN - openAipAtlas.y);
-    float inNear = step(0.0, nearPos.x) * step(0.0, nearPos.y) *
-                   step(nearPos.x, openAipAtlas.z) * step(nearPos.y, openAipAtlas.w);
-    float edge = min(min(nearPos.x, openAipAtlas.z - nearPos.x), min(nearPos.y, openAipAtlas.w - nearPos.y));
-    float fade = inNear * smoothstep(0.0, 0.8, edge);
-    if (detail.a > 0.5)
+    vec4 sat = sampleGrid(satMid, satMidZoom, satMidOrigin, satMidGrid, satMidBits);
+    vec4 fine = sampleGrid(satFine, satFineZoom, satFineOrigin, satFineGrid, satFineBits);
+    if (fine.a > 0.5 && pixel * exp2(float(satFineZoom)) * 256.0 <= 8.0)
     {
-        rgb = mix(rgb, atlasRgb(detail, rgb), fade);
+        sat = fine;
     }
-
-    fragColour = vec4(rgb, 1.0);
+    if (sat.a > 0.5)
+    {
+        fragColour = vec4(sat.rgb, 1.0);
+    }
+    else
+    {
+        fragColour = ground;
+    }
 }
