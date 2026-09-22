@@ -1,5 +1,6 @@
 #include "airport_scenery.h"
 
+#include "asset_path.h"
 #include "btg_file.h"
 #include "geo_coord_utils.h"
 #include <cmath>
@@ -77,7 +78,7 @@ bool AirportScenery::isAirportBtg(const std::string &name)
 
 void AirportScenery::scanCell(double latitude, double longitude, std::vector<std::string> &wanted)
 {
-    const std::string dir = std::string(kTerrainRoot) + cellPath(latitude, longitude);
+    const std::string dir = AssetPath::resolve("resources/terrain") + "/" + cellPath(latitude, longitude);
     DIR *handle = opendir(dir.c_str());
     if (handle == nullptr)
     {

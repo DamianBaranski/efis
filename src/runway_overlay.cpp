@@ -1,4 +1,5 @@
 #include "runway_overlay.h"
+#include "asset_path.h"
 #include "geo_coord_utils.h"
 #include <SDL_ttf.h>
 #include <algorithm>
@@ -18,8 +19,8 @@ namespace
 constexpr float kPi = 3.14159265358979323846f;
 constexpr double kNearbyMeters = 80000.0;
 constexpr double kRebuildMeters = 15000.0;
-constexpr char kCsvPath[] = "../resources/airports/airports.csv";
-constexpr char kFontPath[] = "../resources/fonts/B612Mono-Regular.ttf";
+constexpr char kCsvRel[] = "resources/airports/airports.csv";
+constexpr char kFontRel[] = "resources/fonts/B612Mono-Regular.ttf";
 constexpr uint32_t kPavement = 0x1A1A1CFF;
 constexpr uint32_t kMarking = 0xC8C8C8FF;
 
@@ -186,7 +187,7 @@ std::string labelMaterial(const std::string &label)
 }
 
 
-constexpr char kOsmPath[] = "../resources/airports/osm_runways.csv";
+constexpr char kOsmRel[] = "resources/airports/osm_runways.csv";
 
 struct OsmWay
 {
@@ -245,7 +246,7 @@ bool osmRefMatches(const std::string &osmRef, const std::string &designator)
 std::vector<OsmWay> loadOsmWays()
 {
     std::vector<OsmWay> ways;
-    std::ifstream file(kOsmPath);
+    std::ifstream file(AssetPath::resolve(kOsmRel));
     if (!file)
     {
         return ways;
@@ -334,10 +335,11 @@ RunwayOverlay::RunwayOverlay()
 
 void RunwayOverlay::loadCatalog()
 {
-    std::ifstream file(kCsvPath);
+    const std::string csvPath = AssetPath::resolve(kCsvRel);
+    std::ifstream file(csvPath);
     if (!file)
     {
-        std::cerr << "Runway overlay: missing " << kCsvPath << std::endl;
+        std::cerr << "Runway overlay: missing " << csvPath << std::endl;
         return;
     }
 
@@ -466,7 +468,7 @@ void RunwayOverlay::loadCatalog()
     }
 
     mCatalog = std::move(primaries);
-    std::cout << "Runway overlay loaded " << mCatalog.size() << " strips from " << kCsvPath << std::endl;
+    std::cout << "Runway overlay loaded " << mCatalog.size() << " strips from " << csvPath << std::endl;
 }
 
 void RunwayOverlay::update(double latitude, double longitude)
@@ -635,10 +637,11 @@ bool RunwayOverlay::ensureLabelTexture(const std::string &label)
         std::cerr << "Runway overlay: TTF_Init failed" << std::endl;
         return false;
     }
-    TTF_Font *font = TTF_OpenFont(kFontPath, 96);
+    const std::string fontPath = AssetPath::resolve(kFontRel);
+    TTF_Font *font = TTF_OpenFont(fontPath.c_str(), 96);
     if (!font)
     {
-        std::cerr << "Runway overlay: font missing " << kFontPath << std::endl;
+        std::cerr << "Runway overlay: font missing " << fontPath << std::endl;
         return false;
     }
     TTF_SetFontStyle(font, TTF_STYLE_BOLD);

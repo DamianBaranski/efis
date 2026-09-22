@@ -44,7 +44,6 @@ private:
     void scanCell(double latitude, double longitude, std::vector<std::string> &wanted);
 
     std::unordered_map<std::string, std::unique_ptr<Model>> mAirports;
-    static constexpr char const kTerrainRoot[] = "../resources/terrain/";
 };
 
 #endif

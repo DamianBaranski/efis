@@ -1,5 +1,7 @@
 #include "screen.h"
+#include "asset_path.h"
 #include "GLES3/gl3.h"
+#include <algorithm>
 
 Screen *Screen::instance = nullptr;
 
@@ -12,18 +14,38 @@ Screen::Screen(int width, int height) : mWidth(width), mHeight(height)
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
 
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-
-    // Enable anti-aliasing
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
-    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4); // Adjust the sample count as needed
+    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
 
     if (SDL_Init(SDL_INIT_VIDEO) < 0)
     {
         std::cerr << "SDL initialization failed: " << SDL_GetError() << std::endl;
         exit(1);
     }
+    AssetPath::init();
 
-    mWindow = SDL_CreateWindow("Screen", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
+#ifdef __ANDROID__
+    SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
+    SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
+    SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
+    SDL_DisplayMode mode{};
+    if (SDL_GetDesktopDisplayMode(0, &mode) == 0 && mode.w > 0 && mode.h > 0)
+    {
+        width = std::max(mode.w, mode.h);
+        height = std::min(mode.w, mode.h);
+    }
+    const Uint32 flags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_RESIZABLE;
+#else
+    const Uint32 flags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN;
+#endif
+
+    mWindow = SDL_CreateWindow("EFIS", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, flags);
+    if (!mWindow)
+    {
+        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
+        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
+        mWindow = SDL_CreateWindow("EFIS", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, flags);
+    }
     if (!mWindow)
     {
         std::cerr << "SDL window creation failed: " << SDL_GetError() << std::endl;
@@ -31,6 +53,7 @@ Screen::Screen(int width, int height) : mWidth(width), mHeight(height)
     }
 
     mContext = SDL_GL_CreateContext(mWindow);
+    syncSize();
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
@@ -63,10 +86,43 @@ void Screen::registerController(IRenderer *controller)
     mRenderers.insert(mRenderers.begin(), controller);
 }
 
+void Screen::syncSize()
+{
+    int w = 0;
+    int h = 0;
+    SDL_GL_GetDrawableSize(mWindow, &w, &h);
+    if (w <= 0 || h <= 0)
+    {
+        SDL_GetWindowSize(mWindow, &w, &h);
+    }
+    if (w > 0 && h > 0 && (w != mWidth || h != mHeight))
+    {
+        mWidth = w;
+        mHeight = h;
+        std::cout << "Window " << mWidth << "x" << mHeight << std::endl;
+    }
+    if (mWidth > 0 && mHeight > 0)
+    {
+        glViewport(0, 0, mWidth, mHeight);
+    }
+}
+
+bool Screen::acceptTouch()
+{
+    const uint64_t now = SDL_GetTicks64();
+    if (now < mTouchReadyAt || now - mLastTouchMs < 120)
+    {
+        return false;
+    }
+    mLastTouchMs = now;
+    return true;
+}
+
 void Screen::mainLoop()
 {
     int i = 0;
     uint64_t start = SDL_GetTicks64();
+    mTouchReadyAt = start + 2000;
     bool quit = false;
     while (!quit)
     {
@@ -78,6 +134,14 @@ void Screen::mainLoop()
             {
             case SDL_QUIT:
                 quit = true;
+                break;
+
+            case SDL_WINDOWEVENT:
+                if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED ||
+                    event.window.event == SDL_WINDOWEVENT_RESIZED)
+                {
+                    syncSize();
+                }
                 break;
 
             case SDL_KEYDOWN:
@@ -95,6 +159,7 @@ void Screen::mainLoop()
                 }
                 break;
 
+#ifndef __ANDROID__
             case SDL_MOUSEBUTTONDOWN:
                 for (auto renderer : mRenderers)
                 {
@@ -104,6 +169,25 @@ void Screen::mainLoop()
                     }
                 }
                 break;
+#else
+            case SDL_FINGERDOWN:
+            {
+                if (!acceptTouch())
+                {
+                    break;
+                }
+                const int x = static_cast<int>(event.tfinger.x * static_cast<float>(mWidth));
+                const int y = static_cast<int>(event.tfinger.y * static_cast<float>(mHeight));
+                for (auto renderer : mRenderers)
+                {
+                    if (renderer->mouseClick(x, y))
+                    {
+                        break;
+                    }
+                }
+                break;
+            }
+#endif
             }
         }
         render();
@@ -136,6 +220,7 @@ void Screen::displayWrapper()
 
 void Screen::render()
 {
+    syncSize();
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClearDepthf(1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);

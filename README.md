@@ -95,6 +95,16 @@ python3 scripts/download-airspaces.py --country PL,CZ
 
 Output: `resources/airspaces/pl_asp.geojson`, `cz_asp.geojson`. Console logs `inside …` / `left …` when the aircraft enters or leaves a volume.
 
+## Visual reporting points
+
+OpenAIP country JSON (`{cc}_rpp.json`) supplies VFR reporting points: name, lat/lon, MSL elevation, and a compulsory flag. F2/F3/F4 draw nearby points as a magenta triangle (compulsory) or octagon (optional), a short mast, and a name plate.
+
+```
+python3 scripts/download-vrp.py --country PL,CZ
+```
+
+Output: `resources/vrp/pl_rpp.json`, `cz_rpp.json`.
+
 ## Running
 
 ```
@@ -121,6 +131,41 @@ python3 scripts/stratux-sim.py --port 5000
 - `Esc` quit
 - Sim only: arrows pitch/roll, `Q`/`E` heading, `W`/`S` speed, `+`/`-` altitude, `R` reset attitude
 
+
+## Android
+
+The 3D view is already OpenGL ES 3.0 + SDL2. The Android tree builds `libmain.so` and packs fonts, UI, airspaces, VRPs, and shaders. FlightGear tiles and BTG landclass textures stay off the APK (they are large).
+
+One-time setup (downloads SDK/NDK, SDL, and the Gradle wrapper into `android/`):
+
+```
+./android/setup.sh
+export JAVA_HOME="$PWD/android/jdk"
+cd android && ./gradlew assembleDebug
+```
+
+Install on a device or start the local emulator (KVM x86_64 AVD, GLES host GPU):
+
+```
+./android/run-emulator.sh
+```
+
+That creates `android/avd/efis`, boots it, installs `app-debug.apk`, and launches EFIS. The APK includes `arm64-v8a` (phones) and `x86_64` (this emulator).
+
+Manual install:
+
+```
+adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+Optional scenery on device (same layout as the desktop tree). The APK skips tiles
+and BTG landclass PNGs to stay small; without them the map is skybox-only:
+
+```
+./android/push-scenery.sh
+```
+
+Touch: tap cycles F1–F4 views; tap the top strip toggles airspaces. The first APK uses the in-process sim (no Stratux HTTP yet).
 
 ## Building and Running
 

@@ -1,8 +1,11 @@
 #include "ahrs_widget.h"
 #include "app_controller.h"
 #include "data_manager_sim.h"
+#ifndef EFIS_ANDROID
 #include "data_manager_stratux.h"
+#endif
 #include "screen.h"
+#include "sdl_compat.h"
 #include <iostream>
 #include <memory>
 #include <string>
@@ -59,8 +62,15 @@ int main(int argc, char **argv)
     }
     else
     {
+#ifdef EFIS_ANDROID
+        auto simulated = std::make_unique<DataManagerSim>();
+        sim = simulated.get();
+        dataManager = std::move(simulated);
+        std::cout << "Data source: simulated Stratux (Android)" << std::endl;
+#else
         dataManager = std::make_unique<DataManagerStratux>();
         std::cout << "Data source: Stratux HTTP" << std::endl;
+#endif
     }
 
     TerrainWidget terrainWidget(screen, *dataManager);

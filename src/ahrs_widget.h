@@ -36,6 +36,9 @@ public:
     void setDrawSkyGround(bool draw) { mDrawSkyGround = draw; }
 
 private:
+    void rebuildSprites();
+    float hudScale() const;
+
     /// \brief Updates the internal renderers based on the new attitude data.
     void updateRenderers();
 
@@ -51,6 +54,10 @@ private:
     bool mAttitudeDataUpdated;
     bool mDrawSkyGround = true;
     int mAttitudeY;
+    int mLayoutX = 0;
+    int mLayoutW = 0;
+    int mLayoutH = 0;
+    float mHudScale = 1.0f;
 
     static constexpr const char *cResourcesPath = "../resources/textures/ui/AHRS/"; ///< Path to the resources directory.
     static constexpr const char *cPithScaleTexture = "layer10.png";                 ///< Texture file for the pitch scale.
@@ -60,7 +67,8 @@ private:
     static constexpr const char *cAircraftSymbolTexture = "layer11.png";            ///< Texture file for the aircraft symbol.
     static constexpr const char *cHorizonLineTexture = "layer6.png";                ///< Texture file for the horizon line.
     static constexpr const char *cLandRepresentationTexture = "layer3.png";         ///< Texture file for the land representation.
-    static constexpr float cPixelPerPitchRadians = 600 / (2*M_PI/360.0*60.0);
+    static constexpr float cDesignHeight = 600.0f;
+    static constexpr float cPixelPerPitchRadians = cDesignHeight / (2 * M_PI / 360.0f * 60.0f);
 };
 
 #endif

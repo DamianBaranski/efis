@@ -1,4 +1,7 @@
 #include "render2d.h"
+#include "asset_path.h"
+#include <algorithm>
+#include <cmath>
 #include <iostream>
 
 int Render2D::mPositionZ = 0;
@@ -58,7 +61,8 @@ void Render2D::drawText(std::string text, float size, float x, float y, uint32_t
         SDL_Quit();
         return;
     }
-    TTF_Font *font = TTF_OpenFont("../resources/fonts/B612Mono-Regular.ttf", size);
+    const std::string fontPath = AssetPath::resolve("resources/fonts/B612Mono-Regular.ttf");
+    TTF_Font *font = TTF_OpenFont(fontPath.c_str(), size);
     if (!font)
     {
         std::cerr << "Failed to load font: " << TTF_GetError() << std::endl;
@@ -91,6 +95,52 @@ void Render2D::drawText(std::string text, float size, float x, float y, uint32_t
     TTF_CloseFont(font);
 }
 
+void Render2D::drawTextCentered(std::string text, float size, float x, float y, uint32_t color)
+{
+    if (TTF_Init() != 0)
+    {
+        std::cerr << "TTF_Init" << std::endl;
+        return;
+    }
+    const std::string fontPath = AssetPath::resolve("resources/fonts/B612Mono-Regular.ttf");
+    TTF_Font *font = TTF_OpenFont(fontPath.c_str(), size);
+    if (!font)
+    {
+        std::cerr << "Failed to load font: " << TTF_GetError() << std::endl;
+        return;
+    }
+
+    SDL_Color sdlColor;
+    sdlColor.b = (color >> 24) & 0xFF;
+    sdlColor.g = (color >> 16) & 0xFF;
+    sdlColor.r = (color >> 8) & 0xFF;
+    sdlColor.a = (color >> 0) & 0xFF;
+
+    SDL_Surface *surface = TTF_RenderText_Blended(font, text.c_str(), sdlColor);
+    if (!surface)
+    {
+        std::cerr << "Failed to render text: " << TTF_GetError() << std::endl;
+        TTF_CloseFont(font);
+        return;
+    }
+    SDL_Surface *padded =
+        SDL_CreateRGBSurfaceWithFormat(0, surface->w + 2, surface->h + 2, 32, SDL_PIXELFORMAT_RGBA32);
+    if (padded)
+    {
+        SDL_FillRect(padded, nullptr, SDL_MapRGBA(padded->format, 0, 0, 0, 0));
+        SDL_Rect dst{1, 1, surface->w, surface->h};
+        SDL_SetSurfaceBlendMode(surface, SDL_BLENDMODE_NONE);
+        SDL_BlitSurface(surface, nullptr, padded, &dst);
+        SDL_FreeSurface(surface);
+        surface = padded;
+    }
+    const int width = surface->w;
+    const int height = surface->h;
+    mShader.setTexture(text, surface);
+    drawTexture(text, static_cast<int>(x) - width / 2, static_cast<int>(y) - height / 2, width, height);
+    TTF_CloseFont(font);
+}
+
 void Render2D::drawTexture(std::string name, int x, int y, int w, int h)
 {
     std::vector<VertexTexture> vertices = {
@@ -105,18 +155,26 @@ void Render2D::drawTexture(std::string name, int x, int y, int w, int h)
         vertices,
         indices,
     });
+    mShader.clearGeometry();
     mShader.setTriangles(triangles);
 }
 
 void Render2D::drawTexture(std::string name, int x, int y)
 {
+    drawTexture(name, x, y, 1.0f);
+}
+
+void Render2D::drawTexture(std::string name, int x, int y, float scale)
+{
     int width = mShader.getTextureWidth(name);
     int height = mShader.getTextureHeight(name);
-    if(width < 0 || height < 0) {
+    if (width < 0 || height < 0)
+    {
         return;
     }
-
-    drawTexture(name, x-width/2, y-height/2, width, height);
+    const int w = std::max(1, static_cast<int>(std::lround(static_cast<float>(width) * scale)));
+    const int h = std::max(1, static_cast<int>(std::lround(static_cast<float>(height) * scale)));
+    drawTexture(name, x - w / 2, y - h / 2, w, h);
 }
 
 void Render2D::drawRectangle(int x, int y, int w, int h, uint32_t rgba)

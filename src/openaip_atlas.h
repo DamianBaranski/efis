@@ -2,6 +2,7 @@
 #define OPENAIP_ATLAS_H
 
 #include <GLES3/gl3.h>
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -27,7 +28,23 @@ public:
     OpenAipAtlas(const OpenAipAtlas &) = delete;
     OpenAipAtlas &operator=(const OpenAipAtlas &) = delete;
 
+    struct Progress
+    {
+        int done = 0;
+        int total = 0;
+        size_t cpuBytes = 0;
+        size_t gpuBytes = 0;
+        bool ready = false;
+    };
+
+    static size_t cpuBytesFor(int radius);
+    static size_t gpuBytesFor(int radius);
+
+    void setLayers(bool basemap, bool overlay);
     void update(float latitude, float longitude);
+    void pump(float latitude, float longitude, int maxBlits);
+    Progress progress() const;
+    bool ready() const { return mReady; }
 
     GLuint texture() const { return mTexture; }
     float originX() const { return static_cast<float>(mOriginX); }
@@ -45,7 +62,9 @@ private:
     bool blitSlot(int dx, int dy);
     void featherSeams(SDL_Surface *dest) const;
     void upload();
+    void uploadTile(int dx, int dy);
     void uploadMipmaps(SDL_Surface *src);
+    int countPending() const;
 
     GLuint mTexture = 0;
     SDL_Surface *mSurface = nullptr;
@@ -56,6 +75,11 @@ private:
     int mZoom = 0;
     int mRadius = 0;
     std::string mBasemapLayer;
+    bool mWantBasemap = true;
+    bool mWantOverlay = false;
+    bool mReady = false;
+    bool mNeedMips = false;
+    int mScan = 0;
     std::vector<unsigned char> mSlot;
 };
 

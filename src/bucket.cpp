@@ -1,8 +1,11 @@
 #include "bucket.h"
+#include "asset_path.h"
+#include <atomic>
 #include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <iomanip>
+#include <sstream>
 #include "geo_coord_utils.h"
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -10,16 +13,19 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-Bucket::Bucket(float lat, float lon) : mLon(lon), mLat(lat), mLoaded(false)
+namespace
 {
-    std::string path = generateTilePath();
+std::atomic<int> gTerrainLoads{0};
+constexpr int kMaxTerrainLoads = 2;
+}
+
+Bucket::Bucket(float lat, float lon) : mLon(lon), mLat(lat)
+{
     mIndex = genIndex(lat, lon);
-    std::string filename = cTilePath;
-    filename += generateTilePath();
-    filename += "/" + std::to_string(mIndex) + cTileFileExt;
-    std::cout << "Loading terrain " << filename << std::endl;
+    mFilename = AssetPath::resolve("resources/terrain");
+    mFilename += "/" + generateTilePath();
+    mFilename += "/" + std::to_string(mIndex) + cTileFileExt;
     mShader.enableOpenAipOverlay(true);
-    mLoadingThread = std::thread(&Bucket::loadFile, this, filename);
 }
 
 Bucket::~Bucket()
@@ -29,12 +35,36 @@ Bucket::~Bucket()
         mLoadingThread.join();
 }
 
+void Bucket::pumpLoad()
+{
+    uint8_t expected = 0;
+    if (!mState.compare_exchange_strong(expected, 1))
+    {
+        return;
+    }
+    if (gTerrainLoads.load() >= kMaxTerrainLoads)
+    {
+        mState.store(0);
+        return;
+    }
+    ++gTerrainLoads;
+    std::cout << "Loading terrain " << mFilename << std::endl;
+    mLoadingThread = std::thread(&Bucket::loadFile, this, mFilename);
+}
+
+bool Bucket::uploadIfReady()
+{
+    if (mState.load(std::memory_order_acquire) != 2)
+    {
+        return false;
+    }
+    mShader.setTriangles(mMesh);
+    mState.store(3);
+    return true;
+}
+
 void Bucket::render()
 {
-    if (mLoaded) {
-        mShader.setTriangles(mMesh);
-        mLoaded = false;
-    }
     mShader.render();
 }
 
@@ -67,8 +97,13 @@ void Bucket::loadFile(const std::string& filename)
                              btgFile.getBoundingSphere().getCenterZ());
         mModelMat = glm::mat4(1.0f);
         appendUnderlay();
-        mLoaded = true;
+        mState.store(2, std::memory_order_release);
     }
+    else
+    {
+        mState.store(4);
+    }
+    --gTerrainLoads;
 }
 
 void Bucket::tileBounds(double &lat0, double &lat1, double &lon0, double &lon1) const
@@ -125,7 +160,7 @@ void Bucket::appendUnderlay()
 
     constexpr int kDiv = 8;
     Triangles patch;
-    patch.material = mMesh.empty() ? std::string("../resources/textures/unknown.png") : mMesh.front().material;
+    patch.material = mMesh.empty() ? AssetPath::resolve("resources/textures/unknown.png") : mMesh.front().material;
     patch.vertex.reserve(static_cast<size_t>((kDiv + 1) * (kDiv + 1) + 4 * (kDiv + 1)));
     for (int j = 0; j <= kDiv; ++j)
     {

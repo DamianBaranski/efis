@@ -46,11 +46,17 @@ public:
     /// @param y The y-coordinate of the text position.
     void drawText(std::string text, float size, float x, float y, uint32_t color=0xFFFFFFFF);
 
+    /// Centered text. `x`,`y` are the center of the baseline box.
+    void drawTextCentered(std::string text, float size, float x, float y, uint32_t color = 0xFFFFFFFF);
+
     /// \brief Draws a texture on the screen.
     /// \param name The name of the texture.
     /// \param x The x-coordinate of the texture center position.
     /// \param y The y-coordinate of the texture center position.
     void drawTexture(std::string name, int x, int y);
+
+    /// Centered draw at `scale` times the texture's native pixel size.
+    void drawTexture(std::string name, int x, int y, float scale);
 
     /// @brief Draws a texture on the screen.
     /// @param name The name of the texture.

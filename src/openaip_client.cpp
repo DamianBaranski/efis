@@ -1,9 +1,16 @@
 #include "openaip_client.h"
+#include "asset_path.h"
+#include "sdl_compat.h"
 
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#ifdef EFIS_HAS_CURL
 #include <curl/curl.h>
+#endif
+#ifdef __ANDROID__
+#include <jni.h>
+#endif
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -14,8 +21,8 @@
 namespace
 {
 constexpr char kBaseUrl[] = "https://api.tiles.openaip.net/api/data";
-constexpr char kCacheRoot[] = "../resources/openaip/cache";
-constexpr char kKeyFile[] = "../resources/openaip/api.key";
+constexpr char kCacheRel[] = "resources/openaip/cache";
+constexpr char kKeyRel[] = "resources/openaip/api.key";
 
 bool fileExists(const std::string &path)
 {
@@ -38,6 +45,79 @@ void makeParentDirs(const std::string &path)
         }
     }
 }
+
+#ifdef __ANDROID__
+JavaVM *gJvm = nullptr;
+jclass gEfisActivity = nullptr;
+jmethodID gDownloadUrl = nullptr;
+
+void androidHttpInit()
+{
+    if (gDownloadUrl)
+    {
+        return;
+    }
+    JNIEnv *env = static_cast<JNIEnv *>(SDL_AndroidGetJNIEnv());
+    if (!env)
+    {
+        std::cerr << "OpenAIP: no JNI env" << std::endl;
+        return;
+    }
+    env->GetJavaVM(&gJvm);
+    jclass local = env->FindClass("com/efis/app/EfisActivity");
+    if (!local)
+    {
+        std::cerr << "OpenAIP: EfisActivity class missing" << std::endl;
+        return;
+    }
+    gEfisActivity = static_cast<jclass>(env->NewGlobalRef(local));
+    env->DeleteLocalRef(local);
+    gDownloadUrl = env->GetStaticMethodID(gEfisActivity, "downloadUrl",
+                                          "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Z");
+    if (!gDownloadUrl)
+    {
+        std::cerr << "OpenAIP: downloadUrl missing" << std::endl;
+    }
+}
+
+bool androidDownloadToFile(const std::string &url, const std::string &path, const std::string &apiKey)
+{
+    if (!gJvm || !gEfisActivity || !gDownloadUrl)
+    {
+        androidHttpInit();
+    }
+    if (!gJvm || !gEfisActivity || !gDownloadUrl)
+    {
+        return false;
+    }
+    JNIEnv *env = nullptr;
+    bool attached = false;
+    if (gJvm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) != JNI_OK)
+    {
+        if (gJvm->AttachCurrentThread(&env, nullptr) != JNI_OK || !env)
+        {
+            return false;
+        }
+        attached = true;
+    }
+    jstring jUrl = env->NewStringUTF(url.c_str());
+    jstring jPath = env->NewStringUTF(path.c_str());
+    jstring jKey = env->NewStringUTF(apiKey.c_str());
+    const jboolean ok = env->CallStaticBooleanMethod(gEfisActivity, gDownloadUrl, jUrl, jPath, jKey);
+    if (env->ExceptionCheck())
+    {
+        env->ExceptionClear();
+    }
+    env->DeleteLocalRef(jUrl);
+    env->DeleteLocalRef(jPath);
+    env->DeleteLocalRef(jKey);
+    if (attached)
+    {
+        gJvm->DetachCurrentThread();
+    }
+    return ok == JNI_TRUE;
+}
+#endif
 
 std::string trim(std::string value)
 {
@@ -75,6 +155,7 @@ std::string loadKey(const char *envName, const char *path)
     return readKeyFile(path);
 }
 
+#ifdef EFIS_HAS_CURL
 size_t writeFile(char *ptr, size_t size, size_t nmemb, void *userdata)
 {
     auto *out = static_cast<std::ofstream *>(userdata);
@@ -82,6 +163,7 @@ size_t writeFile(char *ptr, size_t size, size_t nmemb, void *userdata)
     out->write(ptr, static_cast<std::streamsize>(bytes));
     return out->good() ? bytes : 0;
 }
+#endif
 }
 
 OpenAipClient &OpenAipClient::instance()
@@ -90,13 +172,19 @@ OpenAipClient &OpenAipClient::instance()
     return client;
 }
 
-OpenAipClient::OpenAipClient() : mCacheRoot(kCacheRoot)
+OpenAipClient::OpenAipClient() : mCacheRoot(AssetPath::resolve(kCacheRel))
 {
+#ifdef EFIS_HAS_CURL
     curl_global_init(CURL_GLOBAL_DEFAULT);
-    mApiKey = loadKey("OPENAIP_API_KEY", kKeyFile);
+#endif
+#ifdef __ANDROID__
+    androidHttpInit();
+#endif
+    const std::string keyPath = AssetPath::resolve(kKeyRel);
+    mApiKey = loadKey("OPENAIP_API_KEY", keyPath.c_str());
     if (mApiKey.empty())
     {
-        std::cerr << "OpenAIP: no API key (set OPENAIP_API_KEY or " << kKeyFile << ")" << std::endl;
+        std::cerr << "OpenAIP: no API key (set OPENAIP_API_KEY or " << keyPath << ")" << std::endl;
     }
     else
     {
@@ -107,7 +195,7 @@ OpenAipClient::OpenAipClient() : mCacheRoot(kCacheRoot)
 
 std::string OpenAipClient::loadApiKey() const
 {
-    return loadKey("OPENAIP_API_KEY", kKeyFile);
+    return loadKey("OPENAIP_API_KEY", AssetPath::resolve(kKeyRel).c_str());
 }
 
 std::pair<int, int> OpenAipClient::latLonToTile(float latitude, float longitude, int zoom)
@@ -158,6 +246,15 @@ std::string OpenAipClient::cachePath(int z, int x, int y, const std::string &lay
 
 bool OpenAipClient::downloadToFile(const std::string &url, const std::string &path, bool sendApiKey) const
 {
+#ifdef __ANDROID__
+    makeParentDirs(path);
+    return androidDownloadToFile(url, path, sendApiKey ? mApiKey : std::string());
+#elif !defined(EFIS_HAS_CURL)
+    (void)url;
+    (void)path;
+    (void)sendApiKey;
+    return false;
+#else
     makeParentDirs(path);
     const std::string tmp = path + ".part";
     std::ofstream out(tmp, std::ios::binary);
@@ -212,6 +309,7 @@ bool OpenAipClient::downloadToFile(const std::string &url, const std::string &pa
         return false;
     }
     return true;
+#endif
 }
 
 std::string OpenAipClient::fetchTile(int z, int x, int y, const std::string &layer)

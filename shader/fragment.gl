@@ -1,7 +1,8 @@
-#version 330 core
+#version 300 es
+precision mediump float;
 
 in vec2 TexCoord;
-in vec2 GeoCoord;
+in highp vec2 GeoCoord;
 out vec4 fragColour;
 
 uniform sampler2D texSampler;
@@ -9,14 +10,14 @@ uniform sampler2D openAipSampler;
 uniform sampler2D openAipFarSampler;
 uniform int useOpenAip;
 uniform int useOpenAipFar;
-uniform vec4 openAipAtlas;
-uniform vec4 openAipFarAtlas;
-uniform float openAipN;
-uniform float openAipFarN;
+uniform highp vec4 openAipAtlas;
+uniform highp vec4 openAipFarAtlas;
+uniform highp float openAipN;
+uniform highp float openAipFarN;
 
-vec4 sampleAtlas(sampler2D tex, vec4 atlas, float n)
+vec4 sampleAtlas(sampler2D tex, highp vec4 atlas, highp float n)
 {
-    vec2 tilePos = vec2(GeoCoord.x * n - atlas.x, GeoCoord.y * n - atlas.y);
+    highp vec2 tilePos = vec2(GeoCoord.x * n - atlas.x, GeoCoord.y * n - atlas.y);
     if (tilePos.x < 0.0 || tilePos.y < 0.0 || tilePos.x >= atlas.z || tilePos.y >= atlas.w)
     {
         return vec4(0.0);
@@ -45,14 +46,13 @@ void main() {
         return;
     }
 
-    const vec3 kFallback = vec3(0.23, 0.30, 0.20);
     vec4 farSample = vec4(0.0);
     if (useOpenAipFar == 1)
     {
         farSample = sampleAtlas(openAipFarSampler, openAipFarAtlas, openAipFarN);
     }
     vec4 detail = sampleAtlas(openAipSampler, openAipAtlas, openAipN);
-    vec3 rgb = atlasRgb(farSample, kFallback);
+    vec3 rgb = atlasRgb(farSample, ground.rgb);
 
     vec2 nearPos = vec2(GeoCoord.x * openAipN - openAipAtlas.x, GeoCoord.y * openAipN - openAipAtlas.y);
     float inNear = step(0.0, nearPos.x) * step(0.0, nearPos.y) *

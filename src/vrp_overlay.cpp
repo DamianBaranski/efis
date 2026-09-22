@@ -1,4 +1,5 @@
 #include "vrp_overlay.h"
+#include "asset_path.h"
 #include "geo_coord_utils.h"
 #include <SDL_ttf.h>
 #include <algorithm>
@@ -23,8 +24,8 @@ constexpr float kMastH = 60.0f;
 constexpr float kMastW = 2.4f;
 constexpr float kTextH = 32.0f;
 constexpr float kGroundBiasM = 2.5f;
-constexpr char kVrpDir[] = "../resources/vrp";
-constexpr char kFontPath[] = "../resources/fonts/B612Mono-Regular.ttf";
+constexpr char kVrpRel[] = "resources/vrp";
+constexpr char kFontRel[] = "resources/fonts/B612Mono-Regular.ttf";
 constexpr uint32_t kCompulsory = 0xD01870FF;
 constexpr uint32_t kOptional = 0xD01870AA;
 
@@ -90,10 +91,10 @@ VrpOverlay::VrpOverlay()
 void VrpOverlay::loadCatalog()
 {
     namespace fs = std::filesystem;
-    const fs::path dir(kVrpDir);
+    const fs::path dir(AssetPath::resolve(kVrpRel));
     if (!fs::exists(dir) || !fs::is_directory(dir))
     {
-        std::cerr << "VRP overlay: missing " << kVrpDir << std::endl;
+        std::cerr << "VRP overlay: missing " << dir << std::endl;
         return;
     }
     for (const auto &entry : fs::directory_iterator(dir))
@@ -103,7 +104,7 @@ void VrpOverlay::loadCatalog()
             loadJson(entry.path().string());
         }
     }
-    std::cout << "VRP overlay loaded " << mCatalog.size() << " points from " << kVrpDir << std::endl;
+    std::cout << "VRP overlay loaded " << mCatalog.size() << " points from " << dir << std::endl;
 }
 
 void VrpOverlay::loadJson(const std::string &path)
@@ -351,10 +352,11 @@ bool VrpOverlay::ensureLabelTexture(const std::string &name)
         std::cerr << "VRP overlay: TTF_Init failed" << std::endl;
         return false;
     }
-    TTF_Font *font = TTF_OpenFont(kFontPath, 96);
+    const std::string fontPath = AssetPath::resolve(kFontRel);
+    TTF_Font *font = TTF_OpenFont(fontPath.c_str(), 96);
     if (!font)
     {
-        std::cerr << "VRP overlay: font missing " << kFontPath << std::endl;
+        std::cerr << "VRP overlay: font missing " << fontPath << std::endl;
         return false;
     }
     TTF_SetFontStyle(font, TTF_STYLE_BOLD);

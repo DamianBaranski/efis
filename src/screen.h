@@ -4,7 +4,8 @@
 #ifndef SCREEN_H
 #define SCREEN_H
 
-#include <SDL2/SDL.h>
+#include "sdl_compat.h"
+#include <cstdint>
 #include <iostream>
 #include <vector>
 
@@ -74,12 +75,16 @@ private:
 
     /// \brief Displays the contents of the screen.
     void render();
+    void syncSize();
+    bool acceptTouch();
 
     int mWidth;                          ///< The width of the screen.
     int mHeight;                         ///< The height of the screen.
     SDL_Window *mWindow = nullptr;       ///< The SDL window associated with the screen.
     SDL_GLContext mContext = nullptr;    ///< The SDL OpenGL context associated with the screen.
     std::vector<IRenderer *> mRenderers; ///< Vector of renderers registered with the screen.
+    uint64_t mTouchReadyAt = 0;
+    uint64_t mLastTouchMs = 0;
     static Screen *instance;             ///< Pointer to the current instance of Screen.
 };
 

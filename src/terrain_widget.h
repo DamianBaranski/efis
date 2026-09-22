@@ -14,6 +14,7 @@
 #include "airspace_overlay.h"
 #include "runway_overlay.h"
 #include "vrp_overlay.h"
+#include "asset_path.h"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -34,14 +35,42 @@ public:
             mLocation.altitude = 800.0f;
         }
         initSkybox();
-        mProjMat = glm::perspective(glm::radians(60.0f), (float)mScreen.getWidth() / mScreen.getHeight(), 10.0f, 250000.0f);
+        mProjW = mScreen.getWidth();
+        mProjH = mScreen.getHeight();
+        mProjMat = glm::perspective(glm::radians(60.0f), (float)mProjW / std::max(1, mProjH), 10.0f, 250000.0f);
     }
 
-    void setOpenAipGround(bool enable) { mOpenAipGround = enable; }
+    void setSatelliteGround(bool enable) { mSatelliteGround = enable; }
+
+    void setChartOverlay(bool enable) { mChartOverlay = enable; }
 
     void setAirspacesEnabled(bool enable) { mAirspacesEnabled = enable; }
 
     bool airspacesEnabled() const { return mAirspacesEnabled; }
+
+    void pumpMapPreload()
+    {
+        mLocation = mDataManager.getLocationData();
+        if (mLocation.latitude == 0.0f && mLocation.longitude == 0.0f)
+        {
+            mLocation.latitude = 50.959167f;
+            mLocation.longitude = 16.770278f;
+            mLocation.altitude = 800.0f;
+        }
+        mOpenAipNear.setLayers(true, mChartOverlay);
+        mOpenAipFar.setLayers(true, mChartOverlay);
+        if (!mOpenAipNear.ready())
+        {
+            mOpenAipNear.pump(mLocation.latitude, mLocation.longitude, 8);
+        }
+        else
+        {
+            mOpenAipFar.pump(mLocation.latitude, mLocation.longitude, 6);
+        }
+    }
+
+    OpenAipAtlas::Progress nearPreload() const { return mOpenAipNear.progress(); }
+    OpenAipAtlas::Progress farPreload() const { return mOpenAipFar.progress(); }
 
     void update(DataType type) override {
         if(type != DataType::LOCATION_DATA) {
@@ -66,6 +95,12 @@ public:
         {
             return;
         }
+        if (mScreen.getWidth() != mProjW || mScreen.getHeight() != mProjH)
+        {
+            mProjW = mScreen.getWidth();
+            mProjH = mScreen.getHeight();
+            mProjMat = glm::perspective(glm::radians(60.0f), (float)mProjW / std::max(1, mProjH), 10.0f, 250000.0f);
+        }
         mLocation = mDataManager.getLocationData();
         mMap.updateLocation(mLocation.latitude, mLocation.longitude);
         glm::dvec3 eye;
@@ -75,10 +110,9 @@ public:
         glm::vec3 geodeticUp;
         buildCamera(eye, forward, up, east, geodeticUp);
 
-        if (mOpenAipGround)
+        const bool drape = mSatelliteGround || mChartOverlay;
+        if (drape)
         {
-            mOpenAipNear.update(mLocation.latitude, mLocation.longitude);
-            mOpenAipFar.update(mLocation.latitude, mLocation.longitude);
             Shader::setOpenAipGround(true, mOpenAipNear.texture(),
                                      mOpenAipNear.originX(), mOpenAipNear.originY(),
                                      mOpenAipNear.tilesX(), mOpenAipNear.tilesY(),
@@ -159,7 +193,7 @@ private:
         constexpr int kStacks = 24;
         const float radius = 50000.0f;
         Triangles triangles;
-        triangles.material = "../resources/textures/skybox/wall.png";
+        triangles.material = AssetPath::resolve("resources/textures/skybox/wall.png");
         triangles.vertex.reserve(static_cast<size_t>(kStacks + 1) * static_cast<size_t>(kSlices + 1));
         for (int stack = 0; stack <= kStacks; ++stack)
         {
@@ -199,11 +233,14 @@ private:
     }
     mutable Shader mSkybox;
     glm::mat4 mProjMat;
+    int mProjW = 0;
+    int mProjH = 0;
     mutable BucketContainer mMap;
     IDataManager &mDataManager;
     LocationData mLocation;
     bool mLoggedPosition = false;
-    bool mOpenAipGround = false;
+    bool mSatelliteGround = false;
+    bool mChartOverlay = false;
     bool mAirspacesEnabled = true;
     OpenAipAtlas mOpenAipNear{OpenAipAtlas::kDetailZoom, OpenAipAtlas::kDetailRadius};
     OpenAipAtlas mOpenAipFar{OpenAipAtlas::kWideZoom, OpenAipAtlas::kWideRadius};

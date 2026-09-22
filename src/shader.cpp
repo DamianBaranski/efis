@@ -1,4 +1,5 @@
 #include "shader.h"
+#include "asset_path.h"
 #include <SDL.h>
 #include <SDL_image.h>
 #include <SDL_opengles2.h>
@@ -27,6 +28,20 @@ void Shader::setOpenAipGround(bool active, GLuint texture, float originX, float 
     sOpenAip.farN = farN;
 }
 
+namespace
+{
+GLuint gSharedProgram = 0;
+GLint gMvpMatrixLoc = -1;
+GLint gUseOpenAipLoc = -1;
+GLint gOpenAipSamplerLoc = -1;
+GLint gOpenAipAtlasLoc = -1;
+GLint gOpenAipNLoc = -1;
+GLint gUseOpenAipFarLoc = -1;
+GLint gOpenAipFarSamplerLoc = -1;
+GLint gOpenAipFarAtlasLoc = -1;
+GLint gOpenAipFarNLoc = -1;
+}
+
 Shader::Shader() : mShaderProgram(0)
 {
     initializeShaderProgram();
@@ -34,7 +49,6 @@ Shader::Shader() : mShaderProgram(0)
 
 Shader::~Shader()
 {
-    glDeleteProgram(mShaderProgram);
     for (auto &buffer : mBufferLocations)
     {
         glDeleteBuffers(1, &buffer.mIbo);
@@ -145,7 +159,7 @@ void Shader::setTriangles(const std::vector<Triangles> &triangles)
         GLuint texture = texLoad(object.material);
         if (!texture)
         {
-            texture = texLoad("../resources/textures/unknown.png");
+            texture = texLoad(AssetPath::resolve("resources/textures/unknown.png"));
             if (!texture)
             {
                 return;
@@ -222,8 +236,11 @@ void Shader::setTexture(const std::string &name, SDL_Surface *surface)
     }
     glBindTexture(GL_TEXTURE_2D, textureData.mTbo);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    const int bpp = rgba->format ? rgba->format->BytesPerPixel : 4;
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, bpp > 0 ? rgba->pitch / bpp : 0);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, textureData.mWidth, textureData.mHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE,
                  rgba->pixels);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
 
     GLenum err = glGetError();
     if (err != GL_NO_ERROR)
@@ -347,46 +364,58 @@ GLuint Shader::texLoad(const std::string &filename)
 
 void Shader::initializeShaderProgram()
 {
-    mShaderProgram = shaderProgLoad("../shader/vertex.gl", "../shader/fragment.gl");
+    if (!gSharedProgram)
+    {
+        gSharedProgram = shaderProgLoad(AssetPath::resolve("shader/vertex.gl"), AssetPath::resolve("shader/fragment.gl"));
+        if (!gSharedProgram)
+        {
+            return;
+        }
+        glUseProgram(gSharedProgram);
 
-    if (!mShaderProgram)
-    {
-        return;
-    }
-    glUseProgram(mShaderProgram);
+        gMvpMatrixLoc = glGetUniformLocation(gSharedProgram, "mvpMatrix");
+        if (gMvpMatrixLoc < 0)
+        {
+            SDL_Log("ERROR: Couldn't get mvpMatrix's location.");
+        }
 
-    mMvpMatrixLoc = glGetUniformLocation(mShaderProgram, "mvpMatrix");
-    if (mMvpMatrixLoc < 0)
-    {
-        SDL_Log("ERROR: Couldn't get mvpMatrix's location.");
-        return;
+        gUseOpenAipLoc = glGetUniformLocation(gSharedProgram, "useOpenAip");
+        gOpenAipSamplerLoc = glGetUniformLocation(gSharedProgram, "openAipSampler");
+        gOpenAipAtlasLoc = glGetUniformLocation(gSharedProgram, "openAipAtlas");
+        gOpenAipNLoc = glGetUniformLocation(gSharedProgram, "openAipN");
+        gUseOpenAipFarLoc = glGetUniformLocation(gSharedProgram, "useOpenAipFar");
+        gOpenAipFarSamplerLoc = glGetUniformLocation(gSharedProgram, "openAipFarSampler");
+        gOpenAipFarAtlasLoc = glGetUniformLocation(gSharedProgram, "openAipFarAtlas");
+        gOpenAipFarNLoc = glGetUniformLocation(gSharedProgram, "openAipFarN");
+        if (gOpenAipSamplerLoc >= 0)
+        {
+            glUniform1i(gOpenAipSamplerLoc, 1);
+        }
+        if (gOpenAipFarSamplerLoc >= 0)
+        {
+            glUniform1i(gOpenAipFarSamplerLoc, 2);
+        }
+        GLint texSamplerUniformLoc = glGetUniformLocation(gSharedProgram, "texSampler");
+        if (texSamplerUniformLoc >= 0)
+        {
+            glUniform1i(texSamplerUniformLoc, 0);
+        }
+        if (gUseOpenAipLoc >= 0)
+        {
+            glUniform1i(gUseOpenAipLoc, 0);
+        }
     }
 
-    mUseOpenAipLoc = glGetUniformLocation(mShaderProgram, "useOpenAip");
-    mOpenAipSamplerLoc = glGetUniformLocation(mShaderProgram, "openAipSampler");
-    mOpenAipAtlasLoc = glGetUniformLocation(mShaderProgram, "openAipAtlas");
-    mOpenAipNLoc = glGetUniformLocation(mShaderProgram, "openAipN");
-    mUseOpenAipFarLoc = glGetUniformLocation(mShaderProgram, "useOpenAipFar");
-    mOpenAipFarSamplerLoc = glGetUniformLocation(mShaderProgram, "openAipFarSampler");
-    mOpenAipFarAtlasLoc = glGetUniformLocation(mShaderProgram, "openAipFarAtlas");
-    mOpenAipFarNLoc = glGetUniformLocation(mShaderProgram, "openAipFarN");
-    if (mOpenAipSamplerLoc >= 0)
-    {
-        glUniform1i(mOpenAipSamplerLoc, 1);
-    }
-    if (mOpenAipFarSamplerLoc >= 0)
-    {
-        glUniform1i(mOpenAipFarSamplerLoc, 2);
-    }
-    GLint texSamplerUniformLoc = glGetUniformLocation(mShaderProgram, "texSampler");
-    if (texSamplerUniformLoc >= 0)
-    {
-        glUniform1i(texSamplerUniformLoc, 0);
-    }
-    if (mUseOpenAipLoc >= 0)
-    {
-        glUniform1i(mUseOpenAipLoc, 0);
-    }
+    mShaderProgram = gSharedProgram;
+    mMvpMatrixLoc = gMvpMatrixLoc;
+    mUseOpenAipLoc = gUseOpenAipLoc;
+    mOpenAipSamplerLoc = gOpenAipSamplerLoc;
+    mOpenAipAtlasLoc = gOpenAipAtlasLoc;
+    mOpenAipNLoc = gOpenAipNLoc;
+    mUseOpenAipFarLoc = gUseOpenAipFarLoc;
+    mOpenAipFarSamplerLoc = gOpenAipFarSamplerLoc;
+    mOpenAipFarAtlasLoc = gOpenAipFarAtlasLoc;
+    mOpenAipFarNLoc = gOpenAipFarNLoc;
 }
 
 GLuint Shader::iboCreate(const std::vector<GLuint> &indices)

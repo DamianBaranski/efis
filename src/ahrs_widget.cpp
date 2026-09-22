@@ -1,5 +1,7 @@
 #include "ahrs_widget.h"
+#include "asset_path.h"
 #include <GLES3/gl3.h>
+#include <algorithm>
 
 AhrsWidget::AhrsWidget(Screen &screen, IDataManager &dataManager) : IWidget(screen),
                                                                     mDataManager(dataManager),
@@ -15,14 +17,45 @@ AhrsWidget::AhrsWidget(Screen &screen, IDataManager &dataManager) : IWidget(scre
                                                                     mAttitudeY(screen.getHeight() / 2)
 {
     mDataManager.attach(this, DataType::ATTITUDE_DATA);
-    const int x = screen.getWidth() / 2;
-    mLandRepresentation.drawTexture(std::string(cResourcesPath) + std::string(cLandRepresentationTexture), x, mAttitudeY);
-    mHorizonLine.drawTexture(std::string(cResourcesPath) + std::string(cHorizonLineTexture), x, mAttitudeY);
-    mPithScale.drawTexture(std::string(cResourcesPath) + std::string(cPithScaleTexture), x, mAttitudeY);
-    mRollPointer.drawTexture(std::string(cResourcesPath) + std::string(cRollPointerTexture), x, mAttitudeY);
-    mSkipSkidIndicator.drawTexture(std::string(cResourcesPath) + std::string(cSkipSkidIndicatorTexture), x, mAttitudeY);
-    mAttitudeIndicator.drawTexture(std::string(cResourcesPath) + std::string(cAttitudeIndicatorTexture), x, mAttitudeY);
-    mAircraftSymbol.drawTexture(std::string(cResourcesPath) + std::string(cAircraftSymbolTexture), x, mAttitudeY);
+    rebuildSprites();
+}
+
+float AhrsWidget::hudScale() const
+{
+    const int h = mScreen.getHeight();
+    if (h <= 0)
+    {
+        return 1.0f;
+    }
+    return static_cast<float>(h) / cDesignHeight;
+}
+
+void AhrsWidget::rebuildSprites()
+{
+    const int w = mScreen.getWidth();
+    const int h = mScreen.getHeight();
+    const int cx = w / 2;
+    const int cy = h / 2;
+    // PC art is authored for a 600px-tall window. Grow the tape if the
+    // 2048px-wide sky/ground would still leave the sides uncovered.
+    const float designScale = hudScale();
+    const float scale = std::max(designScale, w > 0 ? static_cast<float>(w) / 2048.0f : designScale);
+
+    mLayoutX = cx;
+    mAttitudeY = cy;
+    mLayoutW = w;
+    mLayoutH = h;
+    mHudScale = scale;
+
+    const std::string ahrsDir = AssetPath::resolve("resources/textures/ui/AHRS") + "/";
+    mLandRepresentation.drawTexture(ahrsDir + std::string(cLandRepresentationTexture), cx, cy, scale);
+    mHorizonLine.drawTexture(ahrsDir + std::string(cHorizonLineTexture), cx, cy, scale);
+    mPithScale.drawTexture(ahrsDir + std::string(cPithScaleTexture), cx, cy, scale);
+    mRollPointer.drawTexture(ahrsDir + std::string(cRollPointerTexture), cx, cy, scale);
+    mSkipSkidIndicator.drawTexture(ahrsDir + std::string(cSkipSkidIndicatorTexture), cx, cy, scale);
+    mAttitudeIndicator.drawTexture(ahrsDir + std::string(cAttitudeIndicatorTexture), cx, cy, scale);
+    mAircraftSymbol.drawTexture(ahrsDir + std::string(cAircraftSymbolTexture), cx, cy, scale);
+    mAttitudeDataUpdated = true;
 }
 
 void AhrsWidget::render()
@@ -30,6 +63,10 @@ void AhrsWidget::render()
     if (!mEnabled)
     {
         return;
+    }
+    if (mScreen.getWidth() != mLayoutW || mScreen.getHeight() != mLayoutH)
+    {
+        rebuildSprites();
     }
     updateRenderers();
 
@@ -76,7 +113,7 @@ void AhrsWidget::updateRenderers()
         return;
     }
 
-    float pitchPixels = -mAttitudeData.pitch * cPixelPerPitchRadians;
+    float pitchPixels = -mAttitudeData.pitch * cPixelPerPitchRadians * mHudScale;
     float rotationCenterX = mScreen.getWidth() / 2;
     float rotationCenterY = static_cast<float>(mAttitudeY);
     glm::mat4 trans(1.0);
@@ -86,6 +123,9 @@ void AhrsWidget::updateRenderers()
     trans = glm::translate(trans, glm::vec3(-rotationCenterX, -rotationCenterY, 0));
 
     mAttitudeIndicator.setTransformationMatrix(trans);
+    mRollPointer.setTransformationMatrix(glm::mat4(1.0));
+    mSkipSkidIndicator.setTransformationMatrix(glm::mat4(1.0));
+    mAircraftSymbol.setTransformationMatrix(glm::mat4(1.0));
 
     trans = glm::translate(trans, glm::vec3(0, pitchPixels, 0));
     mHorizonLine.setTransformationMatrix(trans);

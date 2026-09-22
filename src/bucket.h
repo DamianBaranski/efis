@@ -22,6 +22,12 @@ public:
     /// @brief Destructor for Bucket class.
     ~Bucket();
 
+    /// Starts the file thread when a load slot is free.
+    void pumpLoad();
+
+    /// Uploads CPU mesh to the GPU at most once. Returns true if this call uploaded.
+    bool uploadIfReady();
+
     /// @brief Renders the bucket.
     void render();
 
@@ -68,12 +74,12 @@ private:
     glm::dvec3 mCenter{0.0};
     Shader mShader;               ///< Shader for rendering the bucket.
     long int mIndex;              ///< Index of the bucket.
+    std::string mFilename;
     std::thread mLoadingThread;   ///< Thread for loading terrain data.
-    std::atomic<uint8_t> mLoaded; ///< Atomic flag indicating whether terrain data is loaded.
+    std::atomic<uint8_t> mState{0}; ///< 0 idle, 1 loading, 2 cpu ready, 3 gpu ready.
     std::vector<Triangles> mMesh; ///< Mesh representing the terrain geometry.
 
-    static constexpr char const cTilePath[] = "../resources/terrain/"; ///< Path to the terrain tiles.
-    static constexpr char const cTileFileExt[] = ".btg.gz";            ///< File extension for terrain tiles.
+    static constexpr char const cTileFileExt[] = ".btg.gz"; ///< File extension for terrain tiles.
 };
 
 #endif // BUCKET_H

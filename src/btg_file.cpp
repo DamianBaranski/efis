@@ -1,4 +1,5 @@
 #include "btg_file.h"
+#include "asset_path.h"
 #include "geo_coord_utils.h"
 
 bool BtgFile::load(const std::string &filename)
@@ -115,7 +116,7 @@ std::vector<Triangles> BtgFile::generateTriangles()
     Triangles triangle;
     for (auto obj : mVerticesIdxs)
     {
-        triangle.material = std::string("../resources/textures/btg/") + obj.first + std::string(".png");
+        triangle.material = AssetPath::resolve(std::string("resources/textures/btg/") + obj.first + ".png");
         for (size_t i = 0; i < obj.second.size(); i++)
         {
             if(static_cast<size_t>(obj.second[i].vertexIndex)>=mVertices.getSize() ||

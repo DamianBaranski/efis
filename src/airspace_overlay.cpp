@@ -1,4 +1,5 @@
 #include "airspace_overlay.h"
+#include "asset_path.h"
 #include "geo_coord_utils.h"
 #include <SDL_ttf.h>
 #include <algorithm>
@@ -31,9 +32,9 @@ constexpr double kFollowMaxMps = 70.0;
 constexpr double kRedrawAlongM = 25.0;
 constexpr float kAhrsHalfW = 240.0f;
 constexpr float kAhrsHalfH = 260.0f;
-constexpr char kAirspaceDir[] = "../resources/airspaces";
-constexpr char kAirportCsv[] = "../resources/airports/airports.csv";
-constexpr char kFontPath[] = "../resources/fonts/B612Mono-Regular.ttf";
+constexpr char kAirspaceRel[] = "resources/airspaces";
+constexpr char kAirportCsvRel[] = "resources/airports/airports.csv";
+constexpr char kFontRel[] = "resources/fonts/B612Mono-Regular.ttf";
 
 const std::unordered_set<int> kDrawTypes{1, 2, 3, 4, 5, 6, 7, 13, 14};
 
@@ -547,7 +548,7 @@ AirspaceOverlay::AirspaceOverlay()
 
 void AirspaceOverlay::loadAirportElev()
 {
-    std::ifstream file(kAirportCsv);
+    std::ifstream file(AssetPath::resolve(kAirportCsvRel));
     if (!file)
     {
         return;
@@ -609,10 +610,10 @@ float AirspaceOverlay::nearestGroundM(double lat, double lon) const
 void AirspaceOverlay::loadCatalog()
 {
     namespace fs = std::filesystem;
-    const fs::path dir(kAirspaceDir);
+    const fs::path dir(AssetPath::resolve(kAirspaceRel));
     if (!fs::exists(dir) || !fs::is_directory(dir))
     {
-        std::cerr << "Airspace overlay: missing " << kAirspaceDir << std::endl;
+        std::cerr << "Airspace overlay: missing " << dir << std::endl;
         return;
     }
     for (const auto &entry : fs::directory_iterator(dir))
@@ -623,7 +624,7 @@ void AirspaceOverlay::loadCatalog()
         }
     }
     dropDuplicateRmz();
-    std::cout << "Airspace overlay loaded " << mCatalog.size() << " volumes from " << kAirspaceDir << std::endl;
+    std::cout << "Airspace overlay loaded " << mCatalog.size() << " volumes from " << dir << std::endl;
 }
 
 void AirspaceOverlay::loadGeoJson(const std::string &path)
@@ -915,10 +916,11 @@ bool AirspaceOverlay::ensureLabelTexture(const std::string &material, const std:
         std::cerr << "Airspace overlay: TTF_Init failed" << std::endl;
         return false;
     }
-    TTF_Font *font = TTF_OpenFont(kFontPath, 72);
+    const std::string fontPath = AssetPath::resolve(kFontRel);
+    TTF_Font *font = TTF_OpenFont(fontPath.c_str(), 72);
     if (!font)
     {
-        std::cerr << "Airspace overlay: font missing " << kFontPath << std::endl;
+        std::cerr << "Airspace overlay: font missing " << fontPath << std::endl;
         return false;
     }
     TTF_SetFontStyle(font, TTF_STYLE_BOLD);

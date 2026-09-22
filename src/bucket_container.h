@@ -27,11 +27,7 @@ public:
     void render(const glm::mat4 &proj, const glm::dvec3 &eye, const glm::vec3 &forward, const glm::vec3 &up);
 
 private:
-    /// @brief Checks if a Bucket exists for the given location, creates one if not.
-    /// @param lat Latitude of the location.
-    /// @param lon Longitude of the location.
-    /// @return True if a Bucket was created, false otherwise.
-    bool checkTile(float lat, float lon);
+    bool hasTile(float lat, float lon) const;
 
     /// @brief Represents the current location data.
     struct LocationData
