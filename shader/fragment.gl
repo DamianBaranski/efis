@@ -23,6 +23,7 @@ uniform int satMidZoom;
 uniform int satWideZoom;
 uniform int satFineGrid;
 uniform int satMidGrid;
+uniform vec3 colorScale;
 
 int modN(int v, int n)
 {
@@ -68,7 +69,7 @@ void main()
     vec4 ground = texture(texSampler, TexCoord);
     if (useOpenAip == 0)
     {
-        fragColour = ground;
+        fragColour = vec4(ground.rgb * colorScale, ground.a);
         return;
     }
 

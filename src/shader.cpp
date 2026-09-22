@@ -72,6 +72,7 @@ GLint gSatFineGridLoc = -1;
 GLint gSatFineBitsLoc = -1;
 GLint gSatMidGridLoc = -1;
 GLint gSatMidBitsLoc = -1;
+GLint gColorScaleLoc = -1;
 }
 
 Shader::Shader() : mShaderProgram(0)
@@ -91,6 +92,11 @@ Shader::~Shader()
 void Shader::render() const
 {
     glUseProgram(mShaderProgram);
+
+    if (mColorScaleLoc >= 0)
+    {
+        glUniform3fv(mColorScaleLoc, 1, glm::value_ptr(mColorScale));
+    }
 
     const bool overlay = mOpenAipOverlay && sSat.active && (sSat.midTex != 0 || sSat.fineTex != 0);
     if (mUseOpenAipLoc >= 0)
@@ -362,6 +368,11 @@ void Shader::setColor(const std::string &name, uint32_t rgba)
     setTexture(name, color);
 }
 
+void Shader::setColorScale(float r, float g, float b)
+{
+    mColorScale = glm::vec3(r, g, b);
+}
+
 GLuint Shader::texLoad(const std::string &filename)
 {
     auto it = mTextureCache.find(filename);
@@ -455,6 +466,7 @@ void Shader::initializeShaderProgram()
         gSatFineBitsLoc = glGetUniformLocation(gSharedProgram, "satFineBits");
         gSatMidGridLoc = glGetUniformLocation(gSharedProgram, "satMidGrid");
         gSatMidBitsLoc = glGetUniformLocation(gSharedProgram, "satMidBits");
+        gColorScaleLoc = glGetUniformLocation(gSharedProgram, "colorScale");
         if (gSatFineLoc >= 0)
         {
             glUniform1i(gSatFineLoc, 1);
@@ -475,6 +487,11 @@ void Shader::initializeShaderProgram()
         if (gUseOpenAipLoc >= 0)
         {
             glUniform1i(gUseOpenAipLoc, 0);
+        }
+        if (gColorScaleLoc >= 0)
+        {
+            const float one[3] = {1.0f, 1.0f, 1.0f};
+            glUniform3fv(gColorScaleLoc, 1, one);
         }
     }
 
@@ -497,6 +514,7 @@ void Shader::initializeShaderProgram()
     mSatFineBitsLoc = gSatFineBitsLoc;
     mSatMidGridLoc = gSatMidGridLoc;
     mSatMidBitsLoc = gSatMidBitsLoc;
+    mColorScaleLoc = gColorScaleLoc;
 }
 
 GLuint Shader::iboCreate(const std::vector<GLuint> &indices)

@@ -24,6 +24,8 @@ set(SRC
     src/bucket.cpp
     src/bucket_container.cpp
     src/terrain_download.cpp
+    src/europe_borders.cpp
+    src/europe_map.cpp
     src/geo_coord_utils.cpp
     src/openaip_client.cpp
     src/openaip_atlas.cpp
@@ -49,11 +51,14 @@ set(INC
     src/terrain_widget.h
     src/render2d.h
     src/popup.h
+    src/tab_window.h
     src/btg_file.h
     src/ahrs_widget.h
     src/bucket.h
     src/bucket_container.h
     src/terrain_download.h
+    src/europe_borders.h
+    src/europe_map.h
     src/geo_coord_utils.h
     src/openaip_client.h
     src/openaip_atlas.h

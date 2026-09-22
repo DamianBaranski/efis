@@ -56,6 +56,9 @@ public:
     /// @param rgba The color value in RGBA format.
     void setColor(const std::string &name, uint32_t rgba);
 
+    /// RGB multiply applied in the fragment shader. (1,1,1) is identity.
+    void setColorScale(float r, float g, float b);
+
     /// Terrain meshes sample the satellite clipmap when the global overlay is active.
     void enableOpenAipOverlay(bool enable) { mOpenAipOverlay = enable; }
 
@@ -133,6 +136,8 @@ private:
     GLint mSatFineBitsLoc = -1;
     GLint mSatMidGridLoc = -1;
     GLint mSatMidBitsLoc = -1;
+    GLint mColorScaleLoc = -1;
+    glm::vec3 mColorScale{1.0f, 1.0f, 1.0f};
     bool mOpenAipOverlay = false;
     static std::unordered_map<std::string, TextureData> mTextureCache; ///< Cache for loaded textures.
 

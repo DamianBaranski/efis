@@ -49,6 +49,7 @@ public:
     void setSatFarZoom(int zoom) { mSat.setMidZoom(zoom); }
     void setSatFarGrid(int grid) { mSat.setMidGrid(grid); }
     float cameraLatitude() const { return mLocation.latitude; }
+    float cameraAltitude() const { return mLocation.altitude; }
 
     void setAirspacesEnabled(bool enable) { mAirspacesEnabled = enable; }
 
@@ -146,8 +147,17 @@ public:
         const glm::mat4 skyView = glm::mat4(glm::mat3(glm::lookAt(glm::vec3(0.0f), forward, up)));
         glDisable(GL_BLEND);
         glDepthMask(GL_FALSE);
+        {
+            const float altFt = std::max(0.0f, mLocation.altitude) * 3.280839895f;
+            const float t = glm::smoothstep(10000.0f, 25000.0f, altFt);
+            const float r = glm::mix(1.0f, 0.12f, t);
+            const float g = glm::mix(1.0f, 0.16f, t);
+            const float b = glm::mix(1.0f, 0.24f, t);
+            mSkybox.setColorScale(r, g, b);
+        }
         mSkybox.setMvpMatrix(mProjMat * skyView * skyModel);
         mSkybox.render();
+        mSkybox.setColorScale(1.0f, 1.0f, 1.0f);
         glDepthMask(GL_TRUE);
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);

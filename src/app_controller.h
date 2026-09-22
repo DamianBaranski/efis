@@ -5,6 +5,8 @@
 #include "asset_path.h"
 #include "data_manager_sim.h"
 #include "popup.h"
+#include "europe_map.h"
+#include "tab_window.h"
 #include "render2d.h"
 #include "screen.h"
 #include "terrain_download.h"
@@ -45,11 +47,23 @@ enum class AipMode
     Off,
 };
 
+enum class EnrPage
+{
+    None,
+    Charts,
+    FlightPlan,
+    Nearest,
+    Weather,
+};
+
 class AppController : public IRenderer
 {
-    static constexpr int kMenuCols = 4;
-    static constexpr int kMenuRows = 4;
+    static constexpr int kMenuCols = 5;
+    static constexpr int kMenuRows = 5;
     static constexpr uint64_t kMenuTimeoutMs = 3000;
+    static constexpr uint64_t kDoubleTapMs = 450;
+    static constexpr double kFarMaxKm = 50.0;
+    static constexpr double kNearMaxKm = 10.0;
 
     struct MenuItem
     {
@@ -63,7 +77,9 @@ class AppController : public IRenderer
         {"AHRS", 0, 0, true},  {"ONLY", 0, 1, false}, {"OVRLY", 0, 2, false}, {"OFF", 0, 3, false},
         {"MAP", 1, 0, true},   {"SATT", 1, 1, false}, {"SMPL", 1, 2, false},
         {"AIP", 2, 0, true},   {"3D", 2, 1, false},   {"OVRLY", 2, 2, false}, {"OFF", 2, 3, false},
-        {"CONF", 3, 0, true}, {"STATS", 3, 1, false}, {"RENDER", 3, 2, false},
+        {"ENR", 3, 0, true},   {"CHRTS", 3, 1, false}, {"FLP", 3, 2, false}, {"NRST", 3, 3, false},
+        {"WTHR", 3, 4, false},
+        {"CONF", 4, 0, true}, {"STATS", 4, 1, false}, {"GENERAL", 4, 2, false},
     };
     static constexpr int kItemCount = static_cast<int>(sizeof(kItems) / sizeof(kItems[0]));
 
@@ -76,7 +92,7 @@ class AppController : public IRenderer
             mOwner.drawMenu();
             mOwner.drawPreload();
             mOwner.drawStats();
-            mOwner.drawRenderPopup();
+            mOwner.drawGeneralPopup();
         }
         void setPos(int, int) override {}
 
@@ -86,7 +102,7 @@ class AppController : public IRenderer
 
 public:
     AppController(Screen &screen, AhrsWidget &ahrs, TerrainWidget &terrain, DataManagerSim *sim)
-        : mScreen(screen), mAhrs(ahrs), mTerrain(terrain), mSim(sim), mRenderPopup(screen)
+        : mScreen(screen), mAhrs(ahrs), mTerrain(terrain), mSim(sim), mGeneral(screen), mEuropeMap(screen)
     {
         screen.registerController(this);
         mBoxes.reserve(static_cast<size_t>(kItemCount));
@@ -112,7 +128,7 @@ public:
         mTerrain.setSatFarZoom(mFarZoom);
         mTerrain.setSatDetailZoom(mSatZoom);
         std::cout << "Keys: 1 AHRS only, 2 AHRS off, 3 overlay, 4 sat/simple, 5 AIP, Esc quit\n";
-        std::cout << "Touch: tap anywhere for layer menu, hides after 3s idle\n";
+        std::cout << "Touch: tap for layer menu (3s), double-tap to keep it until a choice\n";
         if (mSim)
         {
             std::cout << "Sim: arrows pitch/roll, Q/E heading, W/S speed, +/- alt, R reset\n";
@@ -192,42 +208,81 @@ public:
 
     bool mouseClick(int x, int y) override
     {
-        if (mRenderOpen)
+        const uint64_t now = SDL_GetTicks64();
+        const bool doubleTap = mLastMenuTapMs != 0 && now - mLastMenuTapMs <= kDoubleTapMs;
+        mLastMenuTapMs = now;
+        if (mGeneralOpen)
         {
-            const int control = mRenderPopup.hitButton(x, y);
-            if (control >= 0)
+            const int tab = mGeneral.hitTab(x, y);
+            if (tab >= 0)
             {
-                adjustRender(control);
+                if (tab != mGeneral.activeTab())
+                {
+                    mGeneral.setActiveTab(tab);
+                    mGeneralKey.clear();
+                }
+                bumpMenuTimeout();
+                return true;
+            }
+            if (mGeneral.activeTab() == 0)
+            {
+                const int control = mGeneral.hitButton(x, y);
+                if (control >= 0)
+                {
+                    adjustRender(control);
+                    return true;
+                }
+            }
+            if (mGeneral.activeTab() == 1 && mEuropeMap.hit(x, y))
+            {
+                bumpMenuTimeout();
                 return true;
             }
             if (mMenuVisible)
             {
                 const int item = hitMenuItem(x, y);
-                if (item >= 0 && kItems[item].col == 3 && kItems[item].row == 2)
+                if (item >= 0 && kItems[item].col == 4 && kItems[item].row == 2)
                 {
-                    mRenderOpen = false;
-                    mRenderKey.clear();
+                    mGeneralOpen = false;
+                    mGeneralKey.clear();
                     bumpMenuTimeout();
                     refreshMenu();
                     return true;
                 }
             }
-            if (mRenderPopup.contains(x, y))
+            if (mGeneral.contains(x, y))
             {
                 return true;
             }
-            mRenderOpen = false;
-            mRenderKey.clear();
+            mGeneralOpen = false;
+            mGeneralKey.clear();
             refreshMenu();
             return true;
         }
         if (mMenuVisible)
         {
-            bumpMenuTimeout();
+            if (doubleTap)
+            {
+                mMenuLocked = true;
+                return true;
+            }
             const int item = hitMenuItem(x, y);
             if (item >= 0)
             {
                 activateItem(item);
+                mMenuLocked = false;
+                bumpMenuTimeout();
+                return true;
+            }
+            if (mMenuLocked && !menuContains(x, y))
+            {
+                mMenuVisible = false;
+                mMenuLocked = false;
+                return true;
+            }
+            if (!mMenuLocked)
+            {
+                bumpMenuTimeout();
             }
             return true;
         }
@@ -313,6 +368,7 @@ private:
     void showMenu()
     {
         mMenuVisible = true;
+        mMenuLocked = false;
         bumpMenuTimeout();
         rebuildMenuSprites();
     }
@@ -324,7 +380,7 @@ private:
 
     void expireMenu()
     {
-        if (mMenuVisible && std::chrono::steady_clock::now() >= mMenuHideAt)
+        if (mMenuVisible && !mMenuLocked && std::chrono::steady_clock::now() >= mMenuHideAt)
         {
             mMenuVisible = false;
         }
@@ -383,9 +439,25 @@ private:
         }
         if (item.col == 3)
         {
+            if (item.row == 1)
+            {
+                return mEnrPage == EnrPage::Charts;
+            }
             if (item.row == 2)
             {
-                return mRenderOpen;
+                return mEnrPage == EnrPage::FlightPlan;
+            }
+            if (item.row == 3)
+            {
+                return mEnrPage == EnrPage::Nearest;
+            }
+            return mEnrPage == EnrPage::Weather;
+        }
+        if (item.col == 4)
+        {
+            if (item.row == 2)
+            {
+                return mGeneralOpen;
             }
             return mShowStats;
         }
@@ -441,7 +513,28 @@ private:
             }
             return;
         }
-        if (item.col == 3 && item.row == 1)
+        if (item.col == 3)
+        {
+            if (item.row == 1)
+            {
+                mEnrPage = EnrPage::Charts;
+            }
+            else if (item.row == 2)
+            {
+                mEnrPage = EnrPage::FlightPlan;
+            }
+            else if (item.row == 3)
+            {
+                mEnrPage = EnrPage::Nearest;
+            }
+            else
+            {
+                mEnrPage = EnrPage::Weather;
+            }
+            refreshMenu();
+            return;
+        }
+        if (item.col == 4 && item.row == 1)
         {
             mShowStats = !mShowStats;
             mStatsKey.clear();
@@ -449,10 +542,10 @@ private:
             refreshMenu();
             return;
         }
-        if (item.col == 3 && item.row == 2)
+        if (item.col == 4 && item.row == 2)
         {
-            mRenderOpen = true;
-            mRenderKey.clear();
+            mGeneralOpen = true;
+            mGeneralKey.clear();
             refreshMenu();
         }
     }
@@ -520,6 +613,13 @@ private:
             }
         }
         return -1;
+    }
+
+    bool menuContains(int x, int y) const
+    {
+        const int w = kMenuCols * mMenuBoxW + (kMenuCols - 1) * mMenuGap;
+        const int h = kMenuRows * mMenuBoxH + (kMenuRows - 1) * mMenuGap;
+        return x >= mMenuPad && y >= mMenuTop && x < mMenuPad + w && y < mMenuTop + h;
     }
 
     static size_t readMemKb(const char *key)
@@ -819,7 +919,7 @@ private:
         {
             return;
         }
-        char fpsLine[80];
+        char fpsLine[96];
         char l0[96];
         char l1[96];
         char l2[96];
@@ -829,8 +929,10 @@ private:
         char dl1[96];
         char dl2[96];
         char cache[96];
-        std::snprintf(fpsLine, sizeof(fpsLine), "FPS  %d  T %d/%d terrain drawn/loaded", mFps,
-                      mTerrain.terrainDrawn(), mTerrain.terrainLoaded());
+        const int altM = static_cast<int>(std::lround(mTerrain.cameraAltitude()));
+        const int altFt = static_cast<int>(std::lround(mTerrain.cameraAltitude() * 3.280839895f));
+        std::snprintf(fpsLine, sizeof(fpsLine), "FPS  %d  ALT %d m  %d ft  T %d/%d terrain drawn/loaded", mFps, altM,
+                      altFt, mTerrain.terrainDrawn(), mTerrain.terrainLoaded());
         formatMapLoadLines(l0, sizeof(l0), l1, sizeof(l1), l2, sizeof(l2), l3, sizeof(l3));
         formatVramLine(vram, sizeof(vram));
         formatDownloadLines(dl0, sizeof(dl0), dl1, sizeof(dl1), dl2, sizeof(dl2));
@@ -1014,62 +1116,135 @@ private:
         return (static_cast<double>(grid) * 0.5) * tileM / 1000.0;
     }
 
+    bool nextCoverage(int &zoom, int &grid, int zoomLo, int zoomHi, double maxKm, int dir) const
+    {
+        static const int kGrids[] = {4, 8, 12, 16};
+        const double cur = ringRadiusKm(zoom, grid);
+        int bestZ = zoom;
+        int bestG = grid;
+        double best = dir > 0 ? 1.0e9 : -1.0;
+        bool found = false;
+        for (int z = zoomLo; z <= zoomHi; ++z)
+        {
+            for (int g : kGrids)
+            {
+                const double km = ringRadiusKm(z, g);
+                if (km > maxKm + 1.0)
+                {
+                    continue;
+                }
+                if (dir > 0 && km > cur + 0.2 && km < best)
+                {
+                    best = km;
+                    bestZ = z;
+                    bestG = g;
+                    found = true;
+                }
+                if (dir < 0 && km < cur - 0.2 && km > best)
+                {
+                    best = km;
+                    bestZ = z;
+                    bestG = g;
+                    found = true;
+                }
+            }
+        }
+        if (!found)
+        {
+            return false;
+        }
+        zoom = bestZ;
+        grid = bestG;
+        return true;
+    }
+
+    void nudgeZoom(int &zoom, int &grid, int zoomLo, int zoomHi, double maxKm, int delta) const
+    {
+        const int z = std::clamp(zoom + delta, zoomLo, zoomHi);
+        if (z == zoom)
+        {
+            return;
+        }
+        int g = grid;
+        while (ringRadiusKm(z, g) > maxKm + 1.0)
+        {
+            const int smaller = stepGrid(g, -1);
+            if (smaller == g)
+            {
+                return;
+            }
+            g = smaller;
+        }
+        zoom = z;
+        grid = g;
+    }
+
     void adjustRender(int control)
     {
         if (control == 0)
         {
-            mFarGrid = stepGrid(mFarGrid, -1);
+            nextCoverage(mFarZoom, mFarGrid, 9, 12, kFarMaxKm, -1);
+            mTerrain.setSatFarZoom(mFarZoom);
             mTerrain.setSatFarGrid(mFarGrid);
         }
         else if (control == 1)
         {
-            mFarGrid = stepGrid(mFarGrid, 1);
+            nextCoverage(mFarZoom, mFarGrid, 9, 12, kFarMaxKm, 1);
+            mTerrain.setSatFarZoom(mFarZoom);
             mTerrain.setSatFarGrid(mFarGrid);
         }
         else if (control == 2)
         {
-            mFarZoom = std::clamp(mFarZoom - 1, 9, 12);
+            nudgeZoom(mFarZoom, mFarGrid, 9, 12, kFarMaxKm, -1);
             mTerrain.setSatFarZoom(mFarZoom);
+            mTerrain.setSatFarGrid(mFarGrid);
         }
         else if (control == 3)
         {
-            mFarZoom = std::clamp(mFarZoom + 1, 9, 12);
+            nudgeZoom(mFarZoom, mFarGrid, 9, 12, kFarMaxKm, 1);
             mTerrain.setSatFarZoom(mFarZoom);
+            mTerrain.setSatFarGrid(mFarGrid);
         }
         else if (control == 4)
         {
-            mNearGrid = stepGrid(mNearGrid, -1);
+            nextCoverage(mSatZoom, mNearGrid, 12, 18, kNearMaxKm, -1);
+            mTerrain.setSatDetailZoom(mSatZoom);
             mTerrain.setSatNearGrid(mNearGrid);
         }
         else if (control == 5)
         {
-            mNearGrid = stepGrid(mNearGrid, 1);
+            nextCoverage(mSatZoom, mNearGrid, 12, 18, kNearMaxKm, 1);
+            mTerrain.setSatDetailZoom(mSatZoom);
             mTerrain.setSatNearGrid(mNearGrid);
         }
         else if (control == 6)
         {
-            mSatZoom = std::clamp(mSatZoom - 1, 12, 18);
+            nudgeZoom(mSatZoom, mNearGrid, 12, 18, kNearMaxKm, -1);
             mTerrain.setSatDetailZoom(mSatZoom);
+            mTerrain.setSatNearGrid(mNearGrid);
         }
         else
         {
-            mSatZoom = std::clamp(mSatZoom + 1, 12, 18);
+            nudgeZoom(mSatZoom, mNearGrid, 12, 18, kNearMaxKm, 1);
             mTerrain.setSatDetailZoom(mSatZoom);
+            mTerrain.setSatNearGrid(mNearGrid);
         }
-        mRenderKey.clear();
+        mGeneralKey.clear();
         mStatsKey.clear();
         mPreloadKey.clear();
     }
 
-    void drawRenderPopup()
+    void drawGeneralPopup()
     {
-        if (!mRenderOpen)
+        if (!mGeneralOpen)
         {
             return;
         }
         const int screenW = std::max(1, mScreen.getWidth());
         const int screenH = std::max(1, mScreen.getHeight());
-        mRenderPopup.layout(screenW, screenH);
+        mGeneral.setTabLabel(0, "RENDER");
+        mGeneral.setTabLabel(1, "MAPS");
+        mGeneral.layout(screenW, screenH);
         char farDist[16];
         char nearDist[16];
         formatKm(farDist, sizeof(farDist), ringRadiusKm(mFarZoom, mFarGrid));
@@ -1078,51 +1253,56 @@ private:
         char nearZoom[8];
         std::snprintf(farZoom, sizeof(farZoom), "Z%d", mFarZoom);
         std::snprintf(nearZoom, sizeof(nearZoom), "Z%d", mSatZoom);
-        const std::string key = std::string(farDist) + farZoom + nearDist + nearZoom + std::to_string(mRenderPopup.width()) +
-                                std::to_string(mRenderPopup.height());
-        if (key != mRenderKey)
+        const std::string key = std::to_string(mGeneral.activeTab()) + farDist + farZoom + nearDist + nearZoom +
+                                std::to_string(mGeneral.width()) + std::to_string(mGeneral.height());
+        if (key != mGeneralKey)
         {
-            mRenderKey = key;
-            const int boxX = mRenderPopup.sdlX();
-            const int boxY = mRenderPopup.sdlY();
-            const int boxW = mRenderPopup.width();
-            const int boxH = mRenderPopup.height();
-            const int rowH = boxH / 4;
-            const int btn = std::clamp(rowH * 2 / 3, 56, 140);
-            const float font = static_cast<float>(std::clamp(btn / 2, 22, 52));
-            const auto glMid = [&](int row) {
-                const int sdlTop = boxY + row * rowH + rowH / 2;
-                return screenH - sdlTop;
-            };
-            mRenderPopup.setText(0, "RENDER", font, static_cast<float>(boxX + boxW / 2), static_cast<float>(glMid(0)),
-                                 "efis-render-title");
-            const char *names[2] = {"FAR", "NEAR"};
-            const char *dists[2] = {farDist, nearDist};
-            const char *zooms[2] = {farZoom, nearZoom};
-            static const char *kNameKeys[2] = {"efis-render-far", "efis-render-near"};
-            static const char *kDistKeys[2] = {"efis-render-fard", "efis-render-neard"};
-            static const char *kZoomKeys[2] = {"efis-render-farz", "efis-render-nearz"};
-            for (int row = 0; row < 2; ++row)
+            mGeneralKey = key;
+            mGeneral.clearContent();
+            if (mGeneral.activeTab() == 0)
             {
-                const int sdlRowTop = boxY + (row + 1) * rowH;
-                const int btnY = sdlRowTop + (rowH - btn) / 2;
-                const float textY = static_cast<float>(glMid(row + 1));
-                const int labelX = boxX + boxW / 10;
-                const int distCenter = boxX + boxW * 42 / 100;
-                const int zoomCenter = boxX + boxW * 78 / 100;
-                const int distGap = btn + btn / 2;
-                const int zoomGap = btn;
-                mRenderPopup.setText(1 + row * 3, names[row], font, static_cast<float>(labelX), textY, kNameKeys[row]);
-                mRenderPopup.setText(2 + row * 3, dists[row], font, static_cast<float>(distCenter), textY, kDistKeys[row]);
-                mRenderPopup.setText(3 + row * 3, zooms[row], font, static_cast<float>(zoomCenter), textY, kZoomKeys[row]);
-                const int base = row * 4;
-                mRenderPopup.setButton(base + 0, distCenter - distGap - btn, btnY, btn, btn, "-", font, "efis-pop-minus");
-                mRenderPopup.setButton(base + 1, distCenter + distGap, btnY, btn, btn, "+", font, "efis-pop-plus");
-                mRenderPopup.setButton(base + 2, zoomCenter - zoomGap - btn, btnY, btn, btn, "-", font, "efis-pop-minus");
-                mRenderPopup.setButton(base + 3, zoomCenter + zoomGap, btnY, btn, btn, "+", font, "efis-pop-plus");
+                const int boxX = mGeneral.contentX();
+                const int boxY = mGeneral.contentY();
+                const int boxW = mGeneral.contentW();
+                const int boxH = mGeneral.contentH();
+                const int rowH = boxH / 2;
+                const int btn = std::clamp(std::min(rowH, boxW / 8) * 2 / 3, 48, 96);
+                const float font = static_cast<float>(std::clamp(btn / 2, 18, 36));
+                const char *names[2] = {"FAR", "NEAR"};
+                const char *dists[2] = {farDist, nearDist};
+                const char *zooms[2] = {farZoom, nearZoom};
+                static const char *kNameKeys[2] = {"efis-render-far", "efis-render-near"};
+                static const char *kDistKeys[2] = {"efis-render-fard", "efis-render-neard"};
+                static const char *kZoomKeys[2] = {"efis-render-farz", "efis-render-nearz"};
+                for (int row = 0; row < 2; ++row)
+                {
+                    const int sdlRowTop = boxY + row * rowH;
+                    const int btnY = sdlRowTop + (rowH - btn) / 2;
+                    const int sdlMid = sdlRowTop + rowH / 2;
+                    const float textY = static_cast<float>(screenH - sdlMid);
+                    const int labelX = boxX + boxW / 10;
+                    const int distCenter = boxX + boxW * 42 / 100;
+                    const int zoomCenter = boxX + boxW * 78 / 100;
+                    const int distGap = btn + btn / 2;
+                    const int zoomGap = btn;
+                    mGeneral.setText(row * 3, names[row], font, static_cast<float>(labelX), textY, kNameKeys[row]);
+                    mGeneral.setText(1 + row * 3, dists[row], font, static_cast<float>(distCenter), textY, kDistKeys[row]);
+                    mGeneral.setText(2 + row * 3, zooms[row], font, static_cast<float>(zoomCenter), textY, kZoomKeys[row]);
+                    const int base = row * 4;
+                    mGeneral.setButton(base + 0, distCenter - distGap - btn, btnY, btn, btn, "-", font, "efis-pop-minus");
+                    mGeneral.setButton(base + 1, distCenter + distGap, btnY, btn, btn, "+", font, "efis-pop-plus");
+                    mGeneral.setButton(base + 2, zoomCenter - zoomGap - btn, btnY, btn, btn, "-", font, "efis-pop-minus");
+                    mGeneral.setButton(base + 3, zoomCenter + zoomGap, btnY, btn, btn, "+", font, "efis-pop-plus");
+                }
             }
         }
-        mRenderPopup.render();
+        mGeneral.render();
+        if (mGeneral.activeTab() == 1)
+        {
+            mEuropeMap.layout(mGeneral.contentX(), mGeneral.contentY(), mGeneral.contentW(), mGeneral.contentH(),
+                              screenW, screenH);
+            mEuropeMap.render();
+        }
     }
 
     void drawMenu()
@@ -1164,10 +1344,12 @@ private:
     int mFarZoom = 12;
     int mFarGrid = 8;
     int mNearGrid = 8;
-    bool mRenderOpen = false;
-    std::string mRenderKey;
-    Popup<8, 8> mRenderPopup;
+    bool mGeneralOpen = false;
+    std::string mGeneralKey;
+    TabWindow<2, 8, 8> mGeneral;
+    EuropeMap mEuropeMap;
     AipMode mAipMode = AipMode::Off;
+    EnrPage mEnrPage = EnrPage::None;
     bool mShowStats = false;
     int mFps = 0;
     int mStatsShownFps = -1;
@@ -1186,6 +1368,8 @@ private:
     std::chrono::steady_clock::time_point mLastTick{};
     bool mHasClock = false;
     bool mMenuVisible = false;
+    bool mMenuLocked = false;
+    uint64_t mLastMenuTapMs = 0;
     std::chrono::steady_clock::time_point mMenuHideAt{};
     int mMenuW = 0;
     int mMenuH = 0;
