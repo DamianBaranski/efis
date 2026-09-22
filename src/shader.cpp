@@ -12,7 +12,7 @@ Shader::SatClipState Shader::sSat = {};
 void Shader::setSatClip(bool active, GLuint fineTex, GLuint midTex, GLuint wideTex, int fineOriginX, int fineOriginY,
                         int midOriginX, int midOriginY, int wideOriginX, int wideOriginY, int fineZoom, int midZoom,
                         int wideZoom, int fineGrid, const uint32_t *fineMask, int midGrid, const uint32_t *midMask,
-                        uint32_t wideMask0, uint32_t wideMask1)
+                        uint32_t wideMask0, uint32_t wideMask1, float camU, float camV)
 {
     sSat.active = active;
     sSat.fineTex = fineTex;
@@ -36,6 +36,8 @@ void Shader::setSatClip(bool active, GLuint fineTex, GLuint midTex, GLuint wideT
     }
     sSat.wideMask0 = wideMask0;
     sSat.wideMask1 = wideMask1;
+    sSat.camU = camU;
+    sSat.camV = camV;
 }
 
 size_t Shader::textureCacheBytes()
@@ -72,6 +74,7 @@ GLint gSatFineGridLoc = -1;
 GLint gSatFineBitsLoc = -1;
 GLint gSatMidGridLoc = -1;
 GLint gSatMidBitsLoc = -1;
+GLint gSatCamUvLoc = -1;
 GLint gColorScaleLoc = -1;
 }
 
@@ -160,6 +163,10 @@ void Shader::render() const
         if (mSatWideZoomLoc >= 0)
         {
             glUniform1i(mSatWideZoomLoc, sSat.wideZoom);
+        }
+        if (mSatCamUvLoc >= 0)
+        {
+            glUniform2f(mSatCamUvLoc, sSat.camU, sSat.camV);
         }
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D_ARRAY, sSat.fineTex);
@@ -466,6 +473,7 @@ void Shader::initializeShaderProgram()
         gSatFineBitsLoc = glGetUniformLocation(gSharedProgram, "satFineBits");
         gSatMidGridLoc = glGetUniformLocation(gSharedProgram, "satMidGrid");
         gSatMidBitsLoc = glGetUniformLocation(gSharedProgram, "satMidBits");
+        gSatCamUvLoc = glGetUniformLocation(gSharedProgram, "satCamUv");
         gColorScaleLoc = glGetUniformLocation(gSharedProgram, "colorScale");
         if (gSatFineLoc >= 0)
         {
@@ -514,6 +522,7 @@ void Shader::initializeShaderProgram()
     mSatFineBitsLoc = gSatFineBitsLoc;
     mSatMidGridLoc = gSatMidGridLoc;
     mSatMidBitsLoc = gSatMidBitsLoc;
+    mSatCamUvLoc = gSatCamUvLoc;
     mColorScaleLoc = gColorScaleLoc;
 }
 

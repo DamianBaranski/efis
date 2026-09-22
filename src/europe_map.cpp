@@ -1,9 +1,11 @@
 #include "europe_map.h"
 
+#include <SDL.h>
 #include <GLES3/gl3.h>
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -11,23 +13,84 @@ constexpr uint32_t kLandRgba = 0xC8C8C8B4u;
 constexpr uint32_t kStrokeRgba = 0xF2F2F2EEu;
 constexpr uint32_t kSelectRgba = 0x4DA3FFB0u;
 constexpr float kClipEps = 0.04f;
+constexpr int kFillTexW = 1024;
+const char *kFillTexName = "efis-europe-land";
+
+struct TexPt
+{
+    float x = 0.0f;
+    float y = 0.0f;
+};
+
+void fillRing(SDL_Surface *surface, const TexPt *pts, int count, Uint32 pixel)
+{
+    if (surface == nullptr || pts == nullptr || count < 3)
+    {
+        return;
+    }
+    const int w = surface->w;
+    const int h = surface->h;
+    std::vector<float> hits;
+    hits.reserve(static_cast<size_t>(count));
+    for (int y = 0; y < h; ++y)
+    {
+        const float scan = static_cast<float>(y) + 0.5f;
+        hits.clear();
+        int prev = count - 1;
+        for (int i = 0; i < count; ++i)
+        {
+            const float y0 = pts[prev].y;
+            const float y1 = pts[i].y;
+            const bool cross = (y0 <= scan && y1 > scan) || (y1 <= scan && y0 > scan);
+            if (cross)
+            {
+                const float x0 = pts[prev].x;
+                const float x1 = pts[i].x;
+                const float t = (scan - y0) / (y1 - y0);
+                hits.push_back(x0 + t * (x1 - x0));
+            }
+            prev = i;
+        }
+        if (hits.size() < 2)
+        {
+            continue;
+        }
+        std::sort(hits.begin(), hits.end());
+        Uint32 *row = reinterpret_cast<Uint32 *>(static_cast<Uint8 *>(surface->pixels) + y * surface->pitch);
+        for (size_t i = 0; i + 1 < hits.size(); i += 2)
+        {
+            int x0 = static_cast<int>(std::floor(hits[i] + 0.5f));
+            int x1 = static_cast<int>(std::floor(hits[i + 1] + 0.5f));
+            if (x0 < 0)
+            {
+                x0 = 0;
+            }
+            if (x1 > w)
+            {
+                x1 = w;
+            }
+            for (int x = x0; x < x1; ++x)
+            {
+                row[x] = pixel;
+            }
+        }
+    }
+}
 }
 
 EuropeMap::EuropeMap(Screen &screen) : mLabel(screen)
 {
-    mLand.setColor(std::to_string(kLandRgba), kLandRgba);
     mStroke.setColor(std::to_string(kStrokeRgba), kStrokeRgba);
-    mSelect.setColor(std::to_string(kSelectRgba), kSelectRgba);
 }
 
-VertexTexture EuropeMap::vert(float x, float y)
+VertexTexture EuropeMap::vert(float x, float y, float u, float v)
 {
     VertexTexture out{};
     out.vertex.x = x;
     out.vertex.y = y;
     out.vertex.z = 0.0f;
-    out.textureCoord.x = 0.0f;
-    out.textureCoord.y = 0.0f;
+    out.textureCoord.x = u;
+    out.textureCoord.y = v;
     out.geoCoord.x = 0.0f;
     out.geoCoord.y = 0.0f;
     return out;
@@ -48,9 +111,9 @@ void EuropeMap::layout(int contentX, int contentY, int contentW, int contentH, i
     mScreenH = std::max(1, screenH);
     setOrtho();
     project();
-    rebuildLand();
+    rasterFill();
+    rebuildQuad();
     rebuildStroke();
-    rebuildSelect();
     rebuildLabel();
     mReady = true;
 }
@@ -64,7 +127,6 @@ void EuropeMap::setOrtho()
     mMvp[3][1] = -1.0f;
     mLand.setMvpMatrix(mMvp);
     mStroke.setMvpMatrix(mMvp);
-    mSelect.setMvpMatrix(mMvp);
 }
 
 void EuropeMap::project()
@@ -89,15 +151,18 @@ void EuropeMap::project()
     }
     const float mapSdlX = static_cast<float>(mContentX + pad) + (innerW - mapW) * 0.5f;
     const float mapSdlY = static_cast<float>(mContentY + pad) + (innerH - mapH) * 0.5f;
-    const float mapGlY0 = static_cast<float>(mScreenH) - (mapSdlY + mapH);
+    mMapX = mapSdlX;
+    mMapW = mapW;
+    mMapH = mapH;
+    mMapY = static_cast<float>(mScreenH) - (mapSdlY + mapH);
 
     mProj.resize(static_cast<size_t>(kEuropeVertexCount));
     for (int i = 0; i < kEuropeVertexCount; ++i)
     {
         const float lon = kEuropeLonLat[i * 2];
         const float lat = kEuropeLonLat[i * 2 + 1];
-        mProj[static_cast<size_t>(i)].x = mapSdlX + (lon - kEuropeLon0) / spanLon * mapW;
-        mProj[static_cast<size_t>(i)].y = mapGlY0 + (lat - kEuropeLat0) / spanLat * mapH;
+        mProj[static_cast<size_t>(i)].x = mMapX + (lon - kEuropeLon0) / spanLon * mMapW;
+        mProj[static_cast<size_t>(i)].y = mMapY + (lat - kEuropeLat0) / spanLat * mMapH;
     }
 }
 
@@ -114,16 +179,67 @@ bool EuropeMap::clipWall(int vertexA, int vertexB)
     return left || right || bottom || top;
 }
 
-void EuropeMap::rebuildLand()
+void EuropeMap::rasterFill()
 {
-    Triangles mesh;
-    mesh.material = std::to_string(kLandRgba);
-    mesh.vertex.resize(static_cast<size_t>(kEuropeVertexCount));
+    const float spanLon = kEuropeLon1 - kEuropeLon0;
+    const float spanLat = kEuropeLat1 - kEuropeLat0;
+    const int texW = kFillTexW;
+    const int texH = std::max(1, static_cast<int>(std::lround(static_cast<double>(texW) * spanLat / spanLon)));
+    SDL_Surface *surface = SDL_CreateRGBSurfaceWithFormat(0, texW, texH, 32, SDL_PIXELFORMAT_RGBA32);
+    if (surface == nullptr)
+    {
+        return;
+    }
+    SDL_FillRect(surface, nullptr, SDL_MapRGBA(surface->format, 0, 0, 0, 0));
+    const Uint32 land = SDL_MapRGBA(surface->format, (kLandRgba >> 24) & 0xFF, (kLandRgba >> 16) & 0xFF,
+                                    (kLandRgba >> 8) & 0xFF, kLandRgba & 0xFF);
+    const Uint32 select = SDL_MapRGBA(surface->format, (kSelectRgba >> 24) & 0xFF, (kSelectRgba >> 16) & 0xFF,
+                                      (kSelectRgba >> 8) & 0xFF, kSelectRgba & 0xFF);
+
+    std::vector<TexPt> texPts(static_cast<size_t>(kEuropeVertexCount));
+    const float sx = static_cast<float>(texW);
+    const float sy = static_cast<float>(texH);
     for (int i = 0; i < kEuropeVertexCount; ++i)
     {
-        mesh.vertex[static_cast<size_t>(i)] = vert(mProj[static_cast<size_t>(i)].x, mProj[static_cast<size_t>(i)].y);
+        const float lon = kEuropeLonLat[i * 2];
+        const float lat = kEuropeLonLat[i * 2 + 1];
+        texPts[static_cast<size_t>(i)].x = (lon - kEuropeLon0) / spanLon * sx;
+        texPts[static_cast<size_t>(i)].y = (lat - kEuropeLat0) / spanLat * sy;
     }
-    mesh.indices.assign(kEuropeIndex, kEuropeIndex + kEuropeIndexCount);
+
+    auto paintCountry = [&](int country, Uint32 pixel) {
+        if (country < 0 || country >= kEuropeCountryCount)
+        {
+            return;
+        }
+        const EuropeCountry &item = kEuropeCountries[country];
+        for (int r = 0; r < item.rings; ++r)
+        {
+            const EuropeRing &ring = kEuropeRings[item.ring0 + r];
+            fillRing(surface, texPts.data() + ring.vertex0, ring.count, pixel);
+        }
+    };
+
+    for (int c = 0; c < kEuropeCountryCount; ++c)
+    {
+        paintCountry(c, land);
+    }
+    paintCountry(mSelected, select);
+
+    mLand.setTexture(kFillTexName, surface);
+}
+
+void EuropeMap::rebuildQuad()
+{
+    Triangles mesh;
+    mesh.material = kFillTexName;
+    const float x0 = mMapX;
+    const float y0 = mMapY;
+    const float x1 = mMapX + mMapW;
+    const float y1 = mMapY + mMapH;
+    mesh.vertex = {vert(x0, y0, 0.0f, 0.0f), vert(x1, y0, 1.0f, 0.0f), vert(x0, y1, 0.0f, 1.0f),
+                   vert(x1, y1, 1.0f, 1.0f)};
+    mesh.indices = {0, 1, 2, 2, 1, 3};
     mLand.clearGeometry();
     mLand.setTriangles({std::move(mesh)});
 }
@@ -162,10 +278,10 @@ void EuropeMap::rebuildStroke()
             const float nx = -dy / len * half;
             const float ny = dx / len * half;
             const unsigned base = static_cast<unsigned>(mesh.vertex.size());
-            mesh.vertex.push_back(vert(a.x + nx, a.y + ny));
-            mesh.vertex.push_back(vert(a.x - nx, a.y - ny));
-            mesh.vertex.push_back(vert(b.x + nx, b.y + ny));
-            mesh.vertex.push_back(vert(b.x - nx, b.y - ny));
+            mesh.vertex.push_back(vert(a.x + nx, a.y + ny, 0.5f, 0.5f));
+            mesh.vertex.push_back(vert(a.x - nx, a.y - ny, 0.5f, 0.5f));
+            mesh.vertex.push_back(vert(b.x + nx, b.y + ny, 0.5f, 0.5f));
+            mesh.vertex.push_back(vert(b.x - nx, b.y - ny, 0.5f, 0.5f));
             mesh.indices.push_back(base + 0);
             mesh.indices.push_back(base + 1);
             mesh.indices.push_back(base + 2);
@@ -178,29 +294,6 @@ void EuropeMap::rebuildStroke()
     if (!mesh.indices.empty())
     {
         mStroke.setTriangles({std::move(mesh)});
-    }
-}
-
-void EuropeMap::rebuildSelect()
-{
-    mSelect.clearGeometry();
-    if (mSelected < 0 || mSelected >= kEuropeCountryCount)
-    {
-        return;
-    }
-    const EuropeCountry &country = kEuropeCountries[mSelected];
-    Triangles mesh;
-    mesh.material = std::to_string(kSelectRgba);
-    mesh.vertex.resize(static_cast<size_t>(kEuropeVertexCount));
-    for (int i = 0; i < kEuropeVertexCount; ++i)
-    {
-        mesh.vertex[static_cast<size_t>(i)] = vert(mProj[static_cast<size_t>(i)].x, mProj[static_cast<size_t>(i)].y);
-    }
-    const unsigned *begin = kEuropeIndex + country.tri0 * 3;
-    mesh.indices.assign(begin, begin + country.tris * 3);
-    if (!mesh.indices.empty())
-    {
-        mSelect.setTriangles({std::move(mesh)});
     }
 }
 
@@ -230,38 +323,16 @@ void EuropeMap::render()
     glDisable(GL_CULL_FACE);
     glEnable(GL_SCISSOR_TEST);
     glScissor(mContentX, mScreenH - mContentY - mContentH, mContentW, mContentH);
-    glEnable(GL_DEPTH_TEST);
-    glDepthMask(GL_TRUE);
-    glDepthFunc(GL_LESS);
-    glClear(GL_DEPTH_BUFFER_BIT);
-
-    glm::mat4 landMvp = mMvp;
-    landMvp[3][2] = 0.0f;
-    mLand.setMvpMatrix(landMvp);
-    glDisable(GL_BLEND);
-    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-    mLand.render();
-    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glDepthFunc(GL_EQUAL);
-    glDepthMask(GL_FALSE);
-    mLand.render();
-
-    glm::mat4 selectMvp = mMvp;
-    selectMvp[3][2] = -0.02f;
-    mSelect.setMvpMatrix(selectMvp);
-    glDepthFunc(GL_LESS);
-    glDepthMask(GL_TRUE);
-    mSelect.render();
-
-    glm::mat4 strokeMvp = mMvp;
-    strokeMvp[3][2] = -0.04f;
-    mStroke.setMvpMatrix(strokeMvp);
-    mStroke.render();
-
     glDisable(GL_DEPTH_TEST);
     glDepthMask(GL_FALSE);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    mLand.setMvpMatrix(mMvp);
+    mLand.render();
+    mStroke.setMvpMatrix(mMvp);
+    mStroke.render();
+
     if (mLabelOn)
     {
         const glm::mat4 identity(1.0f);
@@ -334,7 +405,7 @@ bool EuropeMap::hit(int sdlX, int sdlY)
     if (country != mSelected)
     {
         mSelected = country;
-        rebuildSelect();
+        rasterFill();
         rebuildLabel();
     }
     return true;

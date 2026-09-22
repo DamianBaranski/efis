@@ -27,7 +27,7 @@ public:
 
     const std::string &basemapLayer() const { return mBasemapLayer; }
 
-    /// Fetches a square of tiles around a geographic position (no-op if already queued).
+    /// Fetches a disk of tiles around a geographic position (no-op if already queued).
     void fetchAround(float latitude, float longitude, int zoom = 16, int radius = 7,
                      bool wantBasemap = true, bool wantOverlay = true);
 
@@ -78,6 +78,7 @@ private:
     {
         int x = -1;
         int y = -1;
+        int radius = -1;
         bool base = false;
         bool overlay = false;
     };

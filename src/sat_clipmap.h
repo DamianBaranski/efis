@@ -5,9 +5,8 @@
 #include <cstddef>
 #include <cstdint>
 
-/// Mercator imagery clipmap. The far ring is a fixed 8x8 of zoom 13.
-/// The close ring allocates more 256 px tiles as zoom rises, so texture
-/// memory grows with the selector. Scenery tiles are not involved.
+/// Mercator imagery clipmap. Each ring is a square texture array, but only
+/// the inscribed disk around the camera is fetched and sampled.
 class SatClipmap
 {
 public:

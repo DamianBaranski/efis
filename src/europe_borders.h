@@ -20,10 +20,14 @@ struct EuropeCountry
 
 extern const float kEuropeLonLat[];
 extern const unsigned kEuropeIndex[];
+extern const float kEuropeLandLonLat[];
+extern const unsigned kEuropeLandIndex[];
 extern const EuropeRing kEuropeRings[];
 extern const EuropeCountry kEuropeCountries[];
 extern const int kEuropeVertexCount;
 extern const int kEuropeIndexCount;
+extern const int kEuropeLandVertexCount;
+extern const int kEuropeLandIndexCount;
 extern const int kEuropeRingCount;
 extern const int kEuropeCountryCount;
 extern const float kEuropeLon0;

@@ -20,13 +20,19 @@ void BucketContainer::updateLocation(float lat, float lon)
         double dist;
     };
     std::vector<Candidate> missing;
+    const double addRadiusM = static_cast<double>(cTileAddingRangeDeg) * 0.5 * 111319.9;
     for (float x = (lat - cTileAddingRangeDeg / 2); x < (lat + cTileAddingRangeDeg / 2); x += cTileSize)
     {
         for (float y = (lon - cTileAddingRangeDeg / 2); y < (lon + cTileAddingRangeDeg / 2); y += cTileSize)
         {
+            const double dist = GeoCoordUtils::calculateDistance(lat, lon, x, y);
+            if (dist > addRadiusM)
+            {
+                continue;
+            }
             if (!hasTile(x, y))
             {
-                missing.push_back({x, y, GeoCoordUtils::calculateDistance(lat, lon, x, y)});
+                missing.push_back({x, y, dist});
             }
         }
     }

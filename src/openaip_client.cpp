@@ -468,12 +468,13 @@ void OpenAipClient::fetchAround(float latitude, float longitude, int zoom, int r
         std::lock_guard<std::mutex> lock(mMutex);
         auto it = mLastAround.find(zoom);
         if (it != mLastAround.end() && it->second.x == tile.first && it->second.y == tile.second &&
-            it->second.base == wantBasemap && it->second.overlay == overlay)
+            it->second.radius == radius && it->second.base == wantBasemap && it->second.overlay == overlay)
         {
             return;
         }
-        const bool tileMoved = it == mLastAround.end() || it->second.x != tile.first || it->second.y != tile.second;
-        mLastAround[zoom] = LastAround{tile.first, tile.second, wantBasemap, overlay};
+        const bool tileMoved = it == mLastAround.end() || it->second.x != tile.first || it->second.y != tile.second ||
+                               it->second.radius != radius;
+        mLastAround[zoom] = LastAround{tile.first, tile.second, radius, wantBasemap, overlay};
 
         if (tileMoved)
         {
@@ -491,10 +492,15 @@ void OpenAipClient::fetchAround(float latitude, float longitude, int zoom, int r
             mQueued.swap(keepIds);
         }
 
+        const int radiusSq = radius * radius;
         for (int dy = -radius; dy <= radius; ++dy)
         {
             for (int dx = -radius; dx <= radius; ++dx)
             {
+                if (dx * dx + dy * dy > radiusSq)
+                {
+                    continue;
+                }
                 if (wantBasemap)
                 {
                     if (isCached(zoom, tile.first + dx, tile.second + dy, mBasemapLayer))

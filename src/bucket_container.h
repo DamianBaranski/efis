@@ -47,7 +47,7 @@ private:
     mutable int mDrawn = 0;
     const double kTileDistanceLimit = 160 * 1000;
     const float cTileSize = 0.1f;
-    /// Keep about ±1° in RAM; draw path culls to ~110 km.
+    /// Square search window width in degrees; only the inscribed ~1° disk is added.
     const float cTileAddingRangeDeg = 2.0f;
 };
 

@@ -125,17 +125,21 @@ public:
         buildCamera(eye, forward, up, east, geodeticUp);
 
         const bool drape = mSatelliteGround || mChartOverlay;
+        float camU = 0.0f;
+        float camV = 0.0f;
+        GeoCoordUtils::latLonToMercatorUv(mLocation.latitude, mLocation.longitude, camU, camV);
         if (drape)
         {
             const SatClipmap::View sat = mSat.view();
             Shader::setSatClip(sat.active, sat.fineTex, sat.midTex, sat.wideTex, sat.fineOriginX, sat.fineOriginY,
                                sat.midOriginX, sat.midOriginY, sat.wideOriginX, sat.wideOriginY, sat.fineZoom,
                                sat.midZoom, sat.wideZoom, sat.fineGrid, sat.fineMask, sat.midGrid, sat.midMask,
-                               sat.wideMask0, sat.wideMask1);
+                               sat.wideMask0, sat.wideMask1, camU, camV);
         }
         else
         {
-            Shader::setSatClip(false, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16, 13, 11, 8, nullptr, 8, nullptr, 0, 0);
+            Shader::setSatClip(false, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16, 13, 11, 8, nullptr, 8, nullptr, 0, 0, camU,
+                               camV);
         }
 
         // Cube is Y-up in model space; rotate it onto local ENU so zenith follows geodetic up.

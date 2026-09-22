@@ -23,6 +23,7 @@ uniform int satMidZoom;
 uniform int satWideZoom;
 uniform int satFineGrid;
 uniform int satMidGrid;
+uniform highp vec2 satCamUv;
 uniform vec3 colorScale;
 
 int modN(int v, int n)
@@ -49,6 +50,11 @@ vec4 sampleGrid(sampler2DArray tex, int zoom, highp ivec2 origin, int grid, high
     }
     highp float n = exp2(float(zoom));
     highp vec2 tilePos = GeoCoord * n;
+    highp vec2 camTile = satCamUv * n;
+    if (distance(tilePos, camTile) > float(grid) * 0.5)
+    {
+        return vec4(0.0);
+    }
     ivec2 tile = ivec2(floor(tilePos));
     ivec2 rel = tile - origin;
     if (rel.x < 0 || rel.y < 0 || rel.x >= grid || rel.y >= grid)

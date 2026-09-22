@@ -65,7 +65,8 @@ public:
     static void setSatClip(bool active, GLuint fineTex, GLuint midTex, GLuint wideTex, int fineOriginX,
                            int fineOriginY, int midOriginX, int midOriginY, int wideOriginX, int wideOriginY,
                            int fineZoom, int midZoom, int wideZoom, int fineGrid, const uint32_t *fineMask, int midGrid,
-                           const uint32_t *midMask, uint32_t wideMask0, uint32_t wideMask1);
+                           const uint32_t *midMask, uint32_t wideMask0, uint32_t wideMask1, float camU = 0.0f,
+                           float camV = 0.0f);
 
     static size_t textureCacheBytes();
 
@@ -136,6 +137,7 @@ private:
     GLint mSatFineBitsLoc = -1;
     GLint mSatMidGridLoc = -1;
     GLint mSatMidBitsLoc = -1;
+    GLint mSatCamUvLoc = -1;
     GLint mColorScaleLoc = -1;
     glm::vec3 mColorScale{1.0f, 1.0f, 1.0f};
     bool mOpenAipOverlay = false;
@@ -162,6 +164,8 @@ private:
         uint32_t midMask[8]{};
         uint32_t wideMask0 = 0;
         uint32_t wideMask1 = 0;
+        float camU = 0.0f;
+        float camV = 0.0f;
     };
     static SatClipState sSat;
 };

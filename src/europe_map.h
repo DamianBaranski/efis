@@ -25,11 +25,11 @@ private:
         float y = 0.0f;
     };
 
-    static VertexTexture vert(float x, float y);
+    static VertexTexture vert(float x, float y, float u, float v);
     void project();
-    void rebuildLand();
+    void rasterFill();
+    void rebuildQuad();
     void rebuildStroke();
-    void rebuildSelect();
     void rebuildLabel();
     void setOrtho();
     int pickCountry(float glX, float glY) const;
@@ -38,10 +38,13 @@ private:
 
     Shader mLand;
     Shader mStroke;
-    Shader mSelect;
     Render2D mLabel;
     std::vector<Point> mProj;
     glm::mat4 mMvp{1.0f};
+    float mMapX = 0.0f;
+    float mMapY = 0.0f;
+    float mMapW = 1.0f;
+    float mMapH = 1.0f;
     int mContentX = 0;
     int mContentY = 0;
     int mContentW = 0;

@@ -18,6 +18,14 @@ int positiveMod(int value, int mod)
     return m < 0 ? m + mod : m;
 }
 
+bool inClipDisk(int tileX, int tileY, int camX, int camY, int grid)
+{
+    const int dx = tileX - camX;
+    const int dy = tileY - camY;
+    const int r = grid / 2;
+    return dx * dx + dy * dy <= r * r;
+}
+
 SDL_Surface *loadRgba(const std::string &path)
 {
     SDL_Surface *tile = IMG_Load(path.c_str());
@@ -296,13 +304,17 @@ void SatClipmap::pump(float latitude, float longitude, int maxUploads)
             {
                 const int x = ring.originX + lx;
                 const int y = ring.originY + ly;
+                if (!inClipDisk(x, y, center.first, center.second, ring.grid))
+                {
+                    continue;
+                }
                 if (holds(ring, x, y))
                 {
                     continue;
                 }
                 const int dx = x - center.first;
                 const int dy = y - center.second;
-                jobs.push_back({r, x, y, std::max(std::abs(dx), std::abs(dy))});
+                jobs.push_back({r, x, y, dx * dx + dy * dy});
             }
         }
     }
@@ -338,7 +350,13 @@ void SatClipmap::maskFor(const Ring &ring, uint32_t *words, int wordCount) const
     {
         for (int lx = 0; lx < ring.grid; ++lx)
         {
-            if (!holds(ring, ring.originX + lx, ring.originY + ly))
+            const int x = ring.originX + lx;
+            const int y = ring.originY + ly;
+            if (!inClipDisk(x, y, ring.originX + ring.grid / 2, ring.originY + ring.grid / 2, ring.grid))
+            {
+                continue;
+            }
+            if (!holds(ring, x, y))
             {
                 continue;
             }
@@ -355,24 +373,34 @@ void SatClipmap::maskFor(const Ring &ring, uint32_t *words, int wordCount) const
 SatClipmap::Progress SatClipmap::progressFor(const Ring &ring) const
 {
     Progress progress;
-    progress.total = ring.grid * ring.grid;
-    if (ring.created)
-    {
-        progress.gpuBytes = static_cast<size_t>(ring.grid) * static_cast<size_t>(ring.grid) * kTilePx * kTilePx * 4u;
-    }
+    const int camX = ring.originX + ring.grid / 2;
+    const int camY = ring.originY + ring.grid / 2;
+    int total = 0;
     int done = 0;
     for (int ly = 0; ly < ring.grid; ++ly)
     {
         for (int lx = 0; lx < ring.grid; ++lx)
         {
-            if (holds(ring, ring.originX + lx, ring.originY + ly))
+            const int x = ring.originX + lx;
+            const int y = ring.originY + ly;
+            if (!inClipDisk(x, y, camX, camY, ring.grid))
+            {
+                continue;
+            }
+            ++total;
+            if (holds(ring, x, y))
             {
                 ++done;
             }
         }
     }
+    progress.total = total;
     progress.done = done;
-    progress.ready = ring.created && done == progress.total;
+    if (ring.created)
+    {
+        progress.gpuBytes = static_cast<size_t>(ring.grid) * static_cast<size_t>(ring.grid) * kTilePx * kTilePx * 4u;
+    }
+    progress.ready = ring.created && total > 0 && done == total;
     return progress;
 }
 
