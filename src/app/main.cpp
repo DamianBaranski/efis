@@ -9,13 +9,13 @@
 #include "frame.h"
 #include "menu_widget.h"
 #include "screen.h"
-#include "sdl_compat.h"
 #include "settings_popup.h"
+#include "sim_input.h"
 #include "stats_overlay.h"
 #include "terrain_widget.h"
-#include <chrono>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <string>
 
 namespace
@@ -29,64 +29,20 @@ void printUsage(const char *argv0)
               << "Sim keys: arrows pitch/roll, Q/E heading, W/S speed, +/- alt, R reset\n";
 }
 
-/// Steps the simulator from the keys held this frame, and levels the aircraft on R.
-class SimInput : public IRenderer
+/// \return nullopt to run. Otherwise the process exit code.
+std::optional<int> parseArgs(int argc, char **argv, bool &liveStratux)
 {
-public:
-    /// \param sim Aircraft the keys drive. Must outlive this object.
-    explicit SimInput(DataManagerSim &sim) : mSim(sim) {}
-
-    void render() override {}
-
-    bool keyDown(SDL_Keycode key) override
-    {
-        if (key == SDLK_r)
-        {
-            mSim.resetAttitude();
-            return true;
-        }
-        return false;
-    }
-
-    /// Advances the aircraft by the time since the previous call.
-    void tick()
-    {
-        const auto now = std::chrono::steady_clock::now();
-        float dt = 0.016f;
-        if (mHasClock)
-        {
-            dt = std::chrono::duration<float>(now - mLastTick).count();
-        }
-        mLastTick = now;
-        mHasClock = true;
-
-        const Uint8 *keys = SDL_GetKeyboardState(nullptr);
-        mSim.tick(dt, keys[SDL_SCANCODE_UP], keys[SDL_SCANCODE_DOWN], keys[SDL_SCANCODE_LEFT], keys[SDL_SCANCODE_RIGHT],
-                  keys[SDL_SCANCODE_Q], keys[SDL_SCANCODE_E], keys[SDL_SCANCODE_W], keys[SDL_SCANCODE_S],
-                  keys[SDL_SCANCODE_PAGEUP] || keys[SDL_SCANCODE_EQUALS] || keys[SDL_SCANCODE_KP_PLUS],
-                  keys[SDL_SCANCODE_PAGEDOWN] || keys[SDL_SCANCODE_MINUS] || keys[SDL_SCANCODE_KP_MINUS]);
-    }
-
-private:
-    DataManagerSim &mSim;
-    std::chrono::steady_clock::time_point mLastTick{};
-    bool mHasClock = false;
-};
-}
-
-int main(int argc, char **argv)
-{
-    bool useSim = true;
+    liveStratux = false;
     for (int i = 1; i < argc; ++i)
     {
         const std::string arg = argv[i];
         if (arg == "--sim")
         {
-            useSim = true;
+            liveStratux = false;
         }
         else if (arg == "--stratux")
         {
-            useSim = false;
+            liveStratux = true;
         }
         else if (arg == "--help" || arg == "-h")
         {
@@ -100,54 +56,69 @@ int main(int argc, char **argv)
             return 1;
         }
     }
+    return std::nullopt;
+}
+
+struct Session
+{
+    std::unique_ptr<IDataManager> data;
+    std::unique_ptr<SimInput> sim;
+};
+
+Session openSim(Frame &frame, const char *label)
+{
+    Session session;
+    auto aircraft = std::make_unique<DataManagerSim>();
+    session.sim = std::make_unique<SimInput>(frame, *aircraft);
+    session.data = std::move(aircraft);
+    std::cout << "Data source: " << label << std::endl;
+    return session;
+}
+
+Session openSession(Frame &frame, bool liveStratux)
+{
+#ifdef EFIS_ANDROID
+    (void)liveStratux;
+    return openSim(frame, "simulated Stratux (Android)");
+#else
+    if (!liveStratux)
+    {
+        return openSim(frame, "simulated Stratux");
+    }
+    Session session;
+    session.data = std::make_unique<DataManagerStratux>();
+    std::cout << "Data source: Stratux HTTP" << std::endl;
+    return session;
+#endif
+}
+}
+
+int main(int argc, char **argv)
+{
+    bool liveStratux = false;
+    if (const std::optional<int> stop = parseArgs(argc, argv, liveStratux))
+    {
+        return *stop;
+    }
 
     Screen screen(1024, 600);
     Frame frame(screen);
+    Session session = openSession(frame, liveStratux);
 
-    std::unique_ptr<IDataManager> dataManager;
-    std::unique_ptr<SimInput> simInput;
-    if (useSim)
-    {
-        auto simulated = std::make_unique<DataManagerSim>();
-        simInput = std::make_unique<SimInput>(*simulated);
-        dataManager = std::move(simulated);
-        std::cout << "Data source: simulated Stratux" << std::endl;
-    }
-    else
-    {
-#ifdef EFIS_ANDROID
-        auto simulated = std::make_unique<DataManagerSim>();
-        simInput = std::make_unique<SimInput>(*simulated);
-        dataManager = std::move(simulated);
-        std::cout << "Data source: simulated Stratux (Android)" << std::endl;
-#else
-        dataManager = std::make_unique<DataManagerStratux>();
-        std::cout << "Data source: Stratux HTTP" << std::endl;
-#endif
-    }
-
-    TerrainWidget terrainWidget(frame, *dataManager);
-    AhrsWidget ahrsWidget(frame, *dataManager);
-    AppController controller(frame, ahrsWidget, terrainWidget);
+    TerrainWidget terrain(frame, *session.data);
+    AhrsWidget ahrs(frame, *session.data);
+    AppController controller(frame, ahrs, terrain);
     MenuWidget menu(frame, controller);
-    StatsOverlay stats(frame, controller, terrainWidget);
-    SettingsPopup settings(frame, controller, terrainWidget);
+    StatsOverlay stats(frame, controller, terrain);
+    SettingsPopup settings(frame, controller, terrain);
     menu.setPopup(settings);
-    if (simInput)
+
+    if (session.sim)
     {
-        frame.addInputFront(simInput.get());
-        std::cout << "Sim: arrows pitch/roll, Q/E heading, W/S speed, +/- alt, R reset\n";
+        frame.setTick([&] { session.sim->tick(); });
     }
 
-    frame.setTick([&] {
-        terrainWidget.pumpMapPreload();
-        if (simInput)
-        {
-            simInput->tick();
-        }
-    });
-
-    dataManager->start();
+    session.data->start();
     frame.run();
     return 0;
 }

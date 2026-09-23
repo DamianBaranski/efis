@@ -34,6 +34,7 @@ set(SRC
     src/app/menu_widget.cpp
     src/app/settings_popup.cpp
     src/app/stats_overlay.cpp
+    src/app/sim_input.cpp
     src/flight/data_manager_sim.cpp
     src/ahrs/ahrs_widget.cpp
     src/terrain/bucket.cpp
@@ -67,6 +68,7 @@ set(INC
     src/app/screen.h
     src/app/sdl_compat.h
     src/app/settings_popup.h
+    src/app/sim_input.h
     src/app/stats_overlay.h
     src/flight/data_manager_sim.h
     src/flight/data_type.h

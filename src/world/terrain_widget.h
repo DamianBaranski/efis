@@ -148,6 +148,7 @@ public:
     /// Draws terrain, imagery, and the overlays that are switched on.
     virtual void render()
     {
+        pumpMapPreload();
         if (!mEnabled)
         {
             return;
