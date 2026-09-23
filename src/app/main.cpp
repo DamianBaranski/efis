@@ -55,25 +55,38 @@ std::optional<int> parseArgs(int argc, char **argv, bool &liveStratux)
 
 int main(int argc, char **argv)
 {
+    // --sim is the default. --stratux asks for the live receiver. Help and bad args exit here.
     bool liveStratux = false;
     if (const std::optional<int> stop = parseArgs(argc, argv, liveStratux))
     {
         return *stop;
     }
 
+    // Desktop opens 1024x600. Android opens fullscreen and takes the display size.
     Screen screen;
+    // Event loop and the draw list. Nothing is drawn until it is added below.
     Frame frame(screen);
+    // Simulator, or Stratux HTTP on the desktop. Android always gets the simulator.
+    // The simulator also registers its flight keys on the frame.
     const std::unique_ptr<ISession> session = openSession(frame, liveStratux);
 
+    // Instruments read the situation feed. They are not on the draw list yet.
     TerrainWidget terrain(frame, session->data());
     AhrsWidget ahrs(frame, session->data());
+    // Draw order: 3D world, then the attitude instrument on top of it.
     frame.add(&terrain);
     frame.add(&ahrs);
+    // Mode keys and layer switches. Holds the real widgets because the frame list is only IRenderer.
+    // Registers for keys ahead of the widgets. Does not draw.
     AppController controller(frame, ahrs, terrain);
+    // Menu, stats, and GENERAL. Added above the instruments, settings window last.
     Hud hud(frame, controller, terrain);
 
+    // Each frame, before drawing: step the simulator. Stratux does nothing here.
     frame.setTick([&] { session->tick(); });
+    // Park the simulator at home, or start the Stratux HTTP poll.
     session->start();
+    // Pump events, tick, draw, present, until the window closes.
     frame.run();
     return 0;
 }
