@@ -6,7 +6,28 @@
 #include <algorithm>
 #include <iostream>
 
-Screen::Screen(int width, int height) : mWidth(width), mHeight(height)
+namespace
+{
+void desktopSize(int &width, int &height)
+{
+    width = 1024;
+    height = 600;
+}
+
+void androidSize(int &width, int &height)
+{
+    width = 1;
+    height = 1;
+    SDL_DisplayMode mode{};
+    if (SDL_GetDesktopDisplayMode(0, &mode) == 0 && mode.w > 0 && mode.h > 0)
+    {
+        width = std::max(mode.w, mode.h);
+        height = std::min(mode.w, mode.h);
+    }
+}
+}
+
+Screen::Screen()
 {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_PROFILE_ES);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
@@ -23,20 +44,20 @@ Screen::Screen(int width, int height) : mWidth(width), mHeight(height)
     }
     AssetPath::init();
 
+    int width = 0;
+    int height = 0;
 #ifdef __ANDROID__
     SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
     SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
     SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
-    SDL_DisplayMode mode{};
-    if (SDL_GetDesktopDisplayMode(0, &mode) == 0 && mode.w > 0 && mode.h > 0)
-    {
-        width = std::max(mode.w, mode.h);
-        height = std::min(mode.w, mode.h);
-    }
+    androidSize(width, height);
     const Uint32 flags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_RESIZABLE;
 #else
+    desktopSize(width, height);
     const Uint32 flags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN;
 #endif
+    mWidth = width;
+    mHeight = height;
 
     mWindow = SDL_CreateWindow("EFIS", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, flags);
     if (!mWindow)

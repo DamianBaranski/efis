@@ -40,9 +40,8 @@ class Screen
 {
 public:
     /// Creates the window and the GLES context.
-    /// \param width Pixels.
-    /// \param height Pixels.
-    Screen(int width, int height);
+    /// Desktop opens a 1024 by 600 window. Android opens fullscreen and takes the display size.
+    Screen();
 
     /// Destroys the context and the window.
     ~Screen();

@@ -2,19 +2,15 @@
 /// Builds the window, the situation source, and the 3D and AHRS layers, then runs the frame.
 #include "ahrs_widget.h"
 #include "app_controller.h"
-#include "data_manager_sim.h"
-#ifndef EFIS_ANDROID
-#include "data_manager_stratux.h"
-#endif
 #include "frame.h"
 #include "menu_widget.h"
 #include "screen.h"
+#include "session.h"
 #include "settings_popup.h"
 #include "sim_input.h"
 #include "stats_overlay.h"
 #include "terrain_widget.h"
 #include <iostream>
-#include <memory>
 #include <optional>
 #include <string>
 
@@ -58,39 +54,6 @@ std::optional<int> parseArgs(int argc, char **argv, bool &liveStratux)
     }
     return std::nullopt;
 }
-
-struct Session
-{
-    std::unique_ptr<IDataManager> data;
-    std::unique_ptr<SimInput> sim;
-};
-
-Session openSim(Frame &frame, const char *label)
-{
-    Session session;
-    auto aircraft = std::make_unique<DataManagerSim>();
-    session.sim = std::make_unique<SimInput>(frame, *aircraft);
-    session.data = std::move(aircraft);
-    std::cout << "Data source: " << label << std::endl;
-    return session;
-}
-
-Session openSession(Frame &frame, bool liveStratux)
-{
-#ifdef EFIS_ANDROID
-    (void)liveStratux;
-    return openSim(frame, "simulated Stratux (Android)");
-#else
-    if (!liveStratux)
-    {
-        return openSim(frame, "simulated Stratux");
-    }
-    Session session;
-    session.data = std::make_unique<DataManagerStratux>();
-    std::cout << "Data source: Stratux HTTP" << std::endl;
-    return session;
-#endif
-}
 }
 
 int main(int argc, char **argv)
@@ -101,7 +64,7 @@ int main(int argc, char **argv)
         return *stop;
     }
 
-    Screen screen(1024, 600);
+    Screen screen;
     Frame frame(screen);
     Session session = openSession(frame, liveStratux);
 
