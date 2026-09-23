@@ -7,7 +7,6 @@
 #include "screen.h"
 #include "session.h"
 #include "settings_popup.h"
-#include "sim_input.h"
 #include "stats_overlay.h"
 #include "terrain_widget.h"
 #include <iostream>
@@ -66,22 +65,18 @@ int main(int argc, char **argv)
 
     Screen screen;
     Frame frame(screen);
-    Session session = openSession(frame, liveStratux);
+    const std::unique_ptr<ISession> session = openSession(frame, liveStratux);
 
-    TerrainWidget terrain(frame, *session.data);
-    AhrsWidget ahrs(frame, *session.data);
+    TerrainWidget terrain(frame, session->data());
+    AhrsWidget ahrs(frame, session->data());
     AppController controller(frame, ahrs, terrain);
     MenuWidget menu(frame, controller);
     StatsOverlay stats(frame, controller, terrain);
     SettingsPopup settings(frame, controller, terrain);
     menu.setPopup(settings);
 
-    if (session.sim)
-    {
-        frame.setTick([&] { session.sim->tick(); });
-    }
-
-    session.data->start();
+    frame.setTick([&] { session->tick(); });
+    session->start();
     frame.run();
     return 0;
 }

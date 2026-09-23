@@ -1,5 +1,5 @@
 /// \file session.cpp
-/// Opens the simulated aircraft or the live Stratux feed.
+/// Builds a simulator session or a live Stratux session.
 #include "session.h"
 #include "data_manager_sim.h"
 #include "frame.h"
@@ -11,30 +11,54 @@
 
 namespace
 {
-Session openSim(Frame &frame, const char *label)
+class SimSession final : public ISession
 {
-    Session session;
-    auto aircraft = std::make_unique<DataManagerSim>();
-    session.sim = std::make_unique<SimInput>(frame, *aircraft);
-    session.data = std::move(aircraft);
-    std::cout << "Data source: " << label << std::endl;
-    return session;
-}
+public:
+    SimSession(Frame &frame, const char *label)
+    {
+        mSim = std::make_unique<SimInput>(frame, *mAircraft);
+        std::cout << "Data source: " << label << std::endl;
+    }
+
+    IDataManager &data() override { return *mAircraft; }
+
+    void start() override { mAircraft->start(); }
+
+    void tick() override { mSim->tick(); }
+
+private:
+    std::unique_ptr<DataManagerSim> mAircraft = std::make_unique<DataManagerSim>();
+    std::unique_ptr<SimInput> mSim;
+};
+
+#ifndef EFIS_ANDROID
+class StratuxSession final : public ISession
+{
+public:
+    StratuxSession() { std::cout << "Data source: Stratux HTTP" << std::endl; }
+
+    IDataManager &data() override { return mFeed; }
+
+    void start() override { mFeed.start(); }
+
+    void tick() override {}
+
+private:
+    DataManagerStratux mFeed;
+};
+#endif
 }
 
-Session openSession(Frame &frame, bool liveStratux)
+std::unique_ptr<ISession> openSession(Frame &frame, bool liveStratux)
 {
 #ifdef EFIS_ANDROID
     (void)liveStratux;
-    return openSim(frame, "simulated Stratux (Android)");
+    return std::make_unique<SimSession>(frame, "simulated Stratux (Android)");
 #else
     if (!liveStratux)
     {
-        return openSim(frame, "simulated Stratux");
+        return std::make_unique<SimSession>(frame, "simulated Stratux");
     }
-    Session session;
-    session.data = std::make_unique<DataManagerStratux>();
-    std::cout << "Data source: Stratux HTTP" << std::endl;
-    return session;
+    return std::make_unique<StratuxSession>();
 #endif
 }
