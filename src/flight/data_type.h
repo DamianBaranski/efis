@@ -55,6 +55,13 @@ typedef struct
     float roll;    ///< Roll angle [radians].
     float pitch;   ///< Pitch angle [radians].
     float heading; ///< Heading angle [radians].
+    /// Body-to-NED quaternion. The 3D view uses this so pitch can pass vertical
+    /// without the Euler roll jump that swaps sky and ground.
+    bool useQuat = false;
+    float qw = 1.0f;
+    float qx = 0.0f;
+    float qy = 0.0f;
+    float qz = 0.0f;
 } AttitudeData;
 
 /// Speed and slip.

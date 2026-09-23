@@ -1,5 +1,5 @@
 /// \file settings_popup.cpp
-/// Draws the GENERAL window and edits imagery coverage and narration.
+/// Draws the GENERAL window and edits imagery coverage, narration, and the situation source.
 #include "settings_popup.h"
 #include "app_controller.h"
 #include "nav_voice.h"
@@ -8,14 +8,18 @@
 #include <cmath>
 #include <cstdio>
 #include <string>
+#include <vector>
 
-SettingsPopup::SettingsPopup(Frame &frame, AppController &controller, IWorldRead &world)
-    : IWidget(frame), mController(controller), mWorld(world), mWindow(frame.screen()), mEuropeMap(frame.screen())
+SettingsPopup::SettingsPopup(Frame &frame, AppController &controller, IWorldRead &world, ISession &session)
+    : IWidget(frame), mController(controller), mWorld(world), mSession(session), mWindow(frame.screen()),
+      mEuropeMap(frame.screen()), mVoice(frame.screen()), mSource(frame.screen())
 {
 }
 
 void SettingsPopup::invalidate()
 {
+    mVoice.close();
+    mSource.close();
     mKey.clear();
 }
 
@@ -32,6 +36,14 @@ int SettingsPopup::activeTab() const
 void SettingsPopup::setActiveTab(int tab)
 {
     mWindow.setActiveTab(tab);
+    if (tab != 2)
+    {
+        mVoice.close();
+    }
+    if (tab != 3)
+    {
+        mSource.close();
+    }
     mKey.clear();
 }
 
@@ -209,12 +221,6 @@ void SettingsPopup::adjustSound(int control)
     case 0:
         voice.setNarration(!voice.narration());
         break;
-    case 1:
-        voice.stepVoice(-1);
-        break;
-    case 2:
-        voice.stepVoice(1);
-        break;
     case 3:
         voice.setAirspace(!voice.airspace());
         break;
@@ -298,14 +304,203 @@ void SettingsPopup::drawSoundPage(int screenH)
     const int voiceTop = boxY + rowH;
     const int voiceY = voiceTop + (rowH - btnH) / 2;
     const float voiceTextY = static_cast<float>(screenH - (voiceTop + rowH / 2));
-    const std::string voiceName = voice.voiceLabel();
-    const int step = std::min(btnH, 64);
-    const int voiceCenter = boxX + boxW * 62 / 100;
+    const int dropW = std::clamp(boxW * 46 / 100, 220, 480);
+    const int dropX = boxX + boxW - dropW - boxW / 14;
     mWindow.setText(1, "VOICE", font, static_cast<float>(labelX), voiceTextY, "efis-sound-name-1");
-    mWindow.setText(7, voiceName, font, static_cast<float>(voiceCenter), voiceTextY,
-                    (std::string("efis-sound-voice-") + voiceName).c_str());
-    mWindow.setButton(1, voiceCenter - step * 3, voiceY, step, btnH, "-", font, "efis-sound-voice-minus");
-    mWindow.setButton(2, voiceCenter + step * 2, voiceY, step, btnH, "+", font, "efis-sound-voice-plus");
+    mVoice.setFont(font);
+    mVoice.place(dropX, voiceY, dropW, btnH);
+    mVoice.setItems(voice.voiceLabels(), voice.voiceIndex());
+}
+
+bool SettingsPopup::handleVoice(int x, int y)
+{
+    if (mWindow.activeTab() != 2)
+    {
+        return false;
+    }
+    const Dropdown::Click click = mVoice.mouseClick(x, y);
+    if (!click.consumed)
+    {
+        return false;
+    }
+    if (click.chosen >= 0)
+    {
+        NavVoice::instance().selectVoice(click.chosen);
+        mKey.clear();
+    }
+    return true;
+}
+
+bool SettingsPopup::handleSource(int x, int y)
+{
+    if (mWindow.activeTab() != 3)
+    {
+        return false;
+    }
+    const int button = mWindow.hitButton(x, y);
+    if (button == 0)
+    {
+        mSession.toggleHorizon();
+        mKey.clear();
+        return true;
+    }
+    if (button >= 1 && button <= 4)
+    {
+        mSession.toggleSensor(button - 1);
+        mKey.clear();
+        return true;
+    }
+    const Dropdown::Click click = mSource.mouseClick(x, y);
+    if (!click.consumed)
+    {
+        return false;
+    }
+    if (click.chosen == 0)
+    {
+        mSession.setSource(SituationSource::Sim);
+    }
+    else if (click.chosen == 1)
+    {
+        mSession.setSource(SituationSource::Internal);
+    }
+    else if (click.chosen == 2)
+    {
+        mSession.setSource(SituationSource::Stratux);
+    }
+    if (click.chosen >= 0)
+    {
+        mKey.clear();
+    }
+    return true;
+}
+
+void SettingsPopup::drawSourcesPage(int screenH)
+{
+    const int boxX = mWindow.contentX();
+    const int boxY = mWindow.contentY();
+    const int boxW = mWindow.contentW();
+    const int boxH = mWindow.contentH();
+    constexpr int kRows = 7;
+    const int rowH = std::max(1, boxH / kRows);
+    const int btnH = std::clamp(rowH * 2 / 3, 36, 72);
+    const float font = static_cast<float>(std::clamp(btnH / 3, 16, 28));
+    const int labelX = boxX + boxW * 22 / 100;
+    const int rowTop = boxY + rowH;
+    const int dropY = rowTop + (rowH - btnH) / 2;
+    const float textY = static_cast<float>(screenH - (rowTop + rowH / 2));
+    const int dropW = std::clamp(boxW * 46 / 100, 220, 480);
+    const int dropX = boxX + boxW - dropW - boxW / 14;
+    mWindow.setText(0, "SOURCE", font, static_cast<float>(labelX), textY, "efis-source-name");
+    const char *names[4] = {"GPS", "GYRO", "ACCEL", "COMPASS"};
+    const int togW = std::clamp(boxW / 5, 96, 150);
+    const int togX = boxX + boxW - togW - boxW / 14;
+    for (int i = 0; i < 4; ++i)
+    {
+        const int top = boxY + (i + 2) * rowH;
+        const int togY = top + (rowH - btnH) / 2;
+        const float y = static_cast<float>(screenH - (top + rowH / 2));
+        const std::string key = std::string("efis-sensor-name-") + names[i];
+        const bool on = mSession.sensorOn(i);
+        mWindow.setText(1 + i, names[i], font, static_cast<float>(labelX), y, key.c_str());
+        const std::string buttonKey = std::string("efis-sensor-sw-") + names[i] + (on ? "-on" : "-off");
+        mWindow.setButton(1 + i, togX, togY, togW, btnH, on ? "ON" : "OFF", font, buttonKey.c_str(),
+                          on ? 0x4DA3FFB0u : 0xFFFFFF40u);
+    }
+    std::vector<std::string> items = {"SIM", "INTERNAL"};
+    int selected = mSession.source() == SituationSource::Internal ? 1 : 0;
+    if (mSession.receiver())
+    {
+        items.emplace_back("STRATUX");
+        if (mSession.source() == SituationSource::Stratux)
+        {
+            selected = 2;
+        }
+    }
+    mSource.setFont(font);
+    mSource.place(dropX, dropY, dropW, btnH);
+    mSource.setItems(items, selected);
+    const int levelTop = boxY + 6 * rowH;
+    const int levelY = levelTop + (rowH - btnH) / 2;
+    const float levelTextY = static_cast<float>(screenH - (levelTop + rowH / 2));
+    const bool level = mSession.horizonSet();
+    const bool attitude = mSession.source() == SituationSource::Internal && mSession.sensors().attitude;
+    mWindow.setText(9, "HORIZON", font, static_cast<float>(labelX), levelTextY, "efis-horizon-name");
+    const char *levelLabel = attitude ? "SET" : "WAIT";
+    const uint32_t levelColor = attitude ? 0x4DA3FFB0u : 0xFFFFFF40u;
+    mWindow.setButton(0, dropX, levelY, dropW, btnH, levelLabel, font,
+                      level ? "efis-horizon-on" : (attitude ? "efis-horizon-ready" : "efis-horizon-wait"), levelColor);
+}
+
+namespace
+{
+std::string xyzLine(bool sample, float x, float y, float z, const char *unit)
+{
+    if (!sample)
+    {
+        return "N/A";
+    }
+    char buf[80];
+    std::snprintf(buf, sizeof(buf), "X %+.2f  Y %+.2f  Z %+.2f %s", x, y, z, unit);
+    return buf;
+}
+
+std::string gpsLine(const SensorReport &report)
+{
+    if (!report.gps)
+    {
+        return "N/A";
+    }
+    char buf[96];
+    std::snprintf(buf, sizeof(buf), "%.5f%c  %.5f%c  %.0f m  %.1f m/s", std::fabs(report.lat),
+                  report.lat >= 0.0f ? 'N' : 'S', std::fabs(report.lon), report.lon >= 0.0f ? 'E' : 'W', report.alt,
+                  report.speed);
+    return buf;
+}
+
+std::string gyroLine(const SensorReport &report)
+{
+    return xyzLine(report.gyro, report.gx, report.gy, report.gz, "rad/s");
+}
+
+std::string accelLine(const SensorReport &report)
+{
+    return xyzLine(report.accel, report.ax, report.ay, report.az, "m/s2");
+}
+
+std::string compassLine(const SensorReport &report)
+{
+    return xyzLine(report.compass, report.mx, report.my, report.mz, "uT");
+}
+}
+
+void SettingsPopup::drawSensorLines(int screenH)
+{
+    const int boxX = mWindow.contentX();
+    const int boxY = mWindow.contentY();
+    const int boxW = mWindow.contentW();
+    const int boxH = mWindow.contentH();
+    constexpr int kRows = 7;
+    const int rowH = std::max(1, boxH / kRows);
+    const int btnH = std::clamp(rowH * 2 / 3, 36, 72);
+    const float font = static_cast<float>(std::clamp(btnH / 3, 16, 28));
+    const int valueX = boxX + boxW * 42 / 100;
+    const SensorReport report = mSession.source() == SituationSource::Internal ? mSession.sensors() : SensorReport{};
+    const std::string lines[4] = {mSession.source() == SituationSource::Internal ? gpsLine(report) : "N/A",
+                                  mSession.source() == SituationSource::Internal ? gyroLine(report) : "N/A",
+                                  mSession.source() == SituationSource::Internal ? accelLine(report) : "N/A",
+                                  mSession.source() == SituationSource::Internal ? compassLine(report) : "N/A"};
+    for (int i = 0; i < 4; ++i)
+    {
+        if (lines[i] == mSensorValue[i])
+        {
+            continue;
+        }
+        mSensorValue[i] = lines[i];
+        const int top = boxY + (i + 2) * rowH;
+        const float y = static_cast<float>(screenH - (top + rowH / 2));
+        const std::string key = std::string("efis-sensor-value-") + std::to_string(i);
+        mWindow.setText(5 + i, lines[i], font, static_cast<float>(valueX), y, key.c_str());
+    }
 }
 
 void SettingsPopup::drawPage()
@@ -315,7 +510,12 @@ void SettingsPopup::drawPage()
     mWindow.setTabLabel(0, "RENDER");
     mWindow.setTabLabel(1, "MAPS");
     mWindow.setTabLabel(2, "SOUND");
-    mWindow.layout(screenW, screenH);
+    mWindow.setTabLabel(3, "SOURCES");
+    const int menuPad = std::max(4, screenH / 160);
+    const int menuGap = std::max(4, screenW / 220);
+    const int menuBox = std::max(36, screenH / 18);
+    const int menuBottom = menuPad + 5 * menuBox + 4 * menuGap;
+    mWindow.layout(screenW, screenH, menuBottom + menuGap);
     char farDist[16];
     char nearDist[16];
     formatKm(farDist, sizeof(farDist), ringRadiusKm(mController.farZoom(), mController.farGrid()));
@@ -329,10 +529,18 @@ void SettingsPopup::drawPage()
                               (voice.reporting() ? "1" : "0") + (voice.nearest() ? "1" : "0") +
                               (voice.obstacles() ? "1" : "0") + NavVoice::instance().voiceLabel();
     const std::string key = std::to_string(mWindow.activeTab()) + farDist + farZoom + nearDist + nearZoom + sound +
+                            std::to_string(static_cast<int>(mSession.source())) + (mSession.horizonSet() ? "1" : "0") +
+                            (mSession.sensors().attitude ? "1" : "0") +
+                            (mSession.sensorOn(0) ? "1" : "0") + (mSession.sensorOn(1) ? "1" : "0") +
+                            (mSession.sensorOn(2) ? "1" : "0") + (mSession.sensorOn(3) ? "1" : "0") +
                             std::to_string(mWindow.width()) + std::to_string(mWindow.height());
     if (key != mKey)
     {
         mKey = key;
+        for (std::string &line : mSensorValue)
+        {
+            line.clear();
+        }
         mWindow.clearContent();
         if (mWindow.activeTab() == 0)
         {
@@ -374,8 +582,24 @@ void SettingsPopup::drawPage()
         {
             drawSoundPage(screenH);
         }
+        else if (mWindow.activeTab() == 3)
+        {
+            drawSourcesPage(screenH);
+        }
+    }
+    if (mWindow.activeTab() == 3)
+    {
+        drawSensorLines(screenH);
     }
     mWindow.render();
+    if (mWindow.activeTab() == 2)
+    {
+        mVoice.render();
+    }
+    if (mWindow.activeTab() == 3)
+    {
+        mSource.render();
+    }
     if (mWindow.activeTab() == 1)
     {
         mEuropeMap.layout(mWindow.contentX(), mWindow.contentY(), mWindow.contentW(), mWindow.contentH(), screenW,

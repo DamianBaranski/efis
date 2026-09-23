@@ -7,6 +7,7 @@ android/.tmp/
 android/build/
 android/local.properties
 android/.tablet-wlan
+android/.phone-wlan
 android/sdk/
 android/jdk/
 android/avd/

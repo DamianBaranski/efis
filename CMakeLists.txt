@@ -38,6 +38,7 @@ set(SRC
     src/app/sim_input.cpp
     src/app/session.cpp
     src/flight/data_manager_sim.cpp
+    src/flight/data_manager_internal.cpp
     src/ahrs/ahrs_widget.cpp
     src/terrain/bucket.cpp
     src/terrain/bucket_container.cpp
@@ -56,6 +57,7 @@ set(SRC
     src/voice/nav_voice.cpp
     src/ui/shader.cpp
     src/ui/render2d.cpp
+    src/ui/dropdown.cpp
     src/ui/europe_borders.cpp
     src/ui/europe_map.cpp
     src/platform/geo_coord_utils.cpp
@@ -75,6 +77,7 @@ set(INC
     src/app/sim_input.h
     src/app/stats_overlay.h
     src/flight/data_manager_sim.h
+    src/flight/data_manager_internal.h
     src/flight/data_type.h
     src/flight/idata_manager.h
     src/flight/iobserver.h
@@ -101,6 +104,7 @@ set(INC
     src/voice/nav_voice.h
     src/ui/shader.h
     src/ui/render2d.h
+    src/ui/dropdown.h
     src/ui/popup.h
     src/ui/tab_window.h
     src/ui/europe_borders.h
@@ -108,6 +112,51 @@ set(INC
     src/platform/geo_coord_utils.h
     src/platform/asset_path.h
 )
+
+set(PX4_ROOT ${CMAKE_SOURCE_DIR}/third_party/px4)
+set(PX4_EKF_SRCS
+    ${PX4_ROOT}/src/modules/ekf2/EKF/control.cpp
+    ${PX4_ROOT}/src/modules/ekf2/EKF/covariance.cpp
+    ${PX4_ROOT}/src/modules/ekf2/EKF/ekf.cpp
+    ${PX4_ROOT}/src/modules/ekf2/EKF/ekf_helper.cpp
+    ${PX4_ROOT}/src/modules/ekf2/EKF/estimator_interface.cpp
+    ${PX4_ROOT}/src/modules/ekf2/EKF/height_control.cpp
+    ${PX4_ROOT}/src/modules/ekf2/EKF/velocity_fusion.cpp
+    ${PX4_ROOT}/src/modules/ekf2/EKF/position_fusion.cpp
+    ${PX4_ROOT}/src/modules/ekf2/EKF/yaw_fusion.cpp
+    ${PX4_ROOT}/src/modules/ekf2/EKF/imu_down_sampler/imu_down_sampler.cpp
+    ${PX4_ROOT}/src/modules/ekf2/EKF/aid_sources/fake_height_control.cpp
+    ${PX4_ROOT}/src/modules/ekf2/EKF/aid_sources/fake_pos_control.cpp
+    ${PX4_ROOT}/src/modules/ekf2/EKF/aid_sources/ZeroGyroUpdate.cpp
+    ${PX4_ROOT}/src/modules/ekf2/EKF/aid_sources/ZeroVelocityUpdate.cpp
+    ${PX4_ROOT}/src/modules/ekf2/EKF/aid_sources/gnss/gnss_checks.cpp
+    ${PX4_ROOT}/src/modules/ekf2/EKF/aid_sources/gnss/gnss_height_control.cpp
+    ${PX4_ROOT}/src/modules/ekf2/EKF/aid_sources/gnss/gps_control.cpp
+    ${PX4_ROOT}/src/modules/ekf2/EKF/aid_sources/gravity/gravity_fusion.cpp
+    ${PX4_ROOT}/src/modules/ekf2/EKF/aid_sources/magnetometer/mag_control.cpp
+    ${PX4_ROOT}/src/modules/ekf2/EKF/aid_sources/magnetometer/mag_fusion.cpp
+    ${PX4_ROOT}/src/modules/ekf2/EKF/bias_estimator/bias_estimator.cpp
+    ${PX4_ROOT}/src/modules/ekf2/EKF/output_predictor/output_predictor.cpp
+    ${PX4_ROOT}/src/modules/ekf2/EKF/yaw_estimator/EKFGSF_yaw.cpp
+    ${PX4_ROOT}/src/lib/geo/geo.cpp
+    ${PX4_ROOT}/src/lib/world_magnetic_model/geo_mag_declination.cpp
+    ${PX4_ROOT}/src/lib/atmosphere/atmosphere.cpp
+    ${PX4_ROOT}/src/lib/lat_lon_alt/lat_lon_alt.cpp
+)
+add_library(px4_ekf STATIC ${PX4_EKF_SRCS})
+target_include_directories(px4_ekf PUBLIC
+    ${PX4_ROOT}/src
+    ${PX4_ROOT}/src/lib
+    ${PX4_ROOT}/src/lib/matrix
+    ${PX4_ROOT}/src/modules/ekf2/EKF
+    ${PX4_ROOT}/src/modules/ekf2/EKF/python
+)
+target_compile_definitions(px4_ekf PUBLIC
+    CONFIG_EKF2_GNSS
+    CONFIG_EKF2_MAGNETOMETER
+    CONFIG_EKF2_GRAVITY_FUSION
+)
+target_compile_options(px4_ekf PRIVATE -w -fno-associative-math)
 
 if(ANDROID)
     add_compile_definitions(EFIS_ANDROID=1)
@@ -149,6 +198,7 @@ if(ANDROID)
         SDL2_ttf::SDL2_ttf
         nlohmann_json::nlohmann_json
         glm::glm
+        px4_ekf
         GLESv3
         EGL
         android
@@ -203,6 +253,7 @@ else()
         SDL2_ttf
         nlohmann_json::nlohmann_json
         glm::glm
+        px4_ekf
     )
     if(wgrib2_FOUND)
         target_link_libraries(efis wgrib2::wgrib2_lib)

@@ -490,6 +490,21 @@ void NavVoice::stepVoice(int delta)
     VoiceAnnouncer::instance().stepVoice(delta);
 }
 
+std::vector<std::string> NavVoice::voiceLabels()
+{
+    return VoiceAnnouncer::instance().voiceLabels();
+}
+
+int NavVoice::voiceIndex()
+{
+    return VoiceAnnouncer::instance().voiceIndex();
+}
+
+void NavVoice::selectVoice(int index)
+{
+    VoiceAnnouncer::instance().selectVoice(index);
+}
+
 std::string NavVoice::voiceLabel()
 {
     return VoiceAnnouncer::instance().voiceLabel();

@@ -25,12 +25,17 @@ public:
     bool keyDown(SDL_Keycode key) override;
 
     /// Advances the aircraft from the keys held since the previous call.
+    /// Does nothing while the keyboard feed is not selected.
     void tick();
+
+    /// Turns the flight keys on or off. Off leaves the aircraft where it is.
+    void setEnabled(bool enabled);
 
 private:
     DataManagerSim &mSim;
     std::chrono::steady_clock::time_point mLastTick{};
     bool mHasClock = false;
+    bool mEnabled = true;
 };
 
 #endif

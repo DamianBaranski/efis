@@ -13,6 +13,10 @@ SimInput::SimInput(Frame &frame, DataManagerSim &sim) : mSim(sim)
 
 bool SimInput::keyDown(SDL_Keycode key)
 {
+    if (!mEnabled)
+    {
+        return false;
+    }
     if (key == SDLK_r)
     {
         mSim.resetAttitude();
@@ -21,8 +25,18 @@ bool SimInput::keyDown(SDL_Keycode key)
     return false;
 }
 
+void SimInput::setEnabled(bool enabled)
+{
+    mEnabled = enabled;
+    mHasClock = false;
+}
+
 void SimInput::tick()
 {
+    if (!mEnabled)
+    {
+        return;
+    }
     const auto now = std::chrono::steady_clock::now();
     float dt = 0.016f;
     if (mHasClock)

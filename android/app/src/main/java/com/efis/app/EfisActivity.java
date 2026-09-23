@@ -223,6 +223,33 @@ public class EfisActivity extends SDLActivity {
     }
 
     /**
+     * Starts or stops the tablet GPS, gyro, accelerometer, and compass.
+     *
+     * @param on True registers the listeners. False removes them.
+     */
+    public static void setTabletSensors(final boolean on) {
+        TabletSensors.setEnabled(mSingleton, on);
+    }
+
+    /**
+     * Latest tablet sample. See TabletSensors.sample().
+     *
+     * @return Nine floats. Empty until the first call after the activity exists.
+     */
+    public static float[] tabletSample() {
+        return TabletSensors.sample();
+    }
+
+    /**
+     * Forwards the location permission result to the sensor listeners.
+     */
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        TabletSensors.onPermission(requestCode, grantResults);
+    }
+
+    /**
      * Native libraries SDL loads before the first frame.
      * main is the EFIS library and must come after SDL.
      */

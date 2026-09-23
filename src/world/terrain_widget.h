@@ -298,11 +298,47 @@ private:
         const float pitch = attitude.pitch;
         const float roll = attitude.roll;
 
-        const glm::vec3 along = glm::normalize(north * std::cos(heading) + east * std::sin(heading));
-        const glm::vec3 right = glm::normalize(east * std::cos(heading) - north * std::sin(heading));
-        forward = glm::normalize(along * std::cos(pitch) + geodeticUp * std::sin(pitch));
-        const glm::vec3 upPitched = glm::normalize(-along * std::sin(pitch) + geodeticUp * std::cos(pitch));
-        up = glm::normalize(upPitched * std::cos(roll) - right * std::sin(roll));
+        if (attitude.useQuat)
+        {
+            // Body FRD to NED. Euler pitch stops at ±90° and roll then jumps 180°,
+            // which turns a nose-up tilt into an inverted horizon.
+            const auto bodyToNed = [&](float vx, float vy, float vz) {
+                const float qw = attitude.qw;
+                const float qx = attitude.qx;
+                const float qy = attitude.qy;
+                const float qz = attitude.qz;
+                const float tx = 2.0f * (qy * vz - qz * vy);
+                const float ty = 2.0f * (qz * vx - qx * vz);
+                const float tz = 2.0f * (qx * vy - qy * vx);
+                return glm::vec3(vx + qw * tx + (qy * tz - qz * ty), vy + qw * ty + (qz * tx - qx * tz),
+                                 vz + qw * tz + (qx * ty - qy * tx));
+            };
+            const auto nedToWorld = [&](const glm::vec3 &ned) {
+                return glm::normalize(north * ned.x + east * ned.y - geodeticUp * ned.z);
+            };
+            forward = nedToWorld(bodyToNed(1.0f, 0.0f, 0.0f));
+            up = nedToWorld(bodyToNed(0.0f, 0.0f, -1.0f));
+            // Nose-up was looking down. Turn about the wing so pitch flips and bank stays.
+            const float pitchNow = std::atan2(glm::dot(forward, geodeticUp), glm::dot(up, geodeticUp));
+            const glm::vec3 wing = glm::normalize(glm::cross(forward, up));
+            const float turn = -2.0f * pitchNow;
+            const float c = std::cos(turn);
+            const float s = std::sin(turn);
+            const auto aboutWing = [&](const glm::vec3 &v) {
+                return glm::normalize(v * c + glm::cross(wing, v) * s + wing * glm::dot(wing, v) * (1.0f - c));
+            };
+            forward = aboutWing(forward);
+            up = aboutWing(up);
+        }
+        else
+        {
+            const glm::vec3 along = glm::normalize(north * std::cos(heading) + east * std::sin(heading));
+            const glm::vec3 right = glm::normalize(east * std::cos(heading) - north * std::sin(heading));
+            const float pitched = -pitch;
+            forward = glm::normalize(along * std::cos(pitched) + geodeticUp * std::sin(pitched));
+            const glm::vec3 upPitched = glm::normalize(-along * std::sin(pitched) + geodeticUp * std::cos(pitched));
+            up = glm::normalize(upPitched * std::cos(roll) - right * std::sin(roll));
+        }
     }
 
     void initSkybox()

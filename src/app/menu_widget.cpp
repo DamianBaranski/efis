@@ -80,6 +80,11 @@ void MenuWidget::bumpMenuTimeout()
 
 void MenuWidget::expireMenu()
 {
+    if (mController.generalOpen())
+    {
+        mVisible = true;
+        return;
+    }
     if (mVisible && !mLocked && std::chrono::steady_clock::now() >= mHideAt)
     {
         mVisible = false;
@@ -228,10 +233,21 @@ bool MenuWidget::mouseClick(int x, int y)
         }
         if (mPopup.activeTab() == 2)
         {
+            if (mPopup.handleVoice(x, y))
+            {
+                return true;
+            }
             const int control = mPopup.hitButton(x, y);
             if (control >= 0)
             {
                 mPopup.adjustSound(control);
+                return true;
+            }
+        }
+        if (mPopup.activeTab() == 3)
+        {
+            if (mPopup.handleSource(x, y))
+            {
                 return true;
             }
         }
@@ -257,6 +273,7 @@ bool MenuWidget::mouseClick(int x, int y)
         }
         mController.setGeneralOpen(false);
         mPopup.invalidate();
+        bumpMenuTimeout();
         return true;
     }
     if (mVisible)

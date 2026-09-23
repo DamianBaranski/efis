@@ -97,6 +97,10 @@ Shader::~Shader()
 void Shader::render() const
 {
     glUseProgram(mShaderProgram);
+    if (mMvpMatrixLoc >= 0)
+    {
+        glUniformMatrix4fv(mMvpMatrixLoc, 1, GL_FALSE, glm::value_ptr(mMvpMat));
+    }
 
     if (mColorScaleLoc >= 0)
     {

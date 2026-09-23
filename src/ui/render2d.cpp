@@ -18,7 +18,9 @@ Render2D::Render2D(const Screen &screen, int z): mScreen(screen), mMvp(glm::mat4
     mMvp[1][1] = 2.0 / mScreen.getHeight();
     mMvp[3][0] = -1;
     mMvp[3][1] = -1;
-    mMvp[3][2] = -z/100.0;
+    // Later sprites sit closer, but must stay inside the clip box.
+    // -z/100 threw away every sprite after the first hundred, including CONF.
+    mMvp[3][2] = -static_cast<float>(z) / static_cast<float>(z + 100);
     mShader.setMvpMatrix(mMvp);
 }
 

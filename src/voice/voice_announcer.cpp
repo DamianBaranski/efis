@@ -627,6 +627,46 @@ void VoiceAnnouncer::stepVoice(int delta)
     applyVoice(id);
 }
 
+std::vector<std::string> VoiceAnnouncer::voiceLabels()
+{
+    pollVoices();
+    std::lock_guard<std::mutex> lock(mVoiceMutex);
+    std::vector<std::string> labels;
+    labels.reserve(mVoices.size());
+    for (const VoiceChoice &choice : mVoices)
+    {
+        labels.push_back(choice.label.empty() ? "DEFAULT" : choice.label);
+    }
+    return labels;
+}
+
+int VoiceAnnouncer::voiceIndex()
+{
+    pollVoices();
+    std::lock_guard<std::mutex> lock(mVoiceMutex);
+    if (mVoices.empty())
+    {
+        return 0;
+    }
+    return std::clamp(mVoiceIndex, 0, static_cast<int>(mVoices.size()) - 1);
+}
+
+void VoiceAnnouncer::selectVoice(int index)
+{
+    pollVoices();
+    std::string id;
+    {
+        std::lock_guard<std::mutex> lock(mVoiceMutex);
+        if (mVoices.empty() || index < 0 || index >= static_cast<int>(mVoices.size()))
+        {
+            return;
+        }
+        mVoiceIndex = index;
+        id = mVoices[static_cast<size_t>(mVoiceIndex)].id;
+    }
+    applyVoice(id);
+}
+
 std::string VoiceAnnouncer::voiceLabel()
 {
     pollVoices();

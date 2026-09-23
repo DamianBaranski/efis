@@ -10,6 +10,7 @@
 
 class AppController;
 class Frame;
+class ISession;
 class IWorldRead;
 
 /// Chrome over the instruments. Owns the menu, the diagnostics, and GENERAL.
@@ -20,7 +21,8 @@ public:
     /// \param frame Loop that draws the chrome after the instruments.
     /// \param controller Mode flags and imagery coverage.
     /// \param world Camera and preload measurements.
-    Hud(Frame &frame, AppController &controller, IWorldRead &world);
+    /// \param session Situation feed the SOURCES tab switches.
+    Hud(Frame &frame, AppController &controller, IWorldRead &world, ISession &session);
 
 private:
     SettingsPopup mSettings;

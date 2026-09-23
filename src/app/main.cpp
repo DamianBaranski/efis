@@ -84,7 +84,8 @@ int main(int argc, char **argv)
     AppController controller(frame, ahrs, terrain);
     
     // Menu, stats, and GENERAL. Added above the instruments, settings window last.
-    Hud hud(frame, controller, terrain);
+    // SOURCES on GENERAL switches the feed the instruments already read.
+    Hud hud(frame, controller, terrain, *session);
 
     // Each frame, before drawing: step the simulator. Stratux does nothing here.
     frame.setTick([&] { session->tick(); });

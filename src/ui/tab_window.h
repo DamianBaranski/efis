@@ -43,19 +43,23 @@ public:
     /// Sizes the window and the tab strip. Call again when the screen size changes.
     /// \param screenW Window width in pixels.
     /// \param screenH Window height in pixels.
-    void layout(int screenW, int screenH)
+    /// \param topLimit SDL Y the window must start at or below. Zero centres it.
+    void layout(int screenW, int screenH, int topLimit = 0)
     {
         mScreenW = std::max(1, screenW);
         mScreenH = std::max(1, screenH);
         const int margin = std::max(16, mScreenH / 30);
+        const int top = std::max(margin, topLimit);
+        const int availH = std::max(1, mScreenH - top - margin);
         mBoxW = std::min(mScreenW - 2 * margin, std::max(720, mScreenW * 3 / 4));
-        mBoxH = std::min(mScreenH - 2 * margin, std::max(420, mScreenH * 3 / 5));
+        mBoxH = std::min(availH, std::max(280, mScreenH * 3 / 5));
         mSdlX = (mScreenW - mBoxW) / 2;
-        mSdlY = (mScreenH - mBoxH) / 2;
+        mSdlY = top + std::max(0, (availH - mBoxH) / 2);
         mTabPad = std::max(8, mBoxH / 50);
         mTabGap = std::max(6, mBoxH / 80);
         mTabW = std::clamp(mBoxW / 5, 140, 240);
-        mTabH = std::clamp((mBoxH - 2 * mTabPad - (kTabs - 1) * mTabGap) / std::max(4, kTabs + 2), 48, 88);
+        const int inner = mBoxH - 2 * mTabPad - (kTabs - 1) * mTabGap;
+        mTabH = std::min(88, std::max(1, inner / std::max(1, kTabs)));
         mContentX = mSdlX + mTabW;
         mContentY = mSdlY;
         mContentW = mBoxW - mTabW;
@@ -168,8 +172,9 @@ public:
         mTexts[static_cast<size_t>(slot)]->drawTextCentered(text, font, centerX, centerY, 0xFFFFFFFFu, cacheKey);
     }
 
-    /// `x` and `y` are the top-left corner in SDL coordinates.
-    void setButton(int slot, int x, int y, int w, int h, const std::string &label, float font, const char *cacheKey)
+    /// `x` and `y` are the top-left corner in SDL coordinates. `fill` is AABBGGRR.
+    void setButton(int slot, int x, int y, int w, int h, const std::string &label, float font, const char *cacheKey,
+                   uint32_t fill = 0xFFFFFF40u)
     {
         if (slot < 0 || slot >= kButtons)
         {
@@ -182,7 +187,7 @@ public:
         button.h = h;
         button.used = true;
         const int glY = mScreenH - y - h;
-        mButtonBoxes[static_cast<size_t>(slot)]->drawRectangle(x, glY, w, h, 0xFFFFFF40u);
+        mButtonBoxes[static_cast<size_t>(slot)]->drawRectangle(x, glY, w, h, fill);
         mButtonLabels[static_cast<size_t>(slot)]->drawTextCentered(label, font, static_cast<float>(x + w / 2),
                                                                    static_cast<float>(glY + h / 2), 0xFFFFFFFFu,
                                                                    cacheKey);

@@ -51,7 +51,6 @@ private:
     Render2D mAttitudeIndicator;   ///< Representation of the attitude indicator in the AHRS widget.
     Render2D mAircraftSymbol;              ///< Representation of the aircraft symbol in the AHRS widget.
     AttitudeData mAttitudeData;    ///< Attitude data.
-    bool mAttitudeDataUpdated;
     bool mDrawSkyGround = true; ///< Land and horizon tape. False in 3D so terrain shows through.
     int mAttitudeY;
     int mLayoutX = 0;
@@ -68,7 +67,9 @@ private:
     static constexpr const char *cHorizonLineTexture = "layer6.png";                ///< Texture file for the horizon line.
     static constexpr const char *cLandRepresentationTexture = "layer3.png";         ///< Texture file for the land representation.
     static constexpr float cDesignHeight = 600.0f;
-    static constexpr float cPixelPerPitchRadians = cDesignHeight / (2 * M_PI / 360.0f * 60.0f);
+    /// The 10° labels sit 62.5 px from the horizon in the unscaled ladder art.
+    static constexpr float cPitchPixelsPerDegree = 6.25f;
+    static constexpr float cPixelPerPitchRadians = cPitchPixelsPerDegree * (180.0f / static_cast<float>(M_PI));
 };
 
 #endif

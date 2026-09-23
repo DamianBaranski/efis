@@ -35,6 +35,13 @@ public:
     void pollVoices();
     /// Moves the selected voice by delta entries.
     void stepVoice(int delta);
+    /// Labels of the installed voices, in catalog order.
+    std::vector<std::string> voiceLabels();
+    /// Index of the selected voice in voiceLabels().
+    int voiceIndex();
+    /// Selects a catalog entry and applies it.
+    /// \param index Index from voiceLabels(). Out of range is ignored.
+    void selectVoice(int index);
     /// Label of the selected voice.
     std::string voiceLabel();
 
