@@ -5,6 +5,7 @@
 #define STATS_OVERLAY_H
 
 #include "iwidget.h"
+#include "iworld_read.h"
 #include "render2d.h"
 #include <atomic>
 #include <chrono>
@@ -15,7 +16,6 @@
 #include <vector>
 
 class AppController;
-class TerrainWidget;
 
 /// Draws the map preload banner, or the diagnostics panel when STATS is on.
 class StatsOverlay : public IWidget
@@ -24,8 +24,8 @@ public:
     /// Allocates the banner and the panel. The panel stays hidden until STATS is on.
     /// \param frame Loop that draws this overlay above the menu.
     /// \param controller Zoom values and the STATS flag.
-    /// \param terrain Preload progress, altitude, and GPU bytes.
-    StatsOverlay(Frame &frame, AppController &controller, TerrainWidget &terrain);
+    /// \param world Preload progress, altitude, and GPU bytes.
+    StatsOverlay(Frame &frame, AppController &controller, IWorldRead &world);
 
     /// Counts frames and draws either the banner or the panel.
     void render() override;
@@ -53,7 +53,7 @@ private:
     void drawPreload();
 
     AppController &mController;
-    TerrainWidget &mTerrain;
+    IWorldRead &mWorld;
     int mFps = 0;
     int mStatsShownFps = -1;
     int mFpsFrames = 0;

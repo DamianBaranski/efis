@@ -3,15 +3,14 @@
 #include "settings_popup.h"
 #include "app_controller.h"
 #include "nav_voice.h"
-#include "terrain_widget.h"
 #include <GLES3/gl3.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <string>
 
-SettingsPopup::SettingsPopup(Frame &frame, AppController &controller, TerrainWidget &terrain)
-    : IWidget(frame), mController(controller), mTerrain(terrain), mWindow(frame.screen()), mEuropeMap(frame.screen())
+SettingsPopup::SettingsPopup(Frame &frame, AppController &controller, IWorldRead &world)
+    : IWidget(frame), mController(controller), mWorld(world), mWindow(frame.screen()), mEuropeMap(frame.screen())
 {
 }
 
@@ -80,7 +79,7 @@ void SettingsPopup::formatKm(char *out, size_t n, double km)
 
 double SettingsPopup::ringRadiusKm(int zoom, int grid) const
 {
-    double lat = mTerrain.cameraLatitude();
+    double lat = mWorld.cameraLatitude();
     if (lat == 0.0)
     {
         lat = 50.959167;

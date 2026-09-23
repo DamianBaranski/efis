@@ -3,11 +3,9 @@
 #include "ahrs_widget.h"
 #include "app_controller.h"
 #include "frame.h"
-#include "menu_widget.h"
+#include "hud.h"
 #include "screen.h"
 #include "session.h"
-#include "settings_popup.h"
-#include "stats_overlay.h"
 #include "terrain_widget.h"
 #include <iostream>
 #include <optional>
@@ -69,11 +67,10 @@ int main(int argc, char **argv)
 
     TerrainWidget terrain(frame, session->data());
     AhrsWidget ahrs(frame, session->data());
+    frame.add(&terrain);
+    frame.add(&ahrs);
     AppController controller(frame, ahrs, terrain);
-    MenuWidget menu(frame, controller);
-    StatsOverlay stats(frame, controller, terrain);
-    SettingsPopup settings(frame, controller, terrain);
-    menu.setPopup(settings);
+    Hud hud(frame, controller, terrain);
 
     frame.setTick([&] { session->tick(); });
     session->start();

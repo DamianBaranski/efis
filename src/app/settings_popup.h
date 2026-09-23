@@ -6,10 +6,10 @@
 
 #include "europe_map.h"
 #include "iwidget.h"
+#include "iworld_read.h"
 #include "tab_window.h"
 
 class AppController;
-class TerrainWidget;
 
 /// Settings window opened from CONF GENERAL.
 /// RENDER changes the imagery rings. MAPS shows the Europe chart. SOUND drives NavVoice.
@@ -19,8 +19,8 @@ public:
     /// Builds the tab window and the Europe chart. Draws nothing until GENERAL is open.
     /// \param frame Loop that draws this window on top of the menu.
     /// \param controller Mode flags and the zoom values this window edits.
-    /// \param terrain Camera latitude used to size a ring in kilometres.
-    SettingsPopup(Frame &frame, AppController &controller, TerrainWidget &terrain);
+    /// \param world Camera latitude used to size a ring in kilometres.
+    SettingsPopup(Frame &frame, AppController &controller, IWorldRead &world);
 
     /// Draws the open window. MAPS also draws the Europe chart.
     void render() override;
@@ -70,7 +70,7 @@ private:
     void drawPage();
 
     AppController &mController;
-    TerrainWidget &mTerrain;
+    IWorldRead &mWorld;
     TabWindow<3, 10, 8> mWindow;
     EuropeMap mEuropeMap;
     std::string mKey;

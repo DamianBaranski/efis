@@ -6,7 +6,6 @@
 #include "openaip_client.h"
 #include "shader.h"
 #include "terrain_download.h"
-#include "terrain_widget.h"
 #include <GLES3/gl3.h>
 #include <algorithm>
 #include <cmath>
@@ -26,8 +25,8 @@
 #define GL_TEXTURE_FREE_MEMORY_ATI 0x87FC
 #endif
 
-StatsOverlay::StatsOverlay(Frame &frame, AppController &controller, TerrainWidget &terrain)
-    : IWidget(frame), mController(controller), mTerrain(terrain)
+StatsOverlay::StatsOverlay(Frame &frame, AppController &controller, IWorldRead &world)
+    : IWidget(frame), mController(controller), mWorld(world)
 {
     mPreloadBox = std::make_unique<Render2D>(frame.screen());
     for (int i = 0; i < 4; ++i)
@@ -203,9 +202,9 @@ void StatsOverlay::tickFps()
 void StatsOverlay::formatMapLoadLines(char *l0, size_t l0n, char *l1, size_t l1n, char *l2, size_t l2n, char *l3,
                                       size_t l3n)
 {
-    const auto nearProg = mTerrain.nearPreload();
-    const auto farProg = mTerrain.farPreload();
-    const bool ready = mTerrain.mapPreloadReady();
+    const auto nearProg = mWorld.nearPreload();
+    const auto farProg = mWorld.farPreload();
+    const bool ready = mWorld.mapPreloadReady();
     const int nearMb = toMb(nearProg.cpuBytes + nearProg.gpuBytes);
     const int farMb = toMb(farProg.cpuBytes + farProg.gpuBytes);
     const int totalSlots = std::max(1, nearProg.total + farProg.total);
@@ -228,7 +227,7 @@ void StatsOverlay::formatMapLoadLines(char *l0, size_t l0n, char *l1, size_t l1n
 
 void StatsOverlay::formatVramLine(char *out, size_t n) const
 {
-    const size_t used = mTerrain.mapGpuBytes() + Shader::textureCacheBytes();
+    const size_t used = mWorld.mapGpuBytes() + Shader::textureCacheBytes();
     size_t freeBytes = 0;
     size_t totalBytes = 0;
     queryVramBudget(freeBytes, totalBytes);
@@ -339,10 +338,10 @@ void StatsOverlay::drawStats()
     char dl1[96];
     char dl2[96];
     char cache[96];
-    const int altM = static_cast<int>(std::lround(mTerrain.cameraAltitude()));
-    const int altFt = static_cast<int>(std::lround(mTerrain.cameraAltitude() * 3.280839895f));
+    const int altM = static_cast<int>(std::lround(mWorld.cameraAltitude()));
+    const int altFt = static_cast<int>(std::lround(mWorld.cameraAltitude() * 3.280839895f));
     std::snprintf(fpsLine, sizeof(fpsLine), "FPS  %d  ALT %d m  %d ft  T %d/%d terrain drawn/loaded", mFps, altM, altFt,
-                  mTerrain.terrainDrawn(), mTerrain.terrainLoaded());
+                  mWorld.terrainDrawn(), mWorld.terrainLoaded());
     formatMapLoadLines(l0, sizeof(l0), l1, sizeof(l1), l2, sizeof(l2), l3, sizeof(l3));
     formatVramLine(vram, sizeof(vram));
     formatDownloadLines(dl0, sizeof(dl0), dl1, sizeof(dl1), dl2, sizeof(dl2));
@@ -438,7 +437,7 @@ void StatsOverlay::rebuildPreloadSprites(const std::string &l0, const std::strin
 
 void StatsOverlay::drawPreload()
 {
-    const bool ready = mTerrain.mapPreloadReady();
+    const bool ready = mWorld.mapPreloadReady();
     if (ready)
     {
         if (!mPreloadWasReady)

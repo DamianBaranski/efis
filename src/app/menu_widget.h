@@ -8,6 +8,7 @@
 #include "render2d.h"
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -18,13 +19,11 @@ class SettingsPopup;
 class MenuWidget : public IWidget
 {
 public:
-    /// Builds the cell sprites. Hidden until the first tap.
-    /// \param frame Loop that draws this menu under the stats overlay.
+    /// Builds the cell actions. Hidden until the first tap.
+    /// \param frame Window this menu measures against. The owner adds it to the loop.
     /// \param controller Mode flags the cells read and write.
-    MenuWidget(Frame &frame, AppController &controller);
-
-    /// Points later taps at the GENERAL window. Call before the loop runs.
-    void setPopup(SettingsPopup &popup);
+    /// \param popup GENERAL window the menu opens and hits.
+    MenuWidget(Frame &frame, AppController &controller, SettingsPopup &popup);
 
     /// Expires the timeout and draws the cells while the menu is open.
     void render() override;
@@ -36,34 +35,26 @@ public:
     void setPos(int, int) override {}
 
 private:
-    struct MenuItem
+    /// One cell. execute is the command run on a tap. active paints the highlight.
+    struct Cell
     {
         const char *label;
         int col;
         int row;
         bool header;
+        std::function<void()> execute;
+        std::function<bool()> active;
     };
 
     static constexpr int kMenuCols = 5;
     static constexpr int kMenuRows = 5;
     static constexpr uint64_t kMenuTimeoutMs = 3000;
     static constexpr uint64_t kDoubleTapMs = 450;
-    static constexpr MenuItem kItems[] = {
-        {"MODE", 0, 0, true}, {"AHRS", 0, 1, false}, {"3D", 0, 2, false},
-        {"2D", 0, 3, false},  {"PLANNING", 0, 4, false},
-        {"MAP", 1, 0, true},  {"SATT", 1, 1, false}, {"SMPL", 1, 2, false},
-        {"AIP", 2, 0, true},  {"3D", 2, 1, false},   {"TEXT", 2, 2, false}, {"VRP", 2, 3, false},
-        {"OBSTCL", 2, 4, false},
-        {"ENR", 3, 0, true},  {"CHRTS", 3, 1, false}, {"FLP", 3, 2, false}, {"NRST", 3, 3, false},
-        {"WTHR", 3, 4, false},
-        {"CONF", 4, 0, true}, {"STATS", 4, 1, false}, {"GENERAL", 4, 2, false},
-    };
-    static constexpr int kItemCount = static_cast<int>(sizeof(kItems) / sizeof(kItems[0]));
 
+    void buildCells();
     void showMenu();
     void bumpMenuTimeout();
     void expireMenu();
-    bool itemActive(int index) const;
     void activateItem(int index);
     void layoutMenu();
     void cellRect(int col, int row, int &x, int &glY) const;
@@ -72,7 +63,8 @@ private:
     bool menuContains(int x, int y) const;
 
     AppController &mController;
-    SettingsPopup *mPopup = nullptr;
+    SettingsPopup &mPopup;
+    std::vector<Cell> mCells;
     bool mVisible = false;
     bool mLocked = false;
     uint64_t mLastTapMs = 0;

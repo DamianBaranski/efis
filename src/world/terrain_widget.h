@@ -19,6 +19,7 @@
 #include "obstacle_overlay.h"
 #include "nav_voice.h"
 #include "asset_path.h"
+#include "iworld_read.h"
 #include <algorithm>
 #include <cmath>
 #include <vector>
@@ -28,7 +29,7 @@
 
 /// Owns the 3D frame: terrain, satellite drape, airspace, points, and obstacles.
 /// The attitude instrument is a separate widget drawn on top.
-class TerrainWidget : public IWidget, public IObserver<DataType>
+class TerrainWidget : public IWidget, public IObserver<DataType>, public IWorldRead
 {
 public:
     /// Subscribes to position and builds the perspective camera.
@@ -65,9 +66,9 @@ public:
     /// Tile count on one side of the mid ring.
     void setSatFarGrid(int grid) { mSat.setMidGrid(grid); }
     /// Camera latitude in degrees, north positive.
-    float cameraLatitude() const { return mLocation.latitude; }
+    float cameraLatitude() const override { return mLocation.latitude; }
     /// Camera altitude in metres.
-    float cameraAltitude() const { return mLocation.altitude; }
+    float cameraAltitude() const override { return mLocation.altitude; }
 
     /// Updates airspace geometry when enable is true.
     void setAirspacesEnabled(bool enable) { mAirspacesEnabled = enable; }
@@ -103,22 +104,22 @@ public:
     }
 
     /// True when the satellite rings are filled, or when no imagery is requested.
-    bool mapPreloadReady() const
+    bool mapPreloadReady() const override
     {
         const IImagery &imagery = mSat;
         return (!mSatelliteGround && !mChartOverlay) || imagery.ready();
     }
 
     /// Tiles finished in the close-in ring.
-    SatClipmap::Progress nearPreload() const { return mSat.fineProgress(); }
+    SatClipmap::Progress nearPreload() const override { return mSat.fineProgress(); }
     /// Tiles finished in the mid ring.
-    SatClipmap::Progress farPreload() const { return mSat.coarseProgress(); }
+    SatClipmap::Progress farPreload() const override { return mSat.coarseProgress(); }
     /// Terrain tiles held in memory.
-    int terrainLoaded() const { return mMap.loadedCount(); }
+    int terrainLoaded() const override { return mMap.loadedCount(); }
     /// Terrain tiles submitted on the last frame.
-    int terrainDrawn() const { return mMap.drawnCount(); }
+    int terrainDrawn() const override { return mMap.drawnCount(); }
     /// GPU bytes held by the satellite rings.
-    size_t mapGpuBytes() const
+    size_t mapGpuBytes() const override
     {
         const IImagery &imagery = mSat;
         return imagery.gpuBytes();

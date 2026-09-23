@@ -7,20 +7,62 @@
 #include <algorithm>
 #include <glm/glm.hpp>
 
-MenuWidget::MenuWidget(Frame &frame, AppController &controller) : IWidget(frame), mController(controller)
+MenuWidget::MenuWidget(Frame &frame, AppController &controller, SettingsPopup &popup)
+    : IWidget(frame), mController(controller), mPopup(popup)
 {
-    mBoxes.reserve(static_cast<size_t>(kItemCount));
-    mLabels.reserve(static_cast<size_t>(kItemCount));
-    for (int i = 0; i < kItemCount; ++i)
+    buildCells();
+    mBoxes.reserve(mCells.size());
+    mLabels.reserve(mCells.size());
+    for (size_t i = 0; i < mCells.size(); ++i)
     {
         mBoxes.emplace_back(std::make_unique<Render2D>(frame.screen()));
         mLabels.emplace_back(std::make_unique<Render2D>(frame.screen()));
     }
 }
 
-void MenuWidget::setPopup(SettingsPopup &popup)
+void MenuWidget::buildCells()
 {
-    mPopup = &popup;
+    const auto off = [] { return false; };
+    auto add = [this](const char *label, int col, int row, bool header, std::function<void()> execute,
+                      std::function<bool()> active) {
+        mCells.push_back(Cell{label, col, row, header, std::move(execute), std::move(active)});
+    };
+    add("MODE", 0, 0, true, nullptr, off);
+    add("AHRS", 0, 1, false, [this] { mController.setView(ViewMode::Ahrs); },
+        [this] { return mController.view() == ViewMode::Ahrs; });
+    add("3D", 0, 2, false, [this] { mController.setView(ViewMode::ThreeD); },
+        [this] { return mController.view() == ViewMode::ThreeD; });
+    add("2D", 0, 3, false, [this] { mController.setView(ViewMode::TwoD); },
+        [this] { return mController.view() == ViewMode::TwoD; });
+    add("PLANNING", 0, 4, false, [this] { mController.setView(ViewMode::Planning); },
+        [this] { return mController.view() == ViewMode::Planning; });
+    add("MAP", 1, 0, true, [this] { mController.setMap(mController.mapMode()); }, off);
+    add("SATT", 1, 1, false, [this] { mController.setMap(MapMode::Satellite); },
+        [this] { return mController.view() == ViewMode::ThreeD && mController.mapMode() == MapMode::Satellite; });
+    add("SMPL", 1, 2, false, [this] { mController.setMap(MapMode::Simple); },
+        [this] { return mController.view() == ViewMode::ThreeD && mController.mapMode() == MapMode::Simple; });
+    add("AIP", 2, 0, true, nullptr, off);
+    add("3D", 2, 1, false, [this] { mController.toggleAip(1); }, [this] { return mController.aipWalls(); });
+    add("TEXT", 2, 2, false, [this] { mController.toggleAip(2); }, [this] { return mController.aipText(); });
+    add("VRP", 2, 3, false, [this] { mController.toggleAip(3); }, [this] { return mController.vrpsOn(); });
+    add("OBSTCL", 2, 4, false, [this] { mController.toggleAip(4); }, [this] { return mController.obstacles(); });
+    add("ENR", 3, 0, true, nullptr, off);
+    add("CHRTS", 3, 1, false, [this] { mController.setEnrPage(EnrPage::Charts); },
+        [this] { return mController.enrPage() == EnrPage::Charts; });
+    add("FLP", 3, 2, false, [this] { mController.setEnrPage(EnrPage::FlightPlan); },
+        [this] { return mController.enrPage() == EnrPage::FlightPlan; });
+    add("NRST", 3, 3, false, [this] { mController.setEnrPage(EnrPage::Nearest); },
+        [this] { return mController.enrPage() == EnrPage::Nearest; });
+    add("WTHR", 3, 4, false, [this] { mController.setEnrPage(EnrPage::Weather); },
+        [this] { return mController.enrPage() == EnrPage::Weather; });
+    add("CONF", 4, 0, true, nullptr, off);
+    add("STATS", 4, 1, false, [this] { mController.toggleStats(); }, [this] { return mController.statsVisible(); });
+    add("GENERAL", 4, 2, false,
+        [this] {
+            mController.setGeneralOpen(true);
+            mPopup.invalidate();
+        },
+        [this] { return mController.generalOpen(); });
 }
 
 void MenuWidget::showMenu()
@@ -44,158 +86,16 @@ void MenuWidget::expireMenu()
     }
 }
 
-bool MenuWidget::itemActive(int index) const
-{
-    const MenuItem &item = kItems[index];
-    if (item.header)
-    {
-        return false;
-    }
-    if (item.col == 0)
-    {
-        if (item.row == 1)
-        {
-            return mController.view() == ViewMode::Ahrs;
-        }
-        if (item.row == 2)
-        {
-            return mController.view() == ViewMode::ThreeD;
-        }
-        if (item.row == 3)
-        {
-            return mController.view() == ViewMode::TwoD;
-        }
-        return mController.view() == ViewMode::Planning;
-    }
-    if (item.col == 1)
-    {
-        if (mController.view() != ViewMode::ThreeD)
-        {
-            return false;
-        }
-        if (item.row == 1)
-        {
-            return mController.mapMode() == MapMode::Satellite;
-        }
-        return mController.mapMode() == MapMode::Simple;
-    }
-    if (item.col == 2)
-    {
-        if (item.row == 1)
-        {
-            return mController.aipWalls();
-        }
-        if (item.row == 2)
-        {
-            return mController.aipText();
-        }
-        if (item.row == 3)
-        {
-            return mController.vrpsOn();
-        }
-        return mController.obstacles();
-    }
-    if (item.col == 3)
-    {
-        if (item.row == 1)
-        {
-            return mController.enrPage() == EnrPage::Charts;
-        }
-        if (item.row == 2)
-        {
-            return mController.enrPage() == EnrPage::FlightPlan;
-        }
-        if (item.row == 3)
-        {
-            return mController.enrPage() == EnrPage::Nearest;
-        }
-        return mController.enrPage() == EnrPage::Weather;
-    }
-    if (item.col == 4)
-    {
-        if (item.row == 2)
-        {
-            return mController.generalOpen();
-        }
-        return mController.statsVisible();
-    }
-    return false;
-}
-
 void MenuWidget::activateItem(int index)
 {
-    const MenuItem &item = kItems[index];
+    const Cell &item = mCells[static_cast<size_t>(index)];
     if (item.header && item.col != 1)
     {
         return;
     }
-    if (item.col == 0)
+    if (item.execute)
     {
-        if (item.row == 1)
-        {
-            mController.setView(ViewMode::Ahrs);
-        }
-        else if (item.row == 2)
-        {
-            mController.setView(ViewMode::ThreeD);
-        }
-        else if (item.row == 3)
-        {
-            mController.setView(ViewMode::TwoD);
-        }
-        else
-        {
-            mController.setView(ViewMode::Planning);
-        }
-        return;
-    }
-    if (item.col == 1)
-    {
-        if (item.header)
-        {
-            mController.setMap(mController.mapMode());
-            return;
-        }
-        mController.setMap(item.row == 1 ? MapMode::Satellite : MapMode::Simple);
-        return;
-    }
-    if (item.col == 2)
-    {
-        mController.toggleAip(item.row);
-        return;
-    }
-    if (item.col == 3)
-    {
-        if (item.row == 1)
-        {
-            mController.setEnrPage(EnrPage::Charts);
-        }
-        else if (item.row == 2)
-        {
-            mController.setEnrPage(EnrPage::FlightPlan);
-        }
-        else if (item.row == 3)
-        {
-            mController.setEnrPage(EnrPage::Nearest);
-        }
-        else
-        {
-            mController.setEnrPage(EnrPage::Weather);
-        }
-        return;
-    }
-    if (item.col == 4 && item.row == 1)
-    {
-        mController.toggleStats();
-        return;
-    }
-    if (item.col == 4 && item.row == 2)
-    {
-        mController.setGeneralOpen(true);
-        if (mPopup)
-        {
-            mPopup->invalidate();
-        }
+        item.execute();
     }
 }
 
@@ -224,9 +124,9 @@ void MenuWidget::rebuildMenuSprites()
 {
     layoutMenu();
     mSeenRevision = mController.revision();
-    for (int i = 0; i < kItemCount; ++i)
+    for (int i = 0; i < static_cast<int>(mCells.size()); ++i)
     {
-        const MenuItem &item = kItems[i];
+        const Cell &item = mCells[static_cast<size_t>(i)];
         int x = 0;
         int glY = 0;
         cellRect(item.col, item.row, x, glY);
@@ -235,7 +135,7 @@ void MenuWidget::rebuildMenuSprites()
         {
             fill = 0x00000088u;
         }
-        else if (itemActive(i))
+        else if (item.active && item.active())
         {
             fill = 0x4DA3FFB0u;
         }
@@ -248,9 +148,9 @@ void MenuWidget::rebuildMenuSprites()
 
 int MenuWidget::hitMenuItem(int x, int y) const
 {
-    for (int i = 0; i < kItemCount; ++i)
+    for (int i = 0; i < static_cast<int>(mCells.size()); ++i)
     {
-        const MenuItem &item = kItems[i];
+        const Cell &item = mCells[static_cast<size_t>(i)];
         if (item.header && item.col != 1)
         {
             continue;
@@ -289,7 +189,7 @@ void MenuWidget::render()
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     const glm::mat4 identity(1.0f);
-    for (int i = 0; i < kItemCount; ++i)
+    for (int i = 0; i < static_cast<int>(mCells.size()); ++i)
     {
         mBoxes[static_cast<size_t>(i)]->setTransformationMatrix(identity);
         mBoxes[static_cast<size_t>(i)]->render();
@@ -305,37 +205,37 @@ bool MenuWidget::mouseClick(int x, int y)
     const uint64_t now = SDL_GetTicks64();
     const bool doubleTap = mLastTapMs != 0 && now - mLastTapMs <= kDoubleTapMs;
     mLastTapMs = now;
-    if (mController.generalOpen() && mPopup)
+    if (mController.generalOpen())
     {
-        const int tab = mPopup->hitTab(x, y);
+        const int tab = mPopup.hitTab(x, y);
         if (tab >= 0)
         {
-            if (tab != mPopup->activeTab())
+            if (tab != mPopup.activeTab())
             {
-                mPopup->setActiveTab(tab);
+                mPopup.setActiveTab(tab);
             }
             bumpMenuTimeout();
             return true;
         }
-        if (mPopup->activeTab() == 0)
+        if (mPopup.activeTab() == 0)
         {
-            const int control = mPopup->hitButton(x, y);
+            const int control = mPopup.hitButton(x, y);
             if (control >= 0)
             {
-                mPopup->adjustRender(control);
+                mPopup.adjustRender(control);
                 return true;
             }
         }
-        if (mPopup->activeTab() == 2)
+        if (mPopup.activeTab() == 2)
         {
-            const int control = mPopup->hitButton(x, y);
+            const int control = mPopup.hitButton(x, y);
             if (control >= 0)
             {
-                mPopup->adjustSound(control);
+                mPopup.adjustSound(control);
                 return true;
             }
         }
-        if (mPopup->hitChart(x, y))
+        if (mPopup.hitChart(x, y))
         {
             bumpMenuTimeout();
             return true;
@@ -343,20 +243,20 @@ bool MenuWidget::mouseClick(int x, int y)
         if (mVisible)
         {
             const int item = hitMenuItem(x, y);
-            if (item >= 0 && kItems[item].col == 4 && kItems[item].row == 2)
+            if (item >= 0 && mCells[static_cast<size_t>(item)].col == 4 && mCells[static_cast<size_t>(item)].row == 2)
             {
                 mController.setGeneralOpen(false);
-                mPopup->invalidate();
+                mPopup.invalidate();
                 bumpMenuTimeout();
                 return true;
             }
         }
-        if (mPopup->contains(x, y))
+        if (mPopup.contains(x, y))
         {
             return true;
         }
         mController.setGeneralOpen(false);
-        mPopup->invalidate();
+        mPopup.invalidate();
         return true;
     }
     if (mVisible)

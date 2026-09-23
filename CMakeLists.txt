@@ -32,6 +32,7 @@ set(SRC
     src/app/frame.cpp
     src/app/app_controller.cpp
     src/app/menu_widget.cpp
+    src/app/hud.cpp
     src/app/settings_popup.cpp
     src/app/stats_overlay.cpp
     src/app/sim_input.cpp
@@ -64,6 +65,7 @@ set(SRC
 set(INC
     src/app/app_controller.h
     src/app/frame.h
+    src/app/hud.h
     src/app/iwidget.h
     src/app/menu_widget.h
     src/app/screen.h
@@ -79,6 +81,7 @@ set(INC
     src/flight/subject.h
     src/ahrs/ahrs_widget.h
     src/world/iscene_layer.h
+    src/world/iworld_read.h
     src/world/terrain_widget.h
     src/terrain/bucket.h
     src/terrain/bucket_container.h

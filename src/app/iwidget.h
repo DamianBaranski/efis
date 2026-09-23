@@ -5,14 +5,14 @@
 
 #include "frame.h"
 
-/// Drawable that registers with the frame on construction.
-/// A disabled widget stays registered and skips its draw.
+/// Drawable measured against a window.
+/// The owner adds it to the frame. A disabled widget stays registered and skips its draw.
 class IWidget : public IRenderer
 {
 public:
-    /// Registers this widget with the frame. Enabled by default.
-    /// \param frame Loop that draws this widget. Must outlive it.
-    IWidget(Frame &frame) : mScreen(frame.screen()), mEnabled(true) { frame.add(this); }
+    /// Enabled by default. Call Frame::add to draw it.
+    /// \param frame Window this widget measures against. Must outlive it.
+    IWidget(Frame &frame) : mScreen(frame.screen()), mEnabled(true) {}
 
     /// Draws the widget. Required.
     virtual void render() = 0;
