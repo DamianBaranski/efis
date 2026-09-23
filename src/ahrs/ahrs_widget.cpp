@@ -5,18 +5,18 @@
 #include <GLES3/gl3.h>
 #include <algorithm>
 
-AhrsWidget::AhrsWidget(Screen &screen, IDataManager &dataManager) : IWidget(screen),
+AhrsWidget::AhrsWidget(Frame &frame, IDataManager &dataManager) : IWidget(frame),
                                                                     mDataManager(dataManager),
-                                                                    mLandRepresentation(screen),
-                                                                    mHorizonLine(screen),
-                                                                    mPithScale(screen),
-                                                                    mRollPointer(screen),
-                                                                    mSkipSkidIndicator(screen),
-                                                                    mAttitudeIndicator(screen),
-                                                                    mAircraftSymbol(screen),
+                                                                    mLandRepresentation(frame.screen()),
+                                                                    mHorizonLine(frame.screen()),
+                                                                    mPithScale(frame.screen()),
+                                                                    mRollPointer(frame.screen()),
+                                                                    mSkipSkidIndicator(frame.screen()),
+                                                                    mAttitudeIndicator(frame.screen()),
+                                                                    mAircraftSymbol(frame.screen()),
                                                                     mAttitudeData{},
                                                                     mAttitudeDataUpdated(false),
-                                                                    mAttitudeY(screen.getHeight() / 2)
+                                                                    mAttitudeY(frame.screen().getHeight() / 2)
 {
     mDataManager.attach(this, DataType::ATTITUDE_DATA);
     rebuildSprites();

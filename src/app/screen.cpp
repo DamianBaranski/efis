@@ -1,16 +1,13 @@
 /// \file screen.cpp
-/// Opens the GLES window and pumps SDL events until quit.
+/// Opens the GLES window and the GL context.
 #include "screen.h"
 #include "asset_path.h"
 #include "GLES3/gl3.h"
 #include <algorithm>
-
-Screen *Screen::instance = nullptr;
+#include <iostream>
 
 Screen::Screen(int width, int height) : mWidth(width), mHeight(height)
 {
-    instance = this;
-
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_PROFILE_ES);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
@@ -78,16 +75,6 @@ Screen::~Screen()
     SDL_Quit();
 }
 
-void Screen::registerRenderer(IRenderer *renderer)
-{
-    mRenderers.push_back(renderer);
-}
-
-void Screen::registerController(IRenderer *controller)
-{
-    mRenderers.insert(mRenderers.begin(), controller);
-}
-
 void Screen::syncSize()
 {
     int w = 0;
@@ -109,99 +96,6 @@ void Screen::syncSize()
     }
 }
 
-bool Screen::acceptTouch()
-{
-    const uint64_t now = SDL_GetTicks64();
-    if (now < mTouchReadyAt || now - mLastTouchMs < 120)
-    {
-        return false;
-    }
-    mLastTouchMs = now;
-    return true;
-}
-
-void Screen::mainLoop()
-{
-    int i = 0;
-    uint64_t start = SDL_GetTicks64();
-    mTouchReadyAt = start + 2000;
-    bool quit = false;
-    while (!quit)
-    {
-        i++;
-        SDL_Event event;
-        while (SDL_PollEvent(&event))
-        {
-            switch (event.type)
-            {
-            case SDL_QUIT:
-                quit = true;
-                break;
-
-            case SDL_WINDOWEVENT:
-                if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED ||
-                    event.window.event == SDL_WINDOWEVENT_RESIZED)
-                {
-                    syncSize();
-                }
-                break;
-
-            case SDL_KEYDOWN:
-                if (event.key.keysym.sym == SDLK_ESCAPE)
-                {
-                    quit = true;
-                    break;
-                }
-                for (auto renderer : mRenderers)
-                {
-                    if (renderer->keyDown(event.key.keysym.sym))
-                    {
-                        break;
-                    }
-                }
-                break;
-
-#ifndef __ANDROID__
-            case SDL_MOUSEBUTTONDOWN:
-                for (auto renderer : mRenderers)
-                {
-                    if (renderer->mouseClick(event.button.x, event.button.y))
-                    {
-                        break;
-                    }
-                }
-                break;
-#else
-            case SDL_FINGERDOWN:
-            {
-                if (!acceptTouch())
-                {
-                    break;
-                }
-                const int x = static_cast<int>(event.tfinger.x * static_cast<float>(mWidth));
-                const int y = static_cast<int>(event.tfinger.y * static_cast<float>(mHeight));
-                for (auto renderer : mRenderers)
-                {
-                    if (renderer->mouseClick(x, y))
-                    {
-                        break;
-                    }
-                }
-                break;
-            }
-#endif
-            }
-        }
-        render();
-        if ((SDL_GetTicks64() - start) >= 1000)
-        {
-            std::cout << i << "FPS" << std::endl;
-            i = 0;
-            start = SDL_GetTicks64();
-        }
-    }
-}
-
 int Screen::getWidth() const
 {
     return mWidth;
@@ -212,25 +106,15 @@ int Screen::getHeight() const
     return mHeight;
 }
 
-void Screen::displayWrapper()
-{
-    if (instance)
-    {
-        instance->render();
-    }
-}
-
-void Screen::render()
+void Screen::beginFrame()
 {
     syncSize();
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClearDepthf(1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+}
 
-    for (auto renderer : mRenderers)
-    {
-        renderer->render();
-    }
-
+void Screen::present()
+{
     SDL_GL_SwapWindow(mWindow);
 }

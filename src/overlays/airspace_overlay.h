@@ -3,6 +3,7 @@
 #ifndef AIRSPACE_OVERLAY_H
 #define AIRSPACE_OVERLAY_H
 
+#include "iscene_layer.h"
 #include "shader.h"
 #include <glm/glm.hpp>
 #include <string>
@@ -11,7 +12,7 @@
 #include <vector>
 
 /// Draws nearby OpenAIP vector airspaces as translucent vertical walls (no floor or ceiling).
-class AirspaceOverlay
+class AirspaceOverlay : public ISceneLayer
 {
 public:
     /// Empty overlay. The catalog is read on the first update.
@@ -23,6 +24,17 @@ public:
                 const glm::vec3 &forward, const glm::vec3 &up, int screenW, int screenH);
     /// Draws the walls and the name plates that are enabled.
     void render(const glm::mat4 &proj, const glm::dvec3 &eye, const glm::vec3 &forward, const glm::vec3 &up);
+
+    /// Passes altitude and the camera through. Labels follow the aircraft.
+    void update(const SceneFrame &frame) override
+    {
+        update(frame.latitude, frame.longitude, frame.altitudeM, frame.proj, frame.eye, frame.forward, frame.up,
+               frame.screenW, frame.screenH);
+    }
+    void render(const SceneFrame &frame) override
+    {
+        render(frame.proj, frame.eye, frame.forward, frame.up);
+    }
 
     /// Draws the vertical walls. Independent of the name plates.
     void setDrawWalls(bool enable) { mDrawWalls = enable; }

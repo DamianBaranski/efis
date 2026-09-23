@@ -5,6 +5,7 @@
 #define BUCKET_CONTAINER_H
 
 #include "bucket.h"
+#include "iscene_layer.h"
 #include "airport_scenery.h"
 #include <vector>
 #include <memory>
@@ -13,7 +14,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 /// Loads and draws the tiles inside the camera disk, about one degree across.
-class BucketContainer
+class BucketContainer : public ISceneLayer
 {
 public:
     /// @brief Constructor for BucketContainer class.
@@ -26,6 +27,15 @@ public:
 
     /// @brief Renders all Buckets in the container using an ECEF camera.
     void render(const glm::mat4 &proj, const glm::dvec3 &eye, const glm::vec3 &forward, const glm::vec3 &up);
+
+    void update(const SceneFrame &frame) override
+    {
+        updateLocation(static_cast<float>(frame.latitude), static_cast<float>(frame.longitude));
+    }
+    void render(const SceneFrame &frame) override
+    {
+        render(frame.proj, frame.eye, frame.forward, frame.up);
+    }
 
     /// Tiles currently held, including ones still loading.
     int loadedCount() const { return static_cast<int>(mMap.size()); }

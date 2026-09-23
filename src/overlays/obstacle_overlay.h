@@ -3,6 +3,7 @@
 #ifndef OBSTACLE_OVERLAY_H
 #define OBSTACLE_OVERLAY_H
 
+#include "iscene_layer.h"
 #include "shader.h"
 #include <glm/glm.hpp>
 #include <string>
@@ -10,7 +11,7 @@
 #include <vector>
 
 /// Draws nearby OpenAIP obstacles (wind turbines, chimneys, towers) as masts.
-class ObstacleOverlay
+class ObstacleOverlay : public ISceneLayer
 {
 public:
     /// Empty overlay. The Czech and Polish catalogs are read on the first update.
@@ -22,6 +23,12 @@ public:
     void update(double latitude, double longitude);
     /// Draws masts and plates. Unknown height draws a short mast and no number.
     void render(const glm::mat4 &proj, const glm::dvec3 &eye, const glm::vec3 &forward, const glm::vec3 &up);
+
+    void update(const SceneFrame &frame) override { update(frame.latitude, frame.longitude); }
+    void render(const SceneFrame &frame) override
+    {
+        render(frame.proj, frame.eye, frame.forward, frame.up);
+    }
 
     /// Obstacle family used for color, mast width, and the spoken phrase.
     enum class Kind

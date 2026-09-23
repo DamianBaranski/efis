@@ -29,7 +29,7 @@ public:
     const EngineData &getEngineData() const override;
     /// WGS-84 position. Altitude is metres.
     const LocationData &getLocationData() const override;
-    /// No background thread. The controller calls tick().
+    /// No background thread. The frame tick calls tick().
     void start() override;
 
     /// Steps the aircraft for dt seconds from the current key demand.

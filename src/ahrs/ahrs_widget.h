@@ -15,10 +15,10 @@
 class AhrsWidget : public IObserver<DataType>, public IWidget
 {
 public:
-    /// Registers with the screen and subscribes to attitude updates.
-    /// \param screen Frame that draws this widget.
+    /// Registers with the frame and subscribes to attitude updates.
+    /// \param frame Loop that draws this widget. Must outlive it.
     /// \param dataManager Situation source. Must outlive this object.
-    AhrsWidget(Screen &screen, IDataManager &dataManager);
+    AhrsWidget(Frame &frame, IDataManager &dataManager);
 
     /// Draws pitch, roll, slip, and the aircraft symbol.
     void render() override;

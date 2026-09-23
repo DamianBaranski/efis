@@ -7,8 +7,8 @@
 #include <cmath>
 #include <glm/gtc/matrix_transform.hpp>
 
-OpenAipWidget::OpenAipWidget(Screen &screen, IDataManager &dataManager)
-    : IWidget(screen), mDataManager(dataManager), mOwnship(screen)
+OpenAipWidget::OpenAipWidget(Frame &frame, IDataManager &dataManager)
+    : IWidget(frame), mDataManager(dataManager), mOwnship(frame.screen())
 {
     mEnabled = false;
     mDataManager.attach(this, DataType::LOCATION_DATA);

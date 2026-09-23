@@ -64,7 +64,11 @@ void BucketContainer::updateLocation(float lat, float lon)
             ++iter;
         }
     }
-    mAirports.update(lat, lon);
+    SceneFrame frame;
+    frame.latitude = lat;
+    frame.longitude = lon;
+    ISceneLayer &airports = mAirports;
+    airports.update(frame);
 }
 
 void BucketContainer::render(const glm::mat4 &proj, const glm::dvec3 &eye, const glm::vec3 &forward, const glm::vec3 &up)
@@ -86,7 +90,13 @@ void BucketContainer::render(const glm::mat4 &proj, const glm::dvec3 &eye, const
         tile->render();
         ++mDrawn;
     }
-    mAirports.render(proj, eye, forward, up);
+    SceneFrame frame;
+    frame.proj = proj;
+    frame.eye = eye;
+    frame.forward = forward;
+    frame.up = up;
+    ISceneLayer &airports = mAirports;
+    airports.render(frame);
 }
 
 bool BucketContainer::hasTile(float lat, float lon) const

@@ -3,13 +3,14 @@
 #ifndef SAT_CLIPMAP_H
 #define SAT_CLIPMAP_H
 
+#include "iimagery.h"
 #include <GLES3/gl3.h>
 #include <cstddef>
 #include <cstdint>
 
 /// Mercator imagery clipmap. Each ring is a square texture array, but only
 /// the inscribed disk around the camera is fetched and sampled.
-class SatClipmap
+class SatClipmap : public IImagery
 {
 public:
     /// Default tiles on one side of a ring.
@@ -67,16 +68,16 @@ public:
     /// Uploads up to maxUploads tiles around the camera.
     /// \param latitude Degrees.
     /// \param longitude Degrees.
-    void pump(float latitude, float longitude, int maxUploads);
+    void pump(float latitude, float longitude, int maxUploads) override;
 
     /// True when every slot in the active rings has a tile.
-    bool ready() const;
+    bool ready() const override;
     /// Tiles finished in the close-in ring.
     Progress fineProgress() const;
     /// Tiles finished in the mid and wide rings.
     Progress coarseProgress() const;
     /// GPU bytes held by the three rings.
-    size_t gpuBytes() const;
+    size_t gpuBytes() const override;
 
     /// Texture ids and tile origins the terrain shader samples this frame.
     struct View

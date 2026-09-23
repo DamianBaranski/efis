@@ -6,8 +6,14 @@
 #ifndef EFIS_ANDROID
 #include "data_manager_stratux.h"
 #endif
+#include "frame.h"
+#include "menu_widget.h"
 #include "screen.h"
 #include "sdl_compat.h"
+#include "settings_popup.h"
+#include "stats_overlay.h"
+#include "terrain_widget.h"
+#include <chrono>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -22,6 +28,50 @@ void printUsage(const char *argv0)
               << "Keys: Tab/1/2/3/4 views, Esc quit\n"
               << "Sim keys: arrows pitch/roll, Q/E heading, W/S speed, +/- alt, R reset\n";
 }
+
+/// Steps the simulator from the keys held this frame, and levels the aircraft on R.
+class SimInput : public IRenderer
+{
+public:
+    /// \param sim Aircraft the keys drive. Must outlive this object.
+    explicit SimInput(DataManagerSim &sim) : mSim(sim) {}
+
+    void render() override {}
+
+    bool keyDown(SDL_Keycode key) override
+    {
+        if (key == SDLK_r)
+        {
+            mSim.resetAttitude();
+            return true;
+        }
+        return false;
+    }
+
+    /// Advances the aircraft by the time since the previous call.
+    void tick()
+    {
+        const auto now = std::chrono::steady_clock::now();
+        float dt = 0.016f;
+        if (mHasClock)
+        {
+            dt = std::chrono::duration<float>(now - mLastTick).count();
+        }
+        mLastTick = now;
+        mHasClock = true;
+
+        const Uint8 *keys = SDL_GetKeyboardState(nullptr);
+        mSim.tick(dt, keys[SDL_SCANCODE_UP], keys[SDL_SCANCODE_DOWN], keys[SDL_SCANCODE_LEFT], keys[SDL_SCANCODE_RIGHT],
+                  keys[SDL_SCANCODE_Q], keys[SDL_SCANCODE_E], keys[SDL_SCANCODE_W], keys[SDL_SCANCODE_S],
+                  keys[SDL_SCANCODE_PAGEUP] || keys[SDL_SCANCODE_EQUALS] || keys[SDL_SCANCODE_KP_PLUS],
+                  keys[SDL_SCANCODE_PAGEDOWN] || keys[SDL_SCANCODE_MINUS] || keys[SDL_SCANCODE_KP_MINUS]);
+    }
+
+private:
+    DataManagerSim &mSim;
+    std::chrono::steady_clock::time_point mLastTick{};
+    bool mHasClock = false;
+};
 }
 
 int main(int argc, char **argv)
@@ -52,13 +102,14 @@ int main(int argc, char **argv)
     }
 
     Screen screen(1024, 600);
+    Frame frame(screen);
 
     std::unique_ptr<IDataManager> dataManager;
-    DataManagerSim *sim = nullptr;
+    std::unique_ptr<SimInput> simInput;
     if (useSim)
     {
         auto simulated = std::make_unique<DataManagerSim>();
-        sim = simulated.get();
+        simInput = std::make_unique<SimInput>(*simulated);
         dataManager = std::move(simulated);
         std::cout << "Data source: simulated Stratux" << std::endl;
     }
@@ -66,7 +117,7 @@ int main(int argc, char **argv)
     {
 #ifdef EFIS_ANDROID
         auto simulated = std::make_unique<DataManagerSim>();
-        sim = simulated.get();
+        simInput = std::make_unique<SimInput>(*simulated);
         dataManager = std::move(simulated);
         std::cout << "Data source: simulated Stratux (Android)" << std::endl;
 #else
@@ -75,11 +126,28 @@ int main(int argc, char **argv)
 #endif
     }
 
-    TerrainWidget terrainWidget(screen, *dataManager);
-    AhrsWidget ahrsWidget(screen, *dataManager);
-    AppController controller(screen, ahrsWidget, terrainWidget, sim);
+    TerrainWidget terrainWidget(frame, *dataManager);
+    AhrsWidget ahrsWidget(frame, *dataManager);
+    AppController controller(frame, ahrsWidget, terrainWidget);
+    MenuWidget menu(frame, controller);
+    StatsOverlay stats(frame, controller, terrainWidget);
+    SettingsPopup settings(frame, controller, terrainWidget);
+    menu.setPopup(settings);
+    if (simInput)
+    {
+        frame.addInputFront(simInput.get());
+        std::cout << "Sim: arrows pitch/roll, Q/E heading, W/S speed, +/- alt, R reset\n";
+    }
+
+    frame.setTick([&] {
+        terrainWidget.pumpMapPreload();
+        if (simInput)
+        {
+            simInput->tick();
+        }
+    });
 
     dataManager->start();
-    screen.mainLoop();
+    frame.run();
     return 0;
 }

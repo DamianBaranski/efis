@@ -29,6 +29,11 @@ set(EFIS_INCLUDE_DIRS
 set(SRC
     src/app/main.cpp
     src/app/screen.cpp
+    src/app/frame.cpp
+    src/app/app_controller.cpp
+    src/app/menu_widget.cpp
+    src/app/settings_popup.cpp
+    src/app/stats_overlay.cpp
     src/flight/data_manager_sim.cpp
     src/ahrs/ahrs_widget.cpp
     src/terrain/bucket.cpp
@@ -56,21 +61,27 @@ set(SRC
 
 set(INC
     src/app/app_controller.h
+    src/app/frame.h
     src/app/iwidget.h
+    src/app/menu_widget.h
     src/app/screen.h
     src/app/sdl_compat.h
+    src/app/settings_popup.h
+    src/app/stats_overlay.h
     src/flight/data_manager_sim.h
     src/flight/data_type.h
     src/flight/idata_manager.h
     src/flight/iobserver.h
     src/flight/subject.h
     src/ahrs/ahrs_widget.h
+    src/world/iscene_layer.h
     src/world/terrain_widget.h
     src/terrain/bucket.h
     src/terrain/bucket_container.h
     src/terrain/btg_file.h
     src/terrain/terrain_download.h
     src/terrain/airport_scenery.h
+    src/map/iimagery.h
     src/map/openaip_client.h
     src/map/openaip_atlas.h
     src/map/sat_clipmap.h

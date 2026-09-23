@@ -3,6 +3,7 @@
 #ifndef OPENAIP_ATLAS_H
 #define OPENAIP_ATLAS_H
 
+#include "iimagery.h"
 #include <GLES3/gl3.h>
 #include <cstddef>
 #include <string>
@@ -11,7 +12,7 @@
 struct SDL_Surface;
 
 /// Stitches cached OpenAIP PNG tiles into one texture for draping on terrain.
-class OpenAipAtlas
+class OpenAipAtlas : public IImagery
 {
 public:
     /// High-res clip around the aircraft, about 1.5 m per pixel.
@@ -61,11 +62,13 @@ public:
     /// \param longitude Degrees, east positive.
     void update(float latitude, float longitude);
     /// Uploads up to maxBlits tiles into the stitch.
-    void pump(float latitude, float longitude, int maxBlits);
+    void pump(float latitude, float longitude, int maxBlits) override;
     /// Tiles finished against tiles required.
     Progress progress() const;
     /// True when every slot in the stitch has a tile.
-    bool ready() const { return mReady; }
+    bool ready() const override { return mReady; }
+    /// GPU bytes held by the stitch.
+    size_t gpuBytes() const override { return progress().gpuBytes; }
 
     /// GPU texture of the stitch. 0 before the first upload.
     GLuint texture() const { return mTexture; }

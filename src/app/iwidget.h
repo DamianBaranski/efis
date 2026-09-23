@@ -1,18 +1,18 @@
 /// \file iwidget.h
-/// Base type for every drawable that registers itself with the screen.
+/// Base type for every drawable that registers itself with the frame.
 #ifndef IWIDGET_H
 #define IWIDGET_H
 
-#include "screen.h"
+#include "frame.h"
 
-/// Drawable that registers with the screen on construction.
+/// Drawable that registers with the frame on construction.
 /// A disabled widget stays registered and skips its draw.
 class IWidget : public IRenderer
 {
 public:
-    /// Registers this widget with the screen. Enabled by default.
-    /// \param screen Frame that draws this widget. Must outlive it.
-    IWidget(Screen &screen) : mScreen(screen), mEnabled(true) { mScreen.registerRenderer(this); }
+    /// Registers this widget with the frame. Enabled by default.
+    /// \param frame Loop that draws this widget. Must outlive it.
+    IWidget(Frame &frame) : mScreen(frame.screen()), mEnabled(true) { frame.add(this); }
 
     /// Draws the widget. Required.
     virtual void render() = 0;
@@ -27,7 +27,7 @@ public:
     virtual void setPos(int x, int y) = 0;
 
 protected:
-    Screen &mScreen; ///< Frame this widget registered with.
+    Screen &mScreen; ///< Window this widget measures against.
     bool mEnabled;   ///< False skips the draw. The widget stays registered.
 };
 

@@ -17,7 +17,9 @@ class OpenAipWidget : public IWidget, public IObserver<DataType>
 {
 public:
     /// Subscribes to position and prepares the tile grid.
-    OpenAipWidget(Screen &screen, IDataManager &dataManager);
+    /// \param frame Loop that draws this widget. Must outlive it.
+    /// \param dataManager Situation source. Must outlive this widget.
+    OpenAipWidget(Frame &frame, IDataManager &dataManager);
     /// Draws the cached tiles and the ownship mark.
     void render() override;
     /// Unused. The mosaic fills the window.

@@ -3,6 +3,7 @@
 #ifndef AIRPORT_SCENERY_H
 #define AIRPORT_SCENERY_H
 
+#include "iscene_layer.h"
 #include "shader.h"
 #include <atomic>
 #include <glm/glm.hpp>
@@ -13,13 +14,22 @@
 #include <vector>
 
 /// Loads FlightGear airport BTG meshes (ICAO.btg.gz) that fill holes in terrain tiles.
-class AirportScenery
+class AirportScenery : public ISceneLayer
 {
 public:
     /// Queues airport meshes whose fields are near the camera.
     void update(float latitude, float longitude);
     /// Draws airport meshes that have finished loading.
     void render(const glm::mat4 &proj, const glm::dvec3 &eye, const glm::vec3 &forward, const glm::vec3 &up);
+
+    void update(const SceneFrame &frame) override
+    {
+        update(static_cast<float>(frame.latitude), static_cast<float>(frame.longitude));
+    }
+    void render(const SceneFrame &frame) override
+    {
+        render(frame.proj, frame.eye, frame.forward, frame.up);
+    }
 
 private:
     struct Model

@@ -32,8 +32,9 @@ class TerrainWidget : public IWidget, public IObserver<DataType>
 {
 public:
     /// Subscribes to position and builds the perspective camera.
+    /// \param frame Loop that draws this widget. Must outlive it.
     /// \param dataManager Situation source. Must outlive this widget.
-    TerrainWidget(Screen &screen, IDataManager &dataManager) : IWidget(screen), mDataManager(dataManager)
+    TerrainWidget(Frame &frame, IDataManager &dataManager) : IWidget(frame), mDataManager(dataManager)
     {
         mDataManager.attach(this, DataType::LOCATION_DATA);
         mLocation = mDataManager.getLocationData();
@@ -97,13 +98,15 @@ public:
             return;
         }
         mSat.setChartOverlay(mChartOverlay);
-        mSat.pump(mLocation.latitude, mLocation.longitude, 4);
+        IImagery &imagery = mSat;
+        imagery.pump(mLocation.latitude, mLocation.longitude, 4);
     }
 
     /// True when the satellite rings are filled, or when no imagery is requested.
     bool mapPreloadReady() const
     {
-        return (!mSatelliteGround && !mChartOverlay) || mSat.ready();
+        const IImagery &imagery = mSat;
+        return (!mSatelliteGround && !mChartOverlay) || imagery.ready();
     }
 
     /// Tiles finished in the close-in ring.
@@ -115,7 +118,11 @@ public:
     /// Terrain tiles submitted on the last frame.
     int terrainDrawn() const { return mMap.drawnCount(); }
     /// GPU bytes held by the satellite rings.
-    size_t mapGpuBytes() const { return mSat.gpuBytes(); }
+    size_t mapGpuBytes() const
+    {
+        const IImagery &imagery = mSat;
+        return imagery.gpuBytes();
+    }
 
     /// Rebuilds nearby overlays when the position channel changes.
     void update(DataType type) override {
@@ -153,7 +160,12 @@ public:
         }
         mLocation = mDataManager.getLocationData();
         NavVoice::instance().setPosition(mLocation.latitude, mLocation.longitude);
-        mMap.updateLocation(mLocation.latitude, mLocation.longitude);
+        SceneFrame ground;
+        ground.latitude = mLocation.latitude;
+        ground.longitude = mLocation.longitude;
+        ground.altitudeM = mLocation.altitude;
+        ISceneLayer &terrain = mMap;
+        terrain.update(ground);
         glm::dvec3 eye;
         glm::vec3 forward;
         glm::vec3 up;
@@ -204,28 +216,35 @@ public:
         glCullFace(GL_BACK);
         glFrontFace(GL_CCW);
 
-        mMap.render(mProjMat, eye, forward, up);
+        SceneFrame frame;
+        frame.latitude = mLocation.latitude;
+        frame.longitude = mLocation.longitude;
+        frame.altitudeM = mLocation.altitude;
+        frame.proj = mProjMat;
+        frame.eye = eye;
+        frame.forward = forward;
+        frame.up = up;
+        frame.screenW = mScreen.getWidth();
+        frame.screenH = mScreen.getHeight();
+        terrain.render(frame);
         glDisable(GL_CULL_FACE);
-        mRunways.update(mLocation.latitude, mLocation.longitude);
-        mRunways.render(mProjMat, eye, forward, up);
+        drawLayer(mRunways, frame);
         if (mAirspacesEnabled)
         {
-            mAirspaces.update(mLocation.latitude, mLocation.longitude, mLocation.altitude, mProjMat, eye, forward, up,
-                              mScreen.getWidth(), mScreen.getHeight());
-            mAirspaces.render(mProjMat, eye, forward, up);
+            drawLayer(mAirspaces, frame);
         }
         if (mVrpsEnabled)
         {
-            mVrps.update(mLocation.latitude, mLocation.longitude);
-            mVrps.render(mProjMat, eye, forward, up);
+            drawLayer(mVrps, frame);
             NavVoice::instance().updateReporting(mLocation.latitude, mLocation.longitude, mVrps.nearby());
         }
         if (mObstaclesEnabled || NavVoice::instance().obstacles())
         {
-            mObstacles.update(mLocation.latitude, mLocation.longitude);
+            ISceneLayer &obstacles = mObstacles;
+            obstacles.update(frame);
             if (mObstaclesEnabled)
             {
-                mObstacles.render(mProjMat, eye, forward, up);
+                obstacles.render(frame);
             }
             std::vector<NavVoice::ObstacleCue> cues;
             cues.reserve(mObstacles.nearby().size());
@@ -253,6 +272,12 @@ public:
     }
 
 private:
+    static void drawLayer(ISceneLayer &layer, const SceneFrame &frame)
+    {
+        layer.update(frame);
+        layer.render(frame);
+    }
+
     void buildCamera(glm::dvec3 &eye, glm::vec3 &forward, glm::vec3 &up, glm::vec3 &east,
                      glm::vec3 &geodeticUp) const
     {
