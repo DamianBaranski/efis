@@ -105,22 +105,26 @@ private:
     void applyLayers();
     void touch();
 
-    AhrsWidget &mAhrs;
-    TerrainWidget &mTerrain;
-    ViewMode mView = ViewMode::ThreeD;
-    MapMode mMapMode = MapMode::Simple;
-    bool mAipWalls = false;
-    bool mAipText = false;
-    bool mVrpOn = true;
-    bool mObstacles = false;
-    int mSatZoom = 16;
-    int mFarZoom = 12;
-    int mFarGrid = 8;
-    int mNearGrid = 8;
-    bool mGeneralOpen = false;
-    EnrPage mEnrPage = EnrPage::None;
-    bool mShowStats = false;
-    uint64_t mRevision = 0;
+    AhrsWidget &mAhrs;       ///< Attitude instrument. enable() and the sky tape are switched from here.
+    TerrainWidget &mTerrain; ///< 3D world. Layer flags and imagery zoom are pushed here.
+    ViewMode mView = ViewMode::ThreeD; ///< MODE row. 2D and PLANNING do not change layers.
+    MapMode mMapMode = MapMode::Simple; ///< MAP row. Satellite drapes imagery. Simple is shaded terrain.
+
+    bool mAipWalls = false;  ///< AIP 3D. Vertical airspace walls.
+    bool mAipText = false;   ///< AIP TEXT. Airspace name plates.
+    bool mVrpOn = true;      ///< AIP VRP. Visual reporting points.
+    bool mObstacles = false; ///< AIP OBSTCL. Obstacle masts. Voice can still run when this is off.
+
+    int mSatZoom = 16;       ///< Close-in imagery zoom, from 12 through 18.
+    int mFarZoom = 12;       ///< Mid-ring imagery zoom, from 9 through 12.
+    int mFarGrid = 8;        ///< Tiles on one side of the mid ring. One of 4, 8, 12, 16.
+    int mNearGrid = 8;       ///< Tiles on one side of the close-in ring. One of 4, 8, 12, 16.
+
+    bool mGeneralOpen = false; ///< CONF GENERAL window is open.
+    EnrPage mEnrPage = EnrPage::None; ///< ENR row. Nearest speaks the closest field when selected.
+    
+    bool mShowStats = false; ///< CONF STATS. Diagnostics panel instead of the preload banner.
+    uint64_t mRevision = 0;  ///< Bumped when a menu highlight changes. The menu rebuilds when this moves.
 };
 
 #endif

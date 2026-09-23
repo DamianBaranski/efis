@@ -66,6 +66,7 @@ int main(int argc, char **argv)
     Screen screen;
     // Event loop and the draw list. Nothing is drawn until it is added below.
     Frame frame(screen);
+
     // Simulator, or Stratux HTTP on the desktop. Android always gets the simulator.
     // The simulator also registers its flight keys on the frame.
     const std::unique_ptr<ISession> session = openSession(frame, liveStratux);
@@ -73,12 +74,15 @@ int main(int argc, char **argv)
     // Instruments read the situation feed. They are not on the draw list yet.
     TerrainWidget terrain(frame, session->data());
     AhrsWidget ahrs(frame, session->data());
+
     // Draw order: 3D world, then the attitude instrument on top of it.
     frame.add(&terrain);
     frame.add(&ahrs);
+
     // Mode keys and layer switches. Holds the real widgets because the frame list is only IRenderer.
     // Registers for keys ahead of the widgets. Does not draw.
     AppController controller(frame, ahrs, terrain);
+    
     // Menu, stats, and GENERAL. Added above the instruments, settings window last.
     Hud hud(frame, controller, terrain);
 
