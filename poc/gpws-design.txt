@@ -1,0 +1,307 @@
+GPWS / TAWS design for this EFIS
+================================
+
+This is a light-aircraft terrain awareness design, in the shape of TSO-C151
+Class B (no radio altimeter). It is not a certified GPWS. Phrases and the
+caution-then-warning steps follow the Honeywell MK VI / MK VIII EGPWS pilot
+guide and the Class B minimum set in TSO-C151b.
+
+Sources
+-------
+- FAA TSO-C151b, Appendix 1 (Class A and Class B TAWS).
+- Honeywell MK VI and MK VIII EGPWS Pilot Guide (060-4314).
+- SKYbrary, Terrain Avoidance and Warning System.
+- BendixKing KGP 560 / KGP 860 pilot notes (same caution / warning timing).
+
+Three levels
+------------
+Every function uses the same three levels. A higher level of the same
+function replaces the lower one. A higher-priority function replaces a
+lower-priority one (see Priority).
+
+  Advisory     Situational. Spoken once. No recovery required.
+               Example: "Five hundred."  "Tower, two miles."
+
+  Caution      The outer boundary. Amber. Change the path or the descent
+               soon. Spoken once, then again only when the penetration
+               grows, or on a fixed repeat while a look-ahead conflict
+               remains.
+
+  Warning      The inner boundary. Red. Immediate climb. "Pull up" repeats
+               until the aircraft is back outside the inner boundary.
+
+Same-function escalation (the 20 percent rule)
+----------------------------------------------
+Honeywell uses this on sink rate, too-low-terrain, and bank angle. Use it
+here for every envelope that is not a look-ahead ribbon.
+
+  1. First crossing of the outer boundary speaks the caution once.
+  2. Each further 20 percent of penetration speaks it again.
+     Penetration is how far the value has gone past the boundary
+     (extra sink rate, extra altitude lost, extra bank, less clearance).
+  3. Crossing the inner boundary replaces the caution with "Pull up",
+     and that phrase repeats until the inner boundary is left.
+  4. Leaving the outer boundary clears the alert. Re-arm only after a
+     small hysteresis, so a value sitting on the line does not chatter.
+     The navigation voice already does this for airspace and obstacles
+     (re-arm a few tenths of a mile outside the gate).
+
+Look-ahead terrain and obstacles use time instead of the 20 percent rule:
+
+  Caution    about 40 to 60 seconds before the conflict.
+             "Caution, terrain" or "Caution, obstacle", repeated about
+             every 7 seconds while the conflict stays in the caution ribbon.
+  Warning    about 30 seconds before the conflict.
+             "Terrain, terrain, pull up" or "Obstacle, obstacle, pull up".
+             "Pull up" continues until the path is clear.
+
+TSO-C151b also fixes required terrain clearance (RTC) for the look-ahead
+function. These are the clearances that should still exist at the caution,
+not the height at which we start shouting:
+
+  Phase        level flight    descending
+  Enroute      700 ft          500 ft
+  Terminal     350 ft          300 ft
+  Approach     150 ft          100 ft
+  Departure    100 ft          100 ft
+               (do not alert if still more than 400 ft above the terrain)
+
+On a normal approach inside about 1 NM of the threshold, shrink or inhibit
+the look-ahead so a correct landing is quiet.
+
+Priority
+--------
+One voice. The speaker already cuts off the current phrase when priority
+is 1 or higher. Warnings use that. Cautions and advisories wait their turn
+unless a warning is active, in which case they stay silent.
+
+Class B internal order, from TSO-C151b Table 4-3, with obstacles added at
+the same rank as terrain awareness (Honeywell treats them as one look-ahead):
+
+  1  Sink rate pull-up                         warning, continuous
+  2  Terrain or obstacle pull-up               warning, continuous
+  3  Terrain or obstacle caution               caution, 7 s
+  4  Too low terrain (premature descent,       caution
+     clearance floor)
+  5  Five hundred                              advisory, once
+  6  Sink rate                                 caution, 20 percent
+  7  Don't sink                                caution, 20 percent
+  8  Bank angle                                caution, 20 percent
+
+Navigation phrases (airspace, reporting points, nearest field, and the
+existing obstacle distance call) sit below all of these. A GPWS caution
+or warning suppresses them.
+
+Height
+------
+There is no radio altimeter. Class B allows height above terrain as
+barometric altitude minus the terrain cell, and the 500-foot call as
+barometric height above the runway. This EFIS has GPS ellipsoid altitude.
+
+  Height above a runway  =  GPS altitude − geoid − airports.csv elev_m
+  Height above terrain   =  GPS altitude − terrain elevation in the mesh
+  Obstacle top           =  obstacle ground elevation + obstacle height
+  Clearance of an        =  GPS altitude − geoid − obstacle top
+    obstacle
+
+elev_m and the OpenAIP obstacle elevation are heights above mean sea level.
+GPS altitude is above the ellipsoid. Over Czechia and southern Poland the
+geoid offset is about 45 m. Apply it before any 500-foot or clearance test.
+Do not subtract raw GPS altitude from elev_m.
+
+Unknown obstacle height is drawn as a short mast (70 m wind, 40 m other).
+Do not use that guess for a caution or a pull-up. Distance advisories may
+still speak.
+
+What exists today
+-----------------
+Published every frame:
+  position, GPS altitude, pitch, roll, heading.
+  Tablet also publishes ground speed and a vertical speed from successive
+  GPS altitudes.
+  Stratux reads BaroVerticalSpeed and GPSVerticalSpeed and then discards
+  both. Ground speed is not taken from the situation message.
+
+Already loaded, not used as an alert:
+  Runway catalog: threshold position, heading, length, elevation.
+  Obstacle catalog: position, ground elevation, height above ground, kind.
+    The public nearby list currently exports height only. Ground elevation
+    is already parsed and is used to place the mast.
+  Terrain mesh: elevation is in the loaded triangles. Nothing samples it.
+
+Obstacle voice today (src/voice/nav_voice.cpp) is an advisory, not a GPWS
+warning. It picks the nearest relevant obstacle inside 3 NM (wind, chimney,
+tower, or anything 50 m or taller). Wind farms inside 1.5 km collapse to
+one phrase. It speaks at 2 NM, and again overhead for a single obstacle
+that is not a turbine. Both phrases are priority 0. It never reads aircraft
+altitude, vertical speed, or track, so a turbine level with the aircraft
+and a turbine 3000 ft below sound the same.
+
+Now
+---
+These can be built from data the process already holds. No new sensor.
+Stratux sink-rate needs the two vertical-speed fields stored; the poll
+already receives them.
+
+1. Obstacle alert, on top of the distance advisory.
+
+   The catalog is enough. No terrain sample.
+
+   Advisory (already spoken)
+     "Tower, two miles." / "Over chimney, 80 metres."
+     Horizontal only. Keep it. It does not escalate into a pull-up.
+
+   Caution
+     The track, ground speed, and vertical speed reach an obstacle top
+     inside about 60 seconds, or the aircraft is inside a horizontal
+     radius of the obstacle with clearance under a margin (start near
+     300 ft, tighter near a runway).
+     "Caution, obstacle." Repeat about every 7 seconds.
+     Deeper loss of clearance retriggers on the 20 percent rule when the
+     aircraft is already beside the obstacle rather than looking ahead.
+
+   Warning
+     The same geometry inside about 30 seconds, or clearance through the
+     obstacle top along the track.
+     "Obstacle, obstacle, pull up." Repeats until the path clears the top
+     by the caution margin.
+     Skip this level when height is unknown.
+
+2. Bank angle (Mode 6).
+
+   Roll is live on both sources.
+
+   Advisory: none.
+   Caution: "Bank angle, bank angle" once when roll exceeds the limit.
+   Warning: none. This function has no pull-up.
+
+   Escalation from the EGPWS guide, simplified for no radio altitude:
+     First call at the limit.
+     Another call at 20 percent more bank.
+     Continuous call beyond the second 20 percent step.
+     Re-arm when roll drops back under the first limit.
+
+   Without height above terrain, use one GA limit around 45 to 50 degrees.
+   When height above the nearest runway is known and low, tighten the
+   limit (EGPWS turboprop: about 50 degrees above 210 ft, steeper down
+   toward 15 degrees at very low height, inhibited below about 10 ft).
+
+3. Five hundred (Class B required callout).
+
+   Advisory only. Once per descent through 500 ft above the nearest
+   runway elevation, while descending and aligned with that runway.
+   "Five hundred."
+   Away from a runway this call waits on a terrain sample (see Later).
+
+4. Excessive descent rate (Mode 1). Class B required.
+
+   Height is height above the nearest runway while inside the airport
+   area. Enroute sink rate waits on terrain height.
+
+   Caution, outer boundary: "Sink rate."
+     Again on each extra 20 percent of sink past that boundary.
+   Warning, inner boundary: "Pull up", continuous, until the sink rate
+     is back outside the inner curve.
+
+   The curves are sink rate against height. A steeper descent is allowed
+   when higher. Class B extends the envelope above the old 2500 ft radio-
+   altitude cap. Numbers should be taken from RTCA/DO-161A as widened in
+   TSO-C151b Appendix 3, not invented ad hoc. Until those curves are
+   copied in, a temporary pair is enough to wire the voice:
+
+     outer  at 500 ft AAL, descent faster than about 1500 ft/min
+     inner  at 500 ft AAL, descent faster than about 2500 ft/min
+     both boundaries open up as height increases
+
+5. Premature descent (PDA). Class B required. Caution only.
+
+   Below a nominal 3 degree path to the nearest runway threshold, using
+   threshold elevation. Normal circuit heights must stay quiet. TSO asks
+   that VFR in the airport area and a circling approach not alert.
+
+   "Too low, terrain."
+   Again only after another 20 percent of altitude below the path.
+   No pull-up for this function (TSO Table 4-1: warning not required).
+
+6. Terrain clearance floor near a runway. Caution only.
+
+   A floor that rises with distance from the nearest runway, compared
+   with GPS altitude minus field elevation. Same phrase and the same
+   20 percent repeat as premature descent. This is the airport-area
+   version. The enroute floor needs the mesh.
+
+7. Don't sink (Mode 3). Class B required. Caution only. Partial.
+
+   Arm when the aircraft climbs away from a runway threshold (low height
+   above that field, then a positive climb). Alert on a following loss
+   of altitude.
+
+   "Don't sink."
+   If the loss continues into the clearance floor: "Too low, terrain."
+   Again on each extra 20 percent of altitude lost.
+   No pull-up.
+   Without gear and flap positions the takeoff and go-around state is
+   only geometric, so this will miss a go-around that never gets near
+   the threshold elevation, and it can false-arm on a low pass.
+
+Later (terrain height query)
+----------------------------
+The loaded .btg tiles already contain the ground elevation. These functions
+turn on when a lat/lon sample of that mesh exists. Obstacle warning does
+not wait on this.
+
+8. Look-ahead terrain (FLTA). The main Class B function.
+
+   Project position with track (or heading), ground speed, and vertical
+   speed. Turn rate from successive headings should widen the ribbon.
+   Two tests, both with the RTC table above:
+
+     Reduced clearance: still above the terrain, but the projected
+     clearance is below the RTC for the phase of flight.
+     Imminent impact: the projected path meets terrain.
+
+   Caution then warning, 60 seconds then 30 seconds, as in the look-ahead
+   timing section. Phrase is "terrain", not "obstacle".
+
+9. Excessive terrain closure (Mode 2).
+
+   Classic Mode 2 is radio-altitude rate. The geometric stand-in is the
+   rate of change of height above the mesh under the aircraft.
+
+   Caution: "Terrain, terrain."
+   Warning: "Pull up", continuous.
+   Class A splits this by flap position (2A / 2B). We have no flap
+   discrete, so one envelope, inhibited on a stable approach inside
+   1 NM of the threshold.
+
+10. Five hundred above terrain, and the enroute clearance floor.
+
+    The same two phrases as items 3 and 6, using mesh elevation when no
+    runway is the reference. TSO wants the 500-foot call above terrain
+    specifically when the aircraft is not in the airport or PDA area.
+
+Not available
+-------------
+  Too low gear, too low flaps (Mode 4A / 4B). No gear or flap input.
+  Glideslope (Mode 5). No ILS or glidepath deviation. Premature descent
+    is the substitute, and it does not say "Glideslope".
+  Windshear (Mode 7). No air-data, angle of attack, or predictive feed.
+    The accelerometer is not a windshear sensor.
+  Radio-altitude Mode 1 and Mode 2 as written in DO-161A. The geometric
+    versions above are the Class B form, not a radio-altimeter GPWS.
+  Certified Class A. That also requires a radio altimeter, landing
+    configuration, and a terrain display driven with caution and warning
+    colors. The 3D terrain view can later paint the conflicting cell
+    amber then red. It is not required for Class B.
+
+Voice wiring
+------------
+Warnings call the announcer at priority 1 so they cut off navigation
+speech. Cautions use a lower priority and the 7-second or 20-percent
+gate so they do not pile up. The existing obstacle distance phrase stays
+at priority 0 and must not speak while a caution or warning for that
+same obstacle is active.
+
+Each function keeps a small memory: armed, level, and the penetration
+at the last utterance. That is the same pattern as the airspace and
+obstacle memory already in NavVoice.

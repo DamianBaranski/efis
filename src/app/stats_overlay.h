@@ -16,6 +16,7 @@
 #include <vector>
 
 class AppController;
+class ISession;
 
 /// Draws the map preload banner, or the diagnostics panel when STATS is on.
 class StatsOverlay : public IWidget
@@ -25,7 +26,8 @@ public:
     /// \param frame Loop that draws this overlay above the menu.
     /// \param controller Zoom values and the STATS flag.
     /// \param world Preload progress, altitude, and GPU bytes.
-    StatsOverlay(Frame &frame, AppController &controller, IWorldRead &world);
+    /// \param session Attitude sample for the AHRS line.
+    StatsOverlay(Frame &frame, AppController &controller, IWorldRead &world, ISession &session);
 
     /// Counts frames and draws either the banner or the panel.
     void render() override;
@@ -47,6 +49,9 @@ private:
     void formatDownloadLines(char *dl0, size_t n0, char *dl1, size_t n1, char *dl2, size_t n2) const;
     void refreshCacheTotals(uint64_t nowMs);
     void formatCacheLine(char *out, size_t n, uint64_t nowMs);
+    void formatAhrsLine(char *out, size_t n);
+    void formatCompassLine(char *out, size_t n) const;
+    void formatGpsLine(char *out, size_t n) const;
     void drawStats();
     void rebuildPreloadSprites(const std::string &l0, const std::string &l1, const std::string &l2,
                                const std::string &l3);
@@ -54,6 +59,7 @@ private:
 
     AppController &mController;
     IWorldRead &mWorld;
+    ISession &mSession;
     int mFps = 0;
     int mStatsShownFps = -1;
     int mFpsFrames = 0;

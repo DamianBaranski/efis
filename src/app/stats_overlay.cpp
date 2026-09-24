@@ -4,6 +4,7 @@
 #include "app_controller.h"
 #include "asset_path.h"
 #include "openaip_client.h"
+#include "session.h"
 #include "shader.h"
 #include "terrain_download.h"
 #include <GLES3/gl3.h>
@@ -25,8 +26,14 @@
 #define GL_TEXTURE_FREE_MEMORY_ATI 0x87FC
 #endif
 
-StatsOverlay::StatsOverlay(Frame &frame, AppController &controller, IWorldRead &world)
-    : IWidget(frame), mController(controller), mWorld(world)
+namespace
+{
+constexpr int kStatsLineCount = 13;
+constexpr float kRadToDeg = 180.0f / 3.14159265358979323846f;
+}
+
+StatsOverlay::StatsOverlay(Frame &frame, AppController &controller, IWorldRead &world, ISession &session)
+    : IWidget(frame), mController(controller), mWorld(world), mSession(session)
 {
     mPreloadBox = std::make_unique<Render2D>(frame.screen());
     for (int i = 0; i < 4; ++i)
@@ -34,7 +41,7 @@ StatsOverlay::StatsOverlay(Frame &frame, AppController &controller, IWorldRead &
         mPreloadLines.emplace_back(std::make_unique<Render2D>(frame.screen()));
     }
     mStatsBox = std::make_unique<Render2D>(frame.screen());
-    for (int i = 0; i < 10; ++i)
+    for (int i = 0; i < kStatsLineCount; ++i)
     {
         mStatsLines.emplace_back(std::make_unique<Render2D>(frame.screen()));
     }
@@ -326,9 +333,90 @@ void StatsOverlay::formatCacheLine(char *out, size_t n, uint64_t nowMs)
     std::snprintf(out, n, "CACHE  SATT %d MB  AIP %d MB  TERR %d MB", satt, aip, terr);
 }
 
+void StatsOverlay::formatAhrsLine(char *out, size_t n)
+{
+    const AttitudeData &att = mSession.data().getAttitudeData();
+    const float pitch = att.pitch * kRadToDeg;
+    const float roll = att.roll * kRadToDeg;
+    float yaw = att.heading * kRadToDeg;
+    yaw = std::fmod(yaw, 360.0f);
+    if (yaw < 0.0f)
+    {
+        yaw += 360.0f;
+    }
+    std::snprintf(out, n, "AHRS  PITCH %+6.1f  ROLL %+6.1f  YAW %6.1f", pitch, roll, yaw);
+}
+
+const char *compassPoint(float degrees)
+{
+    static const char *kPoint[] = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
+    int sector = static_cast<int>(std::floor((degrees + 22.5f) / 45.0f));
+    if (sector < 0)
+    {
+        sector = 0;
+    }
+    return kPoint[sector % 8];
+}
+
+void StatsOverlay::formatCompassLine(char *out, size_t n) const
+{
+    const SensorReport report = mSession.sensors();
+    const bool tablet = mSession.source() == SituationSource::Internal;
+    if (tablet && !report.compassHw)
+    {
+        std::snprintf(out, n, "COMPASS  NO SENSOR");
+        return;
+    }
+    if (tablet && !report.compass && !report.attitude)
+    {
+        std::snprintf(out, n, "COMPASS  WAIT");
+        return;
+    }
+    const AttitudeData &att = mSession.data().getAttitudeData();
+    float heading = att.heading * kRadToDeg;
+    heading = std::fmod(heading, 360.0f);
+    if (heading < 0.0f)
+    {
+        heading += 360.0f;
+    }
+    std::snprintf(out, n, "COMPASS  %5.1f DEG  %s", heading, compassPoint(heading));
+}
+
+void StatsOverlay::formatGpsLine(char *out, size_t n) const
+{
+    const bool tablet = mSession.source() == SituationSource::Internal;
+    const SensorReport report = mSession.sensors();
+    if (tablet && !report.gps)
+    {
+        if (report.satellitesSeen >= 0)
+        {
+            std::snprintf(out, n, "GPS  NO FIX  %d/%d SAT", report.satellitesUsed, report.satellitesSeen);
+        }
+        else
+        {
+            std::snprintf(out, n, "GPS  NO FIX");
+        }
+        return;
+    }
+    const LocationData &place = mSession.data().getLocationData();
+    const char latSide = place.latitude >= 0.0f ? 'N' : 'S';
+    const char lonSide = place.longitude >= 0.0f ? 'E' : 'W';
+    if (tablet && report.satellitesSeen >= 0)
+    {
+        std::snprintf(out, n, "GPS  %.5f %c  %.5f %c  %d/%d SAT", std::fabs(place.latitude), latSide,
+                      std::fabs(place.longitude), lonSide, report.satellitesUsed, report.satellitesSeen);
+        return;
+    }
+    std::snprintf(out, n, "GPS  %.5f %c  %.5f %c", std::fabs(place.latitude), latSide, std::fabs(place.longitude),
+                  lonSide);
+}
+
 void StatsOverlay::drawStats()
 {
     char fpsLine[96];
+    char ahrs[96];
+    char compass[96];
+    char gps[96];
     char l0[96];
     char l1[96];
     char l2[96];
@@ -342,12 +430,15 @@ void StatsOverlay::drawStats()
     const int altFt = static_cast<int>(std::lround(mWorld.cameraAltitude() * 3.280839895f));
     std::snprintf(fpsLine, sizeof(fpsLine), "FPS  %d  ALT %d m  %d ft  T %d/%d terrain drawn/loaded", mFps, altM, altFt,
                   mWorld.terrainDrawn(), mWorld.terrainLoaded());
+    formatAhrsLine(ahrs, sizeof(ahrs));
+    formatCompassLine(compass, sizeof(compass));
+    formatGpsLine(gps, sizeof(gps));
     formatMapLoadLines(l0, sizeof(l0), l1, sizeof(l1), l2, sizeof(l2), l3, sizeof(l3));
     formatVramLine(vram, sizeof(vram));
     formatDownloadLines(dl0, sizeof(dl0), dl1, sizeof(dl1), dl2, sizeof(dl2));
     const uint64_t nowMs = SDL_GetTicks64();
     formatCacheLine(cache, sizeof(cache), nowMs);
-    const std::string key = std::string(fpsLine) + l0 + l1 + l2 + l3 + vram + dl0 + dl1 + dl2 + cache;
+    const std::string key = std::string(fpsLine) + ahrs + compass + gps + l0 + l1 + l2 + l3 + vram + dl0 + dl1 + dl2 + cache;
     const bool sizeChanged = mScreen.getWidth() != mStatsW || mScreen.getHeight() != mStatsH;
     const bool due = mStatsKey.empty() || sizeChanged || mStatsShownFps != mFps ||
                      (key != mStatsKey && nowMs - mStatsLastRebuildMs >= 250);
@@ -360,16 +451,17 @@ void StatsOverlay::drawStats()
         mStatsH = mScreen.getHeight();
         const int margin = std::max(10, mStatsH / 80);
         const int font = std::clamp(mStatsH / 48, 14, 20);
-        const char *lines[10] = {fpsLine, l0, l1, l2, l3, vram, dl0, dl1, dl2, cache};
-        static const char *kKeys[10] = {"efis-stat-0", "efis-stat-1", "efis-stat-2", "efis-stat-3", "efis-stat-4",
-                                        "efis-stat-5", "efis-stat-6", "efis-stat-7", "efis-stat-8", "efis-stat-9"};
+        const char *lines[kStatsLineCount] = {fpsLine, ahrs, compass, gps, l0, l1, l2, l3, vram, dl0, dl1, dl2, cache};
+        static const char *kKeys[kStatsLineCount] = {
+            "efis-stat-0", "efis-stat-1",  "efis-stat-2",  "efis-stat-3",  "efis-stat-4",  "efis-stat-5", "efis-stat-6",
+            "efis-stat-7", "efis-stat-8",  "efis-stat-9",  "efis-stat-10", "efis-stat-11", "efis-stat-12"};
         int maxW = 0;
         int textH = font + 6;
         TTF_Init();
         TTF_Font *face = TTF_OpenFont(AssetPath::resolve("resources/fonts/B612Mono-Regular.ttf").c_str(), font);
         if (face)
         {
-            for (int i = 0; i < 10; ++i)
+            for (int i = 0; i < kStatsLineCount; ++i)
             {
                 int w = 0;
                 int h = 0;
@@ -383,13 +475,13 @@ void StatsOverlay::drawStats()
         const int padY = std::max(8, font / 2);
         const int lineH = textH + 4;
         const int boxW = maxW + 2 * padX;
-        const int boxH = 10 * lineH + 2 * padY;
+        const int boxH = kStatsLineCount * lineH + 2 * padY;
         const int x = mStatsW - margin - boxW;
         const int glY = margin;
         mStatsBox->drawRectangle(x, glY, boxW, boxH, 0x00000099u);
-        for (int i = 0; i < 10; ++i)
+        for (int i = 0; i < kStatsLineCount; ++i)
         {
-            const int ty = glY + padY + (9 - i) * lineH;
+            const int ty = glY + padY + (kStatsLineCount - 1 - i) * lineH;
             mStatsLines[static_cast<size_t>(i)]->drawText(lines[i], static_cast<float>(font),
                                                           static_cast<float>(x + padX), static_cast<float>(ty),
                                                           0xFFFFFFFFu, kKeys[i]);

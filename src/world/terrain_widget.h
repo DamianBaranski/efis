@@ -318,17 +318,6 @@ private:
             };
             forward = nedToWorld(bodyToNed(1.0f, 0.0f, 0.0f));
             up = nedToWorld(bodyToNed(0.0f, 0.0f, -1.0f));
-            // Nose-up was looking down. Turn about the wing so pitch flips and bank stays.
-            const float pitchNow = std::atan2(glm::dot(forward, geodeticUp), glm::dot(up, geodeticUp));
-            const glm::vec3 wing = glm::normalize(glm::cross(forward, up));
-            const float turn = -2.0f * pitchNow;
-            const float c = std::cos(turn);
-            const float s = std::sin(turn);
-            const auto aboutWing = [&](const glm::vec3 &v) {
-                return glm::normalize(v * c + glm::cross(wing, v) * s + wing * glm::dot(wing, v) * (1.0f - c));
-            };
-            forward = aboutWing(forward);
-            up = aboutWing(up);
         }
         else
         {

@@ -4,7 +4,8 @@
 #include "frame.h"
 
 Hud::Hud(Frame &frame, AppController &controller, IWorldRead &world, ISession &session)
-    : mSettings(frame, controller, world, session), mStats(frame, controller, world), mMenu(frame, controller, mSettings)
+    : mSettings(frame, controller, world, session), mStats(frame, controller, world, session),
+      mMenu(frame, controller, mSettings)
 {
     frame.add(&mMenu);
     frame.add(&mStats);

@@ -2,6 +2,7 @@
 /// Reads the tablet sensor sample and publishes attitude and GPS.
 #include "data_manager_internal.h"
 #include "sdl_compat.h"
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #ifdef __ANDROID__
@@ -194,6 +195,8 @@ void DataManagerInternal::tick()
     mReport.lon = sample[1];
     mReport.alt = sample[2];
     mReport.speed = sample[3];
+    mReport.satellitesSeen = static_cast<int>(sample[5]);
+    mReport.satellitesUsed = static_cast<int>(sample[31]);
     mReport.gyroHw = (flags & 32) != 0;
     mReport.gyro = (flags & 4) != 0;
     mReport.gx = sample[9];
@@ -411,7 +414,7 @@ void DataManagerInternal::fuse(const float sample[32])
             gps.vacc = gps.hacc * 1.5f;
             gps.sacc = 0.5f;
             gps.fix_type = 3;
-            gps.nsats = 10;
+            gps.nsats = static_cast<uint8_t>(std::clamp(sample[31], 0.0f, 255.0f));
             gps.pdop = 1.5f;
             gps.yaw = NAN;
             if (std::isfinite(sample[29]))
@@ -449,8 +452,8 @@ void DataManagerInternal::fuse(const float sample[32])
             heading += 6.283185307f;
         }
         mAttitude.heading = heading;
-        mAttitude.pitch = mRawPitch - mPitchZero;
-        mAttitude.roll = mRawRoll - mRollZero;
+        mAttitude.pitch = mRawPitch;
+        mAttitude.roll = mRawRoll;
         const Quatf raw = ekf->getQuaternion();
         mQuatW = raw(0);
         mQuatX = raw(1);
@@ -520,15 +523,27 @@ void DataManagerInternal::setDisplayQuat()
         ref(1) = mRefX;
         ref(2) = mRefY;
         ref(3) = mRefZ;
-        const Vector3f nose = ref.rotateVector(Vector3f(1.0f, 0.0f, 0.0f));
+        const Vector3f downNed(0.0f, 0.0f, 1.0f);
+        const Vector3f gRef = ref.rotateVectorInverse(downNed);
+        const Vector3f gNow = q.rotateVectorInverse(downNed);
+        const Quatf qTilt(gRef, gNow);
+        const Vector3f nose = q.rotateVector(Vector3f(1.0f, 0.0f, 0.0f));
         const float heading = std::atan2(nose(1), nose(0));
-        q = Quatf(Eulerf(0.0f, 0.0f, heading)) * ref.inversed() * q;
+        q = Quatf(Eulerf(0.0f, 0.0f, heading)) * qTilt;
+    }
+    // Mount axes are correct. Display pitch and roll are the other way from the EKF.
+    {
+        const Eulerf e(q);
+        q = Quatf(Eulerf(-e.phi(), -e.theta(), e.psi()));
     }
     mAttitude.qw = q(0);
     mAttitude.qx = q(1);
     mAttitude.qy = q(2);
     mAttitude.qz = q(3);
     mAttitude.useQuat = true;
+    const Eulerf disp(q);
+    mAttitude.pitch = disp.theta();
+    mAttitude.roll = disp.phi();
 #else
     mAttitude.useQuat = false;
 #endif

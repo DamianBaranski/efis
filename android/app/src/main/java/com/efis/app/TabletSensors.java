@@ -11,10 +11,12 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.location.GnssStatus;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.view.Surface;
@@ -55,6 +57,8 @@ public final class TabletSensors {
     private static long sLastAltMs;
     private static float sLastAlt;
     private static boolean sHaveAlt;
+    private static GnssStatus.Callback sGnss;
+    private static boolean sGnssRegistered;
 
     private TabletSensors() {
     }
@@ -82,11 +86,12 @@ public final class TabletSensors {
     /**
      * Latest sample, thirty-two floats, for the PX4 EKF.
      * 0-2 latitude, longitude, altitude metres. 3 ground speed m/s. 4 vertical speed m/s, up positive.
-     * 5-7 unused. 8 flags.
+     * 5 satellites in view. 6-7 unused. 8 flags.
      * 9-11 gyro rad/s in device axes. 12-14 accelerometer m/s2. 15-17 magnetometer microtesla.
      * 18-20 integrated gyro, body FRD, radians. 21-23 integrated specific force, body FRD, m/s.
      * 24 gyro integration interval, seconds. 25 accelerometer integration interval, seconds.
      * 26-28 magnetometer, body FRD, gauss. 29 GPS bearing degrees, or NaN. 30 horizontal accuracy, metres.
+     * 31 satellites used in the fix.
      * Calling this consumes the integrated gyro and accelerometer chunks.
      * Flag bits: 0 GPS fix, 2 gyro sample, 3 accel sample, 4 compass sample,
      * 5 gyro present, 6 accel present, 7 compass present.
@@ -187,8 +192,34 @@ public final class TabletSensors {
                 sLocations.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 1000L, 0f, LISTENER,
                         Looper.getMainLooper());
             }
+            if (sGnss == null) {
+                sGnss = new GnssStatus.Callback() {
+                    @Override
+                    public void onSatelliteStatusChanged(final GnssStatus status) {
+                        storeSatellites(status);
+                    }
+                };
+            }
+            if (!sGnssRegistered) {
+                sLocations.registerGnssStatusCallback(sGnss, new Handler(Looper.getMainLooper()));
+                sGnssRegistered = true;
+            }
         } catch (SecurityException e) {
             Log.w("efis", "GPS permission missing", e);
+        }
+    }
+
+    private static void storeSatellites(final GnssStatus status) {
+        final int seen = status.getSatelliteCount();
+        int used = 0;
+        for (int i = 0; i < seen; i++) {
+            if (status.usedInFix(i)) {
+                used++;
+            }
+        }
+        synchronized (LOCK) {
+            SAMPLE[5] = seen;
+            SAMPLE[31] = used;
         }
     }
 
@@ -200,11 +231,17 @@ public final class TabletSensors {
         if (sLocations != null) {
             try {
                 sLocations.removeUpdates(LISTENER);
+                if (sGnssRegistered && sGnss != null) {
+                    sLocations.unregisterGnssStatusCallback(sGnss);
+                }
             } catch (SecurityException ignored) {
             }
         }
+        sGnssRegistered = false;
         synchronized (LOCK) {
+            SAMPLE[5] = 0f;
             SAMPLE[8] = 0f;
+            SAMPLE[31] = 0f;
         }
     }
 
@@ -236,17 +273,17 @@ public final class TabletSensors {
     }
 
     /**
-     * Screen axes to aircraft FRD. The screen faces the pilot and its top edge is up.
-     * Forward is into the glass, right is screen-right, down is toward the bottom edge.
-     * The previous map treated the tablet as lying glass-up, so a bank fed yaw and a
-     * twist fed roll.
+     * Device axes to aircraft FRD. Same rotation for gyro, accelerometer, and compass.
+     * Screen: X right, Y top of the screen, Z out of the glass.
+     * Body: forward into the glass, right along the screen, down toward the bottom edge.
+     * 180° about forward: Right and Down are reversed so pitch and yaw match roll.
      */
     private static void toBody(final float x, final float y, final float z, final float[] out) {
         final float[] screen = new float[3];
         toScreen(x, y, z, screen);
         out[0] = -screen[2];
-        out[1] = screen[0];
-        out[2] = -screen[1];
+        out[1] = -screen[0];
+        out[2] = screen[1];
     }
 
     private static void accumulate(final float x, final float y, final float z, final float dt,

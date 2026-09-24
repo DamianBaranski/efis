@@ -25,6 +25,8 @@ struct SensorReport
     float lon = 0.0f;     ///< Degrees, east positive.
     float alt = 0.0f;     ///< Metres above the ellipsoid.
     float speed = 0.0f;   ///< Ground speed, metres per second.
+    int satellitesUsed = -1; ///< Satellites used in the fix. Negative when unknown.
+    int satellitesSeen = -1; ///< Satellites in view. Negative when unknown.
     bool gyroHw = false;  ///< The tablet has a gyroscope.
     bool gyro = false;    ///< gx, gy, gz hold a reading.
     float gx = 0.0f;      ///< Radians per second, device X.

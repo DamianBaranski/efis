@@ -135,8 +135,8 @@ void tapeAngles(const AttitudeData &attitude, float &pitch, float &roll)
         // nose, not -up.z. -up.z shrinks with cos(roll), so a level bank turned
         // a few degrees of pitch into a ladder that left the center.
         const float horiz = std::hypot(forward.x, forward.y);
-        pitch = -std::atan2(-forward.z, horiz);
-        roll = std::atan2(right.z, -up.z);
+        pitch = std::atan2(-forward.z, horiz);
+        roll = -std::atan2(right.z, -up.z);
         return;
     }
     pitch = -attitude.pitch;

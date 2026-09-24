@@ -51,7 +51,8 @@ public:
 private:
     void publish();
     void fuse(const float sample[32]);
-    /// Writes the display quaternion, with the horizon reference removed.
+    /// Writes the display quaternion. After SET, pitch and roll follow gravity
+    /// against the SET down. A turn about gravity does not bank the tape.
     void setDisplayQuat();
 
     AttitudeData mAttitude{};
