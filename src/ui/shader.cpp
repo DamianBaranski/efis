@@ -2,6 +2,7 @@
 /// Compiles the terrain program and uploads meshes and textures.
 #include "shader.h"
 #include "asset_path.h"
+#include "screen.h"
 #include <SDL.h>
 #include <SDL_image.h>
 #include <SDL_opengles2.h>
@@ -10,6 +11,23 @@
 
 std::unordered_map<std::string, Shader::TextureData> Shader::mTextureCache = {};
 Shader::SatClipState Shader::sSat = {};
+
+namespace
+{
+glm::mat4 layoutMvp(const glm::mat4 &mvp)
+{
+    if (!Screen::layoutVertical())
+    {
+        return mvp;
+    }
+    glm::mat4 turn(1.0f);
+    turn[0][0] = 0.0f;
+    turn[1][0] = 1.0f;
+    turn[0][1] = -1.0f;
+    turn[1][1] = 0.0f;
+    return turn * mvp;
+}
+}
 
 void Shader::setSatClip(bool active, GLuint fineTex, GLuint midTex, GLuint wideTex, int fineOriginX, int fineOriginY,
                         int midOriginX, int midOriginY, int wideOriginX, int wideOriginY, int fineZoom, int midZoom,
@@ -99,7 +117,8 @@ void Shader::render() const
     glUseProgram(mShaderProgram);
     if (mMvpMatrixLoc >= 0)
     {
-        glUniformMatrix4fv(mMvpMatrixLoc, 1, GL_FALSE, glm::value_ptr(mMvpMat));
+        const glm::mat4 shown = layoutMvp(mMvpMat);
+        glUniformMatrix4fv(mMvpMatrixLoc, 1, GL_FALSE, glm::value_ptr(shown));
     }
 
     if (mColorScaleLoc >= 0)
@@ -213,7 +232,8 @@ void Shader::setMvpMatrix(glm::mat4 mvpMat)
 {
     glUseProgram(mShaderProgram);
     mMvpMat = mvpMat;
-    glUniformMatrix4fv(mMvpMatrixLoc, 1, GL_FALSE, glm::value_ptr(mMvpMat));
+    const glm::mat4 shown = layoutMvp(mMvpMat);
+    glUniformMatrix4fv(mMvpMatrixLoc, 1, GL_FALSE, glm::value_ptr(shown));
 }
 
 void Shader::clearGeometry()

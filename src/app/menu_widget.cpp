@@ -251,6 +251,15 @@ bool MenuWidget::mouseClick(int x, int y)
                 return true;
             }
         }
+        if (mPopup.activeTab() == 4)
+        {
+            const int control = mPopup.hitButton(x, y);
+            if (control >= 0)
+            {
+                mPopup.adjustApp(control);
+                return true;
+            }
+        }
         if (mPopup.hitChart(x, y))
         {
             bumpMenuTimeout();

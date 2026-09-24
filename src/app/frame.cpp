@@ -75,14 +75,19 @@ void Frame::run()
 
 #ifndef __ANDROID__
             case SDL_MOUSEBUTTONDOWN:
+            {
+                int x = 0;
+                int y = 0;
+                mScreen.mapPointer(event.button.x, event.button.y, x, y);
                 for (auto *renderer : mInput)
                 {
-                    if (renderer->mouseClick(event.button.x, event.button.y))
+                    if (renderer->mouseClick(x, y))
                     {
                         break;
                     }
                 }
                 break;
+            }
 #else
             case SDL_FINGERDOWN:
             {
@@ -90,8 +95,11 @@ void Frame::run()
                 {
                     break;
                 }
-                const int x = static_cast<int>(event.tfinger.x * static_cast<float>(mScreen.getWidth()));
-                const int y = static_cast<int>(event.tfinger.y * static_cast<float>(mScreen.getHeight()));
+                const int px = static_cast<int>(event.tfinger.x * static_cast<float>(mScreen.physicalWidth()));
+                const int py = static_cast<int>(event.tfinger.y * static_cast<float>(mScreen.physicalHeight()));
+                int x = 0;
+                int y = 0;
+                mScreen.mapPointer(px, py, x, y);
                 for (auto *renderer : mInput)
                 {
                     if (renderer->mouseClick(x, y))

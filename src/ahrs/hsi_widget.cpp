@@ -123,7 +123,7 @@ float radClockwise(float degFromUp)
 }
 } // namespace
 
-HsiWidget::HsiWidget(Frame &frame, IDataManager &data) : IWidget(frame), mData(data), mShader()
+HsiWidget::HsiWidget(Frame &frame, IDataManager &data, Slot slot) : IWidget(frame), mData(data), mSlot(slot), mShader()
 {
 }
 
@@ -163,11 +163,13 @@ void HsiWidget::layout()
 
     const float column = std::min(static_cast<float>(h) / 3.0f, static_cast<float>(w) * 0.28f);
     const float inset = std::max(4.0f, column * 0.04f);
-    // 200 dial units reaches the lubber tip. Same diameter as the former middle-third dial.
+    // 200 dial units reaches the lubber tip. Same diameter as the single corner dial.
     const float outer = std::max(36.0f, column * 0.5f - inset);
     mScale = outer / 200.0f;
-    mCx = static_cast<float>(w) - outer - inset;
-    mCy = outer + inset;
+    const bool right = mSlot == Slot::RightBottom || mSlot == Slot::RightTop;
+    const bool top = mSlot == Slot::LeftTop || mSlot == Slot::RightTop;
+    mCx = right ? static_cast<float>(w) - outer - inset : outer + inset;
+    mCy = outer + inset + (top ? outer * 2.0f + inset : 0.0f);
 }
 
 void HsiWidget::paintGlyph(Glyph &glyph, const std::string &cacheId, const std::string &text, float size,

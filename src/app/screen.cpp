@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <iostream>
 
+bool Screen::mLayoutVertical = false;
+
 namespace
 {
 void desktopSize(int &width, int &height)
@@ -119,12 +121,44 @@ void Screen::syncSize()
 
 int Screen::getWidth() const
 {
-    return mWidth;
+    return mLayoutVertical ? mHeight : mWidth;
 }
 
 int Screen::getHeight() const
 {
+    return mLayoutVertical ? mWidth : mHeight;
+}
+
+int Screen::physicalWidth() const
+{
+    return mWidth;
+}
+
+int Screen::physicalHeight() const
+{
     return mHeight;
+}
+
+void Screen::setLayoutVertical(bool vertical)
+{
+    mLayoutVertical = vertical;
+}
+
+bool Screen::layoutVertical()
+{
+    return mLayoutVertical;
+}
+
+void Screen::mapPointer(int x, int y, int &outX, int &outY) const
+{
+    if (!mLayoutVertical)
+    {
+        outX = x;
+        outY = y;
+        return;
+    }
+    outX = y;
+    outY = mWidth - 1 - x;
 }
 
 void Screen::beginFrame()

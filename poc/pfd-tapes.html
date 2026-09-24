@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PFD speed and altitude tapes</title>
+<style>
+  :root {
+    --magenta: #ff2fd0;
+    --green: #39ff6a;
+    --yellow: #f0d020;
+    --red: #ff3b30;
+    --ink: #f4f4f4;
+    --muted: #c8c8c8;
+  }
+  @font-face {
+    font-family: "B612 Mono";
+    src: url("../android/app/src/main/assets/resources/fonts/B612Mono-Regular.ttf") format("truetype");
+    font-weight: 100 900;
+    font-style: normal;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    background: transparent;
+    color: var(--ink);
+    font-family: "B612 Mono", "B612", ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  .page {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 2%;
+    width: 100%;
+    padding: 2%;
+    background: linear-gradient(#6eafdc 0%, #d5e6f2 46%, #8d9a5c 46%, #4f6134 100%);
+  }
+  .instrument {
+    flex: 1 1 68%;
+    width: 68%;
+    max-width: 1100px;
+  }
+  .instrument svg {
+    width: 100%;
+    height: auto;
+    display: block;
+    background: transparent;
+    user-select: none;
+  }
+  .panel {
+    flex: 1 1 28%;
+    width: 28%;
+    padding: 1.2% 1.4%;
+    background: #141414;
+    border: 1px solid #2a2a2a;
+    border-radius: 12px;
+  }
+  @media (max-width: 52rem) {
+    .instrument, .panel { flex-basis: 100%; width: 100%; max-width: 100%; }
+  }
+  .panel h1 {
+    margin: 0 0 0.6em;
+    font-size: 1rem;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+  }
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5em;
+    align-items: center;
+    margin-bottom: 0.9em;
+  }
+  button {
+    font: inherit;
+    font-weight: 700;
+    color: var(--ink);
+    background: #1c1c1c;
+    border: 1px solid #4a4a4a;
+    border-radius: 6px;
+    padding: 0.35em 0.85em;
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--magenta); }
+  #sim-mode {
+    margin-left: auto;
+    font-size: 0.78rem;
+    letter-spacing: 0.06em;
+    color: var(--green);
+  }
+  #sim-mode.manual { color: var(--magenta); }
+  label.slider {
+    display: block;
+    margin: 0.55em 0;
+    font-size: 0.82rem;
+    color: var(--muted);
+  }
+  label.slider span {
+    float: right;
+    color: var(--ink);
+    font-weight: 700;
+  }
+  label.slider input {
+    display: block;
+    width: 100%;
+    margin-top: 0.25em;
+    accent-color: var(--magenta);
+  }
+  .hint {
+    margin: 0.8em 0 0;
+    color: #8d8d8d;
+    font-size: 0.75rem;
+    line-height: 1.4;
+  }
+  svg text {
+    font-family: "B612 Mono", "B612", ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+  }
+  .plate { fill: rgba(6, 8, 10, 0.58); }
+  .tape { fill: rgba(6, 8, 10, 0.58); }
+  .num { fill: var(--ink); font-size: 22px; }
+  .lbl { fill: var(--muted); font-size: 15px; letter-spacing: 0.06em; font-weight: 650; }
+  .read { fill: var(--ink); font-size: 22px; font-weight: 800; }
+  .ias { fill: #ffffff; font-size: 36px; font-weight: 800; }
+  .alt-rest { fill: #ffffff; font-size: 36px; font-weight: 800; }
+  .bug-spd { fill: #ffffff; font-size: 20px; font-weight: 800; }
+  .bug-alt { fill: var(--magenta); font-size: 20px; font-weight: 800; }
+  .vs-num { fill: #ffffff; font-size: 36px; font-weight: 800; }
+  .box { fill: #07090c; stroke: none; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="instrument">
+    <svg id="tapes" viewBox="0 0 1380 820" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="tape-title tape-desc">
+      <title id="tape-title">Airspeed and altitude tapes</title>
+      <desc id="tape-desc">Indicated airspeed 120 knots on the left, altitude 2440 feet on the right.</desc>
+      <defs>
+        <clipPath id="spd-clip">
+          <rect x="48" y="78" width="156" height="520"/>
+        </clipPath>
+        <clipPath id="alt-clip">
+          <rect x="1008" y="78" width="168" height="520"/>
+        </clipPath>
+      </defs>
+
+      <g id="speed">
+        <rect class="plate" x="48" y="28" width="156" height="44" rx="3"/>
+        <text id="spd-bug-label" class="bug-spd" x="126" y="58" text-anchor="middle">120KT</text>
+
+        <rect class="tape" x="48" y="78" width="156" height="520"/>
+        <polygon class="tape" points="204,288 204,388 232,368 232,308"/>
+        <g clip-path="url(#spd-clip)">
+          <g id="spd-scale"></g>
+        </g>
+        <polygon id="spd-park-up" points="196,82 208,82 202,94" fill="#ffffff" visibility="hidden"/>
+        <polygon id="spd-park-dn" points="196,594 208,594 202,582" fill="#ffffff" visibility="hidden"/>
+
+        <g id="spd-readout">
+          <rect class="box" x="78" y="308" width="118" height="60"/>
+          <polygon points="196,338 214,324 214,352" fill="#f4f4f4"/>
+          <text id="ias-val" class="ias" x="136" y="350" text-anchor="middle">120</text>
+        </g>
+
+        <rect class="plate" x="48" y="608" width="156" height="80" rx="3"/>
+        <text class="lbl" x="58" y="640">TAS</text>
+        <text id="tas-val" class="read" x="196" y="640" text-anchor="end">131</text>
+        <text class="lbl" x="58" y="674">GS</text>
+        <text id="gs-val" class="read" x="196" y="674" text-anchor="end">121</text>
+
+        <g id="wind">
+          <rect class="plate" x="48" y="696" width="156" height="88" rx="3"/>
+          <text id="wind-along" class="lbl" x="126" y="730" text-anchor="middle">H</text>
+          <text id="wind-along-val" class="read" x="196" y="730" text-anchor="end">10</text>
+          <text id="wind-dir" class="read" x="58" y="766">104°</text>
+          <g id="wind-arrow" transform="translate(126,758) rotate(180)">
+            <polygon points="0,-8 4.5,6 -4.5,6" fill="#f4f4f4"/>
+          </g>
+          <text id="xwind-val" class="read" x="196" y="766" text-anchor="end">0</text>
+        </g>
+      </g>
+
+      <g id="altitude">
+        <rect class="plate" x="1008" y="28" width="168" height="44" rx="3"/>
+        <text id="alt-bug-label" class="bug-alt" x="1092" y="58" text-anchor="middle">2000FT</text>
+
+        <rect class="tape" x="1008" y="78" width="168" height="520"/>
+        <polygon class="tape" points="1008,288 1008,388 980,368 980,308"/>
+        <g clip-path="url(#alt-clip)">
+          <g id="alt-scale"></g>
+        </g>
+        <polygon id="alt-park-up" points="1004,82 1016,82 1010,94" fill="#ff2fd0" visibility="hidden"/>
+        <polygon id="alt-park-dn" points="1004,594 1016,594 1010,582" fill="#ff2fd0" visibility="hidden"/>
+
+        <g id="alt-readout">
+          <rect class="box" x="1008" y="308" width="150" height="60"/>
+          <polygon points="1008,338 990,324 990,352" fill="#f4f4f4"/>
+          <text id="alt-rest" class="alt-rest" x="1083" y="352" text-anchor="middle">2440</text>
+        </g>
+
+        <g id="vsi">
+          <rect class="tape" x="1190" y="228" width="70" height="220" rx="3"/>
+          <g id="vsi-marks" stroke="#d0d0d0" stroke-width="1.4"></g>
+          <rect id="vsi-bar" x="1196" y="338" width="8" height="0" fill="#f4f4f4"/>
+          <rect id="vsi-box" class="box" x="1224" y="368" width="136" height="60"/>
+          <polygon id="vsi-ptr" points="1204,398 1224,386 1224,410" fill="#f4f4f4"/>
+          <text id="vs-val" class="vs-num" x="1292" y="412" text-anchor="middle">-600</text>
+        </g>
+
+        <rect class="plate" x="1008" y="608" width="168" height="48" rx="3"/>
+        <text class="lbl" x="1020" y="640">BARO</text>
+        <text id="baro-val" class="read" x="1164" y="640" text-anchor="end">29.92IN</text>
+      </g>
+    </svg>
+  </div>
+
+  <aside class="panel">
+    <h1>SPEED / ALT TAPES</h1>
+    <div class="controls">
+      <button type="button" id="btn-play">Pause</button>
+      <button type="button" id="btn-reset">Reset</button>
+      <span id="sim-mode">SIM</span>
+    </div>
+    <label class="slider">Indicated airspeed <span id="out-ias">120 kt</span>
+      <input id="sl-ias" type="range" min="40" max="180" step="1" value="120" aria-label="Indicated airspeed knots">
+    </label>
+    <label class="slider">Speed bug <span id="out-bug">120 kt</span>
+      <input id="sl-bug" type="range" min="40" max="180" step="1" value="120" aria-label="Selected airspeed knots">
+    </label>
+    <label class="slider">Altitude <span id="out-alt">2440 ft</span>
+      <input id="sl-alt" type="range" min="0" max="10000" step="10" value="2440" aria-label="Altitude feet">
+    </label>
+    <label class="slider">Altitude bug <span id="out-sel">2000 ft</span>
+      <input id="sl-sel" type="range" min="0" max="10000" step="10" value="2000" aria-label="Selected altitude feet">
+    </label>
+    <label class="slider">Vertical speed <span id="out-vs">-600 fpm</span>
+      <input id="sl-vs" type="range" min="-2000" max="2000" step="10" value="-600" aria-label="Vertical speed feet per minute">
+    </label>
+    <label class="slider">Barometer <span id="out-baro">29.92 inHg</span>
+      <input id="sl-baro" type="range" min="28" max="31" step="0.01" value="29.92" aria-label="Altimeter setting inches of mercury">
+    </label>
+    <label class="slider">Heading <span id="out-hdg">104°</span>
+      <input id="sl-hdg" type="range" min="0" max="360" step="1" value="104" aria-label="Heading degrees">
+    </label>
+    <label class="slider">Wind direction <span id="out-wind-dir">104°</span>
+      <input id="sl-wind-dir" type="range" min="0" max="360" step="1" value="104" aria-label="Wind from degrees">
+    </label>
+    <label class="slider">Wind speed <span id="out-wind-kt">10 kt</span>
+      <input id="sl-wind-kt" type="range" min="0" max="60" step="1" value="10" aria-label="Wind speed knots">
+    </label>
+    <p class="hint">Left tape is indicated airspeed with the flap and normal-speed arcs. Under it, headwind or tailwind, wind direction, the relative arrow, and crosswind. Right tape is altitude, the selected-altitude bug, vertical speed, and the barometer. Moving a slider pauses the flight.</p>
+  </aside>
+</div>
+
+<script>
+(function () {
+  var TAPE_Y = 78;
+  var TAPE_H = 520;
+  var CENTER = TAPE_Y + TAPE_H / 2;
+  var SPD_X = 48;
+  var SPD_W = 156;
+  var ALT_X = 1008;
+  var SPD_PX = 8;
+  var ALT_PX = 0.48;
+  var VSI_MID = 338;
+  var VSI_PX = 100 / 1000;
+  var TICK_MS = 250;
+
+  var VSO = 40;
+  var VS = 48;
+  var VFE = 85;
+  var VNO = 129;
+  var VNE = 163;
+
+  var NS = "http://www.w3.org/2000/svg";
+  var spdScale = document.getElementById("spd-scale");
+  var altScale = document.getElementById("alt-scale");
+  var spdBug = null;
+  var altBug = null;
+
+  function el(name, attrs) {
+    var node = document.createElementNS(NS, name);
+    var key;
+    for (key in attrs) {
+      if (Object.prototype.hasOwnProperty.call(attrs, key)) node.setAttribute(key, attrs[key]);
+    }
+    return node;
+  }
+
+  function band(parent, x, speedLo, speedHi, width, fill) {
+    var y = -speedHi * SPD_PX;
+    var h = (speedHi - speedLo) * SPD_PX;
+    parent.appendChild(el("rect", {
+      x: x, y: y.toFixed(2), width: width, height: Math.max(1, h).toFixed(2), fill: fill
+    }));
+  }
+
+  function buildSpeed() {
+    band(spdScale, 8, VSO, VFE, 7, "#f4f4f4");
+    band(spdScale, 18, VS, VNO, 7, "#39ff6a");
+    band(spdScale, 18, VNO, VNE, 7, "#f0d020");
+    spdScale.appendChild(el("rect", {
+      x: 16, y: (-VNE * SPD_PX - 2).toFixed(2), width: 14, height: 4, fill: "#ff3b30"
+    }));
+    var s;
+    for (s = 0; s <= 220; s += 5) {
+      var major = s % 10 === 0;
+      var y = -s * SPD_PX;
+      spdScale.appendChild(el("line", {
+        x1: major ? SPD_W - 36 : SPD_W - 22,
+        y1: y,
+        x2: SPD_W - 8,
+        y2: y,
+        stroke: major ? "#f4f4f4" : "#9a9a9a",
+        "stroke-width": major ? 2 : 1.2
+      }));
+      if (major) {
+        var text = el("text", {
+          class: "num",
+          x: SPD_W - 42,
+          y: y + 7,
+          "text-anchor": "end"
+        });
+        text.textContent = String(s);
+        spdScale.appendChild(text);
+      }
+    }
+    spdBug = el("polygon", { fill: "#ffffff", points: "0,0 14,-8 14,8" });
+    spdScale.appendChild(spdBug);
+  }
+
+  function buildAlt() {
+    var ft;
+    for (ft = -2000; ft <= 16000; ft += 100) {
+      var major = ft % 200 === 0;
+      var y = -ft * ALT_PX;
+      altScale.appendChild(el("line", {
+        x1: 8,
+        y1: y,
+        x2: major ? 28 : 18,
+        y2: y,
+        stroke: major ? "#f4f4f4" : "#9a9a9a",
+        "stroke-width": major ? 2 : 1.2
+      }));
+      if (major && ft >= 0) {
+        var text = el("text", {
+          class: "num",
+          x: 36,
+          y: y + 7,
+          "text-anchor": "start"
+        });
+        text.textContent = String(ft);
+        altScale.appendChild(text);
+      }
+    }
+    altBug = el("polygon", { fill: "#ff2fd0", points: "0,0 -14,-8 -14,8" });
+    altScale.appendChild(altBug);
+  }
+
+  function buildVsi() {
+    var marks = document.getElementById("vsi-marks");
+    var marksFpm = [-1500, -1000, -500, 0, 500, 1000, 1500];
+    var i;
+    for (i = 0; i < marksFpm.length; i++) {
+      var fpm = marksFpm[i];
+      var y = VSI_MID - fpm * VSI_PX;
+      var major = fpm % 1000 === 0;
+      marks.appendChild(el("line", {
+        x1: 1196,
+        y1: y,
+        x2: major ? 1216 : 1208,
+        y2: y
+      }));
+    }
+  }
+
+  function photoData() {
+    return {
+      iasKt: 120,
+      tasKt: 131,
+      gsKt: 121,
+      bugKt: 120,
+      altFt: 2440,
+      selAltFt: 2000,
+      vsFpm: -600,
+      baroInHg: 29.92,
+      headingDeg: 104,
+      windFromDeg: 104,
+      windKt: 10
+    };
+  }
+
+  var instrumentData = photoData();
+  var running = false;
+  var rafTimer = 0;
+  var lastTs = null;
+  var syncing = false;
+  var vsPhase = 0;
+
+  function clamp(v, lo, hi) {
+    return Math.max(lo, Math.min(hi, v));
+  }
+
+  function norm360(deg) {
+    var x = deg % 360;
+    if (x < 0) x += 360;
+    return x;
+  }
+
+  function wrap180(deg) {
+    return norm360(deg + 180) - 180;
+  }
+
+  function pad3(n) {
+    var s = String(Math.round(norm360(n)));
+    while (s.length < 3) s = "0" + s;
+    return s;
+  }
+
+  function formatVs(fpm) {
+    var v = Math.round(fpm / 10) * 10;
+    if (v === 0) return "0";
+    return (v > 0 ? "+" : "") + v;
+  }
+
+  function derived(ias) {
+    return {
+      tas: Math.round(ias * 131 / 120),
+      gs: Math.round(ias * 121 / 120)
+    };
+  }
+
+  function placeBug(node, x, y, visible) {
+    node.setAttribute("transform", "translate(" + x + "," + y.toFixed(2) + ")");
+    node.setAttribute("visibility", visible ? "visible" : "hidden");
+  }
+
+  function updateInstrument(data) {
+    var ias = data.iasKt;
+    var alt = data.altFt;
+    var speed = derived(ias);
+    data.tasKt = speed.tas;
+    data.gsKt = speed.gs;
+
+    spdScale.setAttribute("transform", "translate(" + SPD_X + "," + (CENTER + ias * SPD_PX).toFixed(2) + ")");
+    altScale.setAttribute("transform", "translate(" + ALT_X + "," + (CENTER + alt * ALT_PX).toFixed(2) + ")");
+
+    var spdHalf = (TAPE_H / 2) / SPD_PX;
+    var altHalf = (TAPE_H / 2) / ALT_PX;
+    var bugOn = data.bugKt >= ias - spdHalf && data.bugKt <= ias + spdHalf;
+    var selOn = data.selAltFt >= alt - altHalf && data.selAltFt <= alt + altHalf;
+    placeBug(spdBug, SPD_W - 22, -data.bugKt * SPD_PX, bugOn);
+    placeBug(altBug, 16, -data.selAltFt * ALT_PX, selOn);
+    document.getElementById("spd-park-up").setAttribute("visibility", data.bugKt > ias + spdHalf ? "visible" : "hidden");
+    document.getElementById("spd-park-dn").setAttribute("visibility", data.bugKt < ias - spdHalf ? "visible" : "hidden");
+    document.getElementById("alt-park-up").setAttribute("visibility", data.selAltFt > alt + altHalf ? "visible" : "hidden");
+    document.getElementById("alt-park-dn").setAttribute("visibility", data.selAltFt < alt - altHalf ? "visible" : "hidden");
+
+    document.getElementById("spd-bug-label").textContent = Math.round(data.bugKt) + "KT";
+    document.getElementById("ias-val").textContent = String(Math.round(ias));
+    document.getElementById("tas-val").textContent = String(speed.tas);
+    document.getElementById("gs-val").textContent = String(speed.gs);
+
+    var shownAlt = Math.round(alt);
+    document.getElementById("alt-rest").textContent = String(shownAlt);
+    document.getElementById("alt-bug-label").textContent = Math.round(data.selAltFt) + "FT";
+
+    var vs = clamp(data.vsFpm, -1500, 1500);
+    var barH = Math.abs(vs) * VSI_PX;
+    var bar = document.getElementById("vsi-bar");
+    var barY = vs >= 0 ? VSI_MID - barH : VSI_MID;
+    bar.setAttribute("y", barY.toFixed(2));
+    bar.setAttribute("height", barH.toFixed(2));
+    var vsText = formatVs(data.vsFpm);
+    var vsEl = document.getElementById("vs-val");
+    vsEl.textContent = vsText;
+    var vsMid = clamp(VSI_MID - vs * VSI_PX, 268, 408);
+    var boxTop = vsMid - 30;
+    var boxLeft = 1224;
+    document.getElementById("vsi-box").setAttribute("y", boxTop.toFixed(1));
+    document.getElementById("vsi-ptr").setAttribute("points",
+      "1204," + vsMid.toFixed(1) + " " +
+      boxLeft + "," + (vsMid - 12).toFixed(1) + " " +
+      boxLeft + "," + (vsMid + 12).toFixed(1));
+    vsEl.setAttribute("y", (boxTop + 44).toFixed(1));
+
+    document.getElementById("baro-val").textContent = data.baroInHg.toFixed(2) + "IN";
+
+    var rel = wrap180(data.windFromDeg - data.headingDeg);
+    var along = data.windKt * Math.cos(rel * Math.PI / 180);
+    var xwind = data.windKt * Math.sin(rel * Math.PI / 180);
+    document.getElementById("wind-along").textContent = along >= 0 ? "H" : "T";
+    document.getElementById("wind-along-val").textContent = String(Math.abs(Math.round(along)));
+    document.getElementById("wind-dir").textContent = pad3(data.windFromDeg) + "°";
+    document.getElementById("xwind-val").textContent = String(Math.abs(Math.round(xwind)));
+    document.getElementById("wind-arrow").setAttribute("transform",
+      "translate(126,758) rotate(" + (rel + 180).toFixed(1) + ")");
+
+    document.getElementById("tape-desc").textContent =
+      "Indicated airspeed " + Math.round(ias) + " knots, altitude " + shownAlt +
+      " feet, wind " + pad3(data.windFromDeg) + " at " + Math.round(data.windKt) + " knots.";
+  }
+
+  function simTick() {
+    var now = performance.now();
+    var dt = lastTs == null ? TICK_MS / 1000 : Math.min(0.5, (now - lastTs) / 1000);
+    lastTs = now;
+    vsPhase += dt * (2 * Math.PI / 40);
+    var vs = Math.round((-350 + 280 * Math.sin(vsPhase)) / 10) * 10;
+    var ias = 120 + 6 * Math.sin(vsPhase * 0.7);
+    instrumentData.iasKt = ias;
+    instrumentData.vsFpm = vs;
+    instrumentData.altFt = clamp(instrumentData.altFt + vs / 60 * dt, 0, 10000);
+    updateInstrument(instrumentData);
+    syncSliders();
+  }
+
+  function startSim() {
+    if (rafTimer) return;
+    lastTs = null;
+    rafTimer = setInterval(simTick, TICK_MS);
+    document.getElementById("btn-play").textContent = "Pause";
+    var mode = document.getElementById("sim-mode");
+    mode.textContent = "SIM";
+    mode.classList.remove("manual");
+    running = true;
+  }
+
+  function stopSim() {
+    if (rafTimer) {
+      clearInterval(rafTimer);
+      rafTimer = 0;
+    }
+    lastTs = null;
+    document.getElementById("btn-play").textContent = "Play";
+    var mode = document.getElementById("sim-mode");
+    mode.textContent = "MANUAL";
+    mode.classList.add("manual");
+    running = false;
+  }
+
+  function setNum(id, value) {
+    var node = document.getElementById(id);
+    node.value = String(clamp(value, parseFloat(node.min), parseFloat(node.max)));
+  }
+
+  function paintSliderLabels() {
+    document.getElementById("out-ias").textContent = Math.round(parseFloat(document.getElementById("sl-ias").value)) + " kt";
+    document.getElementById("out-bug").textContent = Math.round(parseFloat(document.getElementById("sl-bug").value)) + " kt";
+    document.getElementById("out-alt").textContent = Math.round(parseFloat(document.getElementById("sl-alt").value)) + " ft";
+    document.getElementById("out-sel").textContent = Math.round(parseFloat(document.getElementById("sl-sel").value)) + " ft";
+    document.getElementById("out-vs").textContent = formatVs(parseFloat(document.getElementById("sl-vs").value)) + " fpm";
+    document.getElementById("out-baro").textContent = parseFloat(document.getElementById("sl-baro").value).toFixed(2) + " inHg";
+    document.getElementById("out-hdg").textContent = pad3(parseFloat(document.getElementById("sl-hdg").value)) + "°";
+    document.getElementById("out-wind-dir").textContent = pad3(parseFloat(document.getElementById("sl-wind-dir").value)) + "°";
+    document.getElementById("out-wind-kt").textContent = Math.round(parseFloat(document.getElementById("sl-wind-kt").value)) + " kt";
+  }
+
+  function syncSliders() {
+    syncing = true;
+    setNum("sl-ias", instrumentData.iasKt);
+    setNum("sl-bug", instrumentData.bugKt);
+    setNum("sl-alt", instrumentData.altFt);
+    setNum("sl-sel", instrumentData.selAltFt);
+    setNum("sl-vs", instrumentData.vsFpm);
+    setNum("sl-baro", instrumentData.baroInHg);
+    setNum("sl-hdg", instrumentData.headingDeg);
+    setNum("sl-wind-dir", instrumentData.windFromDeg);
+    setNum("sl-wind-kt", instrumentData.windKt);
+    paintSliderLabels();
+    syncing = false;
+  }
+
+  function onManual() {
+    if (syncing) return;
+    stopSim();
+    instrumentData.iasKt = parseFloat(document.getElementById("sl-ias").value);
+    instrumentData.bugKt = parseFloat(document.getElementById("sl-bug").value);
+    instrumentData.altFt = parseFloat(document.getElementById("sl-alt").value);
+    instrumentData.selAltFt = parseFloat(document.getElementById("sl-sel").value);
+    instrumentData.vsFpm = parseFloat(document.getElementById("sl-vs").value);
+    instrumentData.baroInHg = parseFloat(document.getElementById("sl-baro").value);
+    instrumentData.headingDeg = parseFloat(document.getElementById("sl-hdg").value);
+    instrumentData.windFromDeg = parseFloat(document.getElementById("sl-wind-dir").value);
+    instrumentData.windKt = parseFloat(document.getElementById("sl-wind-kt").value);
+    updateInstrument(instrumentData);
+    paintSliderLabels();
+  }
+
+  function resetInstrument() {
+    var fresh = photoData();
+    var keys = Object.keys(fresh);
+    var i;
+    for (i = 0; i < keys.length; i++) instrumentData[keys[i]] = fresh[keys[i]];
+    vsPhase = 0;
+    updateInstrument(instrumentData);
+    syncSliders();
+  }
+
+  buildSpeed();
+  buildAlt();
+  buildVsi();
+
+  document.getElementById("btn-play").addEventListener("click", function () {
+    if (running) stopSim();
+    else startSim();
+  });
+  document.getElementById("btn-reset").addEventListener("click", resetInstrument);
+  var inputs = document.querySelectorAll(".panel input");
+  var n;
+  for (n = 0; n < inputs.length; n++) inputs[n].addEventListener("input", onManual);
+
+  window.instrumentData = instrumentData;
+  window.updateInstrument = updateInstrument;
+  updateInstrument(instrumentData);
+  syncSliders();
+  startSim();
+})();
+</script>
+</body>
+</html>

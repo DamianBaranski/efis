@@ -1,5 +1,5 @@
 /// \file settings_popup.h
-/// GENERAL window: imagery coverage, narration, and the situation source.
+/// GENERAL window: imagery coverage, narration, the situation source, and layout.
 
 #ifndef SETTINGS_POPUP_H
 #define SETTINGS_POPUP_H
@@ -18,6 +18,7 @@ class AppController;
 /// Settings window opened from CONF GENERAL.
 /// RENDER changes the imagery rings. MAPS shows the Europe chart. SOUND drives NavVoice.
 /// SOURCES selects the keyboard simulator or the tablet sensors.
+/// APP turns the whole layout between horizontal and vertical.
 class SettingsPopup : public IWidget
 {
 public:
@@ -42,7 +43,7 @@ public:
     /// \param y Pixels from the top.
     int hitTab(int x, int y) const;
 
-    /// Page currently showing. 0 is RENDER, 1 is MAPS, 2 is SOUND, 3 is SOURCES.
+    /// Page currently showing. 0 is RENDER, 1 is MAPS, 2 is SOUND, 3 is SOURCES, 4 is APP.
     int activeTab() const;
 
     /// Switches page and drops the cached labels.
@@ -75,6 +76,9 @@ public:
     /// \return True when the tap hit the source control.
     bool handleSource(int x, int y);
 
+    /// Switches the layout between horizontal and vertical.
+    void adjustApp(int control);
+
 private:
     static constexpr double kFarMaxKm = 50.0;
     static constexpr double kNearMaxKm = 10.0;
@@ -86,13 +90,14 @@ private:
     void nudgeZoom(int &zoom, int &grid, int zoomLo, int zoomHi, double maxKm, int delta) const;
     void drawSoundPage(int screenH);
     void drawSourcesPage(int screenH);
+    void drawAppPage(int screenH);
     void drawSensorLines(int screenH);
     void drawPage();
 
     AppController &mController;
     IWorldRead &mWorld;
     ISession &mSession;
-    TabWindow<4, 10, 8> mWindow;
+    TabWindow<5, 10, 8> mWindow;
     EuropeMap mEuropeMap;
     Dropdown mVoice;
     Dropdown mSource;

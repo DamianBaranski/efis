@@ -55,15 +55,31 @@ public:
     /// Shows the back buffer.
     void present();
 
-    /// Window width in pixels.
+    /// Layout width in pixels. Height and width swap while the layout is vertical.
     int getWidth() const;
 
-    /// Window height in pixels.
+    /// Layout height in pixels. Height and width swap while the layout is vertical.
     int getHeight() const;
+
+    /// Drawable width before the layout rotation.
+    int physicalWidth() const;
+
+    /// Drawable height before the layout rotation.
+    int physicalHeight() const;
+
+    /// Turns the layout and the picture 90 degrees. The window size stays the same.
+    static void setLayoutVertical(bool vertical);
+
+    /// True when the layout is the portrait rotation of the window.
+    static bool layoutVertical();
+
+    /// Physical SDL point to the layout point widgets use.
+    void mapPointer(int x, int y, int &outX, int &outY) const;
 
 private:
     int mWidth;
     int mHeight;
+    static bool mLayoutVertical;
     SDL_Window *mWindow = nullptr;
     SDL_GLContext mContext = nullptr;
 };

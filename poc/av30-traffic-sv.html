@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AV-30 Traffic synthetic vision overlay</title>
+<style>
+  :root {
+    --bg: #0c0c0c;
+    --cyan: #3df2f2;
+    --green: #39ff6a;
+    --ink: #f2f2f2;
+    --muted: #c8c8c8;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    background: transparent;
+    color: var(--ink);
+    font-family: "DejaVu Sans Mono", "Liberation Mono", ui-monospace, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  .page {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 2%;
+    width: 100%;
+    padding: 2%;
+    background: linear-gradient(#6eafdc 0%, #d5e6f2 46%, #8d9a5c 46%, #4f6134 100%);
+  }
+  .instrument {
+    flex: 1 1 60%;
+    width: 60%;
+    max-width: 96vh;
+  }
+  .instrument svg {
+    width: 100%;
+    height: auto;
+    display: block;
+    background: transparent;
+    user-select: none;
+  }
+  .panel {
+    flex: 1 1 34%;
+    width: 34%;
+    padding: 1.2% 1.4%;
+    background: #141414;
+    border: 1px solid #2a2a2a;
+    border-radius: 12px;
+  }
+  @media (max-width: 52rem) {
+    .instrument, .panel { flex-basis: 100%; width: 100%; max-width: 100%; }
+  }
+  .panel h1 {
+    margin: 0 0 0.6em;
+    font-size: 1rem;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+  }
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5em;
+    align-items: center;
+    margin-bottom: 0.9em;
+  }
+  button {
+    font: inherit;
+    font-weight: 700;
+    color: var(--ink);
+    background: #1c1c1c;
+    border: 1px solid #4a4a4a;
+    border-radius: 6px;
+    padding: 0.35em 0.85em;
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--cyan); }
+  #sim-mode {
+    margin-left: auto;
+    font-size: 0.78rem;
+    letter-spacing: 0.06em;
+    color: var(--green);
+  }
+  #sim-mode.manual { color: var(--cyan); }
+  label.slider {
+    display: block;
+    margin: 0.55em 0;
+    font-size: 0.82rem;
+    color: var(--muted);
+  }
+  label.slider span {
+    float: right;
+    color: var(--ink);
+    font-weight: 700;
+  }
+  label.slider input {
+    display: block;
+    width: 100%;
+    margin-top: 0.25em;
+    accent-color: var(--cyan);
+  }
+  #sel-status {
+    margin: 0.7em 0 0;
+    color: var(--cyan);
+    font-size: 0.82rem;
+    font-weight: 700;
+    line-height: 1.4;
+    min-height: 2.8em;
+  }
+  .hint {
+    margin: 0.8em 0 0;
+    color: #8d8d8d;
+    font-size: 0.75rem;
+    line-height: 1.4;
+  }
+  svg text {
+    font-family: "DejaVu Sans Mono", "Liberation Mono", ui-monospace, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+  }
+  .instrument svg * { pointer-events: none; }
+  .dial-plate { fill: rgba(6, 8, 10, 0.46); }
+  .rose-num { fill: #ececec; font-size: 15px; }
+  .rose-card { fill: #ffffff; font-size: 22px; font-weight: 800; }
+  .ring { fill: #e6e6e6; font-size: 13px; }
+  .rel { fill: var(--cyan); font-size: 15px; }
+  .sel-id { fill: var(--cyan); font-size: 26px; font-weight: 800; }
+  .sel-meta { fill: #f4f4f4; font-size: 18px; }
+  .pivot { pointer-events: none; }
+  .spin {
+    transform-box: fill-box;
+    transform-origin: 50% 50%;
+  }
+  .tgt .hit, #map-hit { pointer-events: all; cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="instrument">
+    <svg id="traffic-display" viewBox="0 0 600 600" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="tr-title tr-desc">
+      <title id="tr-title">AV-30 traffic synthetic vision overlay</title>
+      <desc id="tr-desc">Heading-up traffic and range rings over synthetic vision.</desc>
+      <circle class="dial-plate" cx="300" cy="300" r="168"/>
+
+      <g id="rings" fill="none" stroke="#d0d0d0" stroke-width="1.35">
+        <circle cx="300" cy="300" r="39.33"/>
+        <circle cx="300" cy="300" r="78.67"/>
+        <circle cx="300" cy="300" r="118"/>
+        <text id="ring-1" class="ring" x="253.7" y="304" text-anchor="end" dominant-baseline="middle">5</text>
+        <text id="ring-2" class="ring" x="214.3" y="304" text-anchor="end" dominant-baseline="middle">10</text>
+        <text id="ring-3" class="ring" x="175" y="304" text-anchor="end" dominant-baseline="middle">15</text>
+      </g>
+
+      <g id="rose" class="spin">
+        <rect class="pivot" x="0" y="0" width="600" height="600" fill="#000" fill-opacity="0"/>
+        <circle cx="300" cy="300" r="188" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+      </g>
+
+      <polygon id="lubber" points="293,86 307,86 300,100" fill="#f3f3f3">
+        <title>Lubber line</title>
+      </polygon>
+
+        <circle id="map-hit" cx="300" cy="300" r="128" fill="#000" fill-opacity="0"/>
+        <g id="traffic"></g>
+
+        <g id="ownship" transform="translate(300,300)">
+          <title>Ownship</title>
+          <path fill="#f4f4f4" d="M0,-16 L1.8,-3.4 L16.5,-0.4 L16.5,2.4 L2.3,1.5 L1.6,7.4 L5.2,10.4 L5.2,12.8 L0,11.2 L-5.2,12.8 L-5.2,10.4 L-1.6,7.4 L-2.3,1.5 L-16.5,2.4 L-16.5,-0.4 L-1.8,-3.4 Z"/>
+        </g>
+
+      <g id="banner" visibility="hidden">
+        <text id="sel-dist" class="sel-meta" x="230" y="392" text-anchor="middle" dominant-baseline="middle">2.5nm</text>
+        <text id="sel-gs" class="sel-meta" x="370" y="392" text-anchor="middle" dominant-baseline="middle">94kt</text>
+        <text id="sel-alt" class="sel-meta" x="230" y="418" text-anchor="middle" dominant-baseline="middle">6000ft</text>
+        <text id="sel-cat" class="sel-meta" x="370" y="418" text-anchor="middle" dominant-baseline="middle">Light</text>
+        <text id="sel-id" class="sel-id" x="300" y="450" text-anchor="middle" dominant-baseline="middle">NX211</text>
+      </g>
+    </svg>
+  </div>
+
+  <aside class="panel">
+    <h1>AV-30 TRAFFIC SV</h1>
+    <div class="controls">
+      <button type="button" id="btn-play">Pause</button>
+      <button type="button" id="btn-reset">Reset</button>
+      <button type="button" id="btn-select">Select</button>
+      <span id="sim-mode">SIM</span>
+    </div>
+    <label class="slider">Heading <span id="out-heading">0°</span>
+      <input id="sl-heading" type="range" min="0" max="360" step="0.1" value="0" aria-label="Heading degrees">
+    </label>
+    <label class="slider">Own altitude <span id="out-alt">8200 ft</span>
+      <input id="sl-alt" type="range" min="0" max="18000" step="50" value="8200" aria-label="Own altitude feet">
+    </label>
+    <label class="slider">Own groundspeed <span id="out-gs">120 kt</span>
+      <input id="sl-gs" type="range" min="0" max="300" step="1" value="120" aria-label="Own groundspeed knots">
+    </label>
+    <p id="sel-status">No target selected</p>
+    <p class="hint">Traffic symbology over synthetic vision. A target on a collision course is selected automatically, otherwise the closest one. Click a target or use Select to override while paused. Moving a slider pauses the simulated flight.</p>
+  </aside>
+</div>
+
+<script>
+(function () {
+  var OUTER = 118;
+  var CX = 300;
+  var CY = 300;
+  var TURN_DPS = 2.5;
+  var SVGNS = "http://www.w3.org/2000/svg";
+
+  function el(name, attrs) {
+    var node = document.createElementNS(SVGNS, name);
+    for (var k in attrs) node.setAttribute(k, attrs[k]);
+    return node;
+  }
+
+  function clamp(v, lo, hi) {
+    return Math.min(hi, Math.max(lo, v));
+  }
+
+  function hypot(a, b) {
+    return Math.sqrt(a * a + b * b);
+  }
+
+  function norm360(d) {
+    var x = d % 360;
+    if (x < 0) x += 360;
+    return x;
+  }
+
+  function wrap180(d) {
+    var x = (d + 180) % 360;
+    if (x < 0) x += 360;
+    return x - 180;
+  }
+
+  function formatRel(ft) {
+    var h = Math.round(ft / 100);
+    var sign = h < 0 ? "-" : "+";
+    var n = Math.abs(h);
+    if (n > 99) n = 99;
+    var s = String(n);
+    if (s.length < 2) s = "0" + s;
+    return sign + s;
+  }
+
+  function formatDist(nm) {
+    var v = Math.round(nm * 10) / 10;
+    if (v >= 10) return String(Math.round(v));
+    return v.toFixed(1);
+  }
+
+  function formatRing(nm) {
+    if (Math.abs(nm - Math.round(nm)) < 0.05) return String(Math.round(nm));
+    return (Math.round(nm * 10) / 10).toFixed(1);
+  }
+
+  function formatHdg(deg) {
+    return norm360(deg).toFixed(1) + "°";
+  }
+
+  function photoWorld() {
+    return {
+      heading: 0,
+      alt: 8200,
+      gs: 120,
+      e: 0,
+      n: 0,
+      targets: [
+        { id: "NX211", e: 2.165, n: -1.25, alt: 6000, track: 125, gs: 94, vs: -80, category: "Light" },
+        { id: "N814Q", e: -3.6, n: 6.235, alt: 9000, track: 338, gs: 128, vs: 40, category: "Light" },
+        { id: "N17SK", e: 6.023, n: 8.601, alt: 9500, track: 28, gs: 156, vs: 0, category: "Small" }
+      ]
+    };
+  }
+
+  var world = photoWorld();
+  var instrumentData = {
+    heading: 0,
+    ownAltFt: 8200,
+    ownGsKt: 120,
+    rangeNm: 15,
+    selectedId: null,
+    targets: []
+  };
+  var shown = { heading: 0 };
+  var running = false;
+  var raf = 0;
+  var lastTs = null;
+  var syncing = false;
+  var tgtNodes = {};
+
+  var roseEl = document.getElementById("rose");
+  var banner = document.getElementById("banner");
+  var trDesc = document.getElementById("tr-desc");
+  var playBtn = document.getElementById("btn-play");
+  var modeEl = document.getElementById("sim-mode");
+  var selStatus = document.getElementById("sel-status");
+
+  function buildRose() {
+    var labels = [
+      [0, "N", true], [30, "3", false], [60, "6", false], [90, "E", true],
+      [120, "12", false], [150, "15", false], [180, "S", true], [210, "21", false],
+      [240, "24", false], [270, "W", true], [300, "30", false], [330, "33", false]
+    ];
+    var deg;
+    for (deg = 0; deg < 360; deg += 5) {
+      var major = deg % 30 === 0;
+      var mid = deg % 10 === 0;
+      var inner = major ? 164 : (mid ? 172 : 180);
+      var outer = 188;
+      var rad = deg * Math.PI / 180;
+      var s = Math.sin(rad);
+      var c = Math.cos(rad);
+      roseEl.appendChild(el("line", {
+        x1: (CX + s * inner).toFixed(2),
+        y1: (CY - c * inner).toFixed(2),
+        x2: (CX + s * outer).toFixed(2),
+        y2: (CY - c * outer).toFixed(2),
+        stroke: major ? "#f4f4f4" : (mid ? "#d0d0d0" : "#7d7d7d"),
+        "stroke-width": major ? "2.2" : (mid ? "1.7" : "1.15"),
+        "stroke-linecap": "butt"
+      }));
+    }
+    for (var i = 0; i < labels.length; i++) {
+      deg = labels[i][0];
+      var radL = deg * Math.PI / 180;
+      var x = CX + Math.sin(radL) * 152;
+      var y = CY - Math.cos(radL) * 152;
+      var text = el("text", {
+        x: x.toFixed(2),
+        y: y.toFixed(2),
+        "text-anchor": "middle",
+        "dominant-baseline": "middle",
+        class: labels[i][2] ? "rose-card" : "rose-num",
+        transform: "rotate(" + deg + " " + x.toFixed(2) + " " + y.toFixed(2) + ")"
+      });
+      text.textContent = labels[i][1];
+      roseEl.appendChild(text);
+    }
+  }
+
+  function createTargetNode(id) {
+    var g = el("g", { class: "tgt" });
+    var title = el("title", {});
+    var hit = el("circle", { class: "hit", r: "20", fill: "#000", "fill-opacity": "0" });
+    var chev = el("g", {});
+    var halo = el("circle", {
+      r: "16",
+      fill: "rgba(168,168,168,0.72)",
+      stroke: "none",
+      visibility: "hidden"
+    });
+    var poly = el("polygon", {
+      points: "0,-9 7,8 -7,8",
+      fill: "none",
+      stroke: "#3df2f2",
+      "stroke-width": "1.8",
+      "stroke-linejoin": "round"
+    });
+    var tail = el("line", {
+      x1: "0", y1: "8", x2: "0", y2: "15",
+      stroke: "#3df2f2", "stroke-width": "1.8"
+    });
+    var text = el("text", { class: "rel" });
+    chev.appendChild(halo);
+    chev.appendChild(poly);
+    chev.appendChild(tail);
+    g.appendChild(title);
+    g.appendChild(hit);
+    g.appendChild(chev);
+    g.appendChild(text);
+    g.addEventListener("click", function (ev) {
+      ev.stopPropagation();
+      chooseTarget(id);
+    });
+    return { g: g, chev: chev, halo: halo, text: text, title: title, id: id };
+  }
+
+  function findTarget(list, id) {
+    if (!id) return null;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].id === id) return list[i];
+    }
+    return null;
+  }
+
+  function onScale(distNm, rangeNm) {
+    return distNm <= rangeNm * 1.04;
+  }
+
+  function placeTarget(node, t, data) {
+    var show = onScale(t.distanceNm, data.rangeNm);
+    node.g.setAttribute("visibility", show ? "visible" : "hidden");
+    if (!show) return;
+    var rel = norm360(t.bearingDeg - data.heading) * Math.PI / 180;
+    var rpx = (t.distanceNm / data.rangeNm) * OUTER;
+    var x = CX + Math.sin(rel) * rpx;
+    var y = CY - Math.cos(rel) * rpx;
+    node.g.setAttribute("transform", "translate(" + x.toFixed(2) + " " + y.toFixed(2) + ")");
+    node.chev.setAttribute("transform", "rotate(" + norm360(t.trackDeg - data.heading).toFixed(1) + ")");
+    node.halo.setAttribute("visibility", data.selectedId === t.id ? "visible" : "hidden");
+    node.text.textContent = formatRel(t.relAltFt);
+    var left = x > CX + 28;
+    node.text.setAttribute("x", left ? "-14" : "12");
+    node.text.setAttribute("y", "-8");
+    node.text.setAttribute("text-anchor", left ? "end" : "start");
+    node.title.textContent = t.id + "  " + formatDist(t.distanceNm) + " nm  " + formatRel(t.relAltFt);
+  }
+
+  function syncTargets(data) {
+    var layer = document.getElementById("traffic");
+    var seen = {};
+    var i;
+    for (i = 0; i < data.targets.length; i++) {
+      var t = data.targets[i];
+      seen[t.id] = true;
+      if (!tgtNodes[t.id]) {
+        tgtNodes[t.id] = createTargetNode(t.id);
+        layer.appendChild(tgtNodes[t.id].g);
+      }
+      placeTarget(tgtNodes[t.id], t, data);
+    }
+    for (var id in tgtNodes) {
+      if (!seen[id]) {
+        layer.removeChild(tgtNodes[id].g);
+        delete tgtNodes[id];
+      }
+    }
+  }
+
+  function paintBanner(data) {
+    var t = findTarget(data.targets, data.selectedId);
+    if (!t) {
+      banner.setAttribute("visibility", "hidden");
+      selStatus.textContent = "No target selected · range " + data.rangeNm + " nm";
+      return;
+    }
+    banner.setAttribute("visibility", "visible");
+    document.getElementById("sel-id").textContent = t.id;
+    document.getElementById("sel-dist").textContent = formatDist(t.distanceNm) + "nm";
+    document.getElementById("sel-alt").textContent = Math.round(t.altFt) + "ft";
+    document.getElementById("sel-gs").textContent = Math.round(t.gsKt) + "kt";
+    document.getElementById("sel-cat").textContent = t.category;
+    var why = data.selectReason === "collision" ? " · collision course" :
+      (data.selectReason === "closest" ? " · closest" : "");
+    selStatus.textContent = t.id + " · " + formatDist(t.distanceNm) + " nm · " +
+      Math.round(t.altFt) + " ft · " + Math.round(t.gsKt) + " kt · " +
+      t.category + " · " + formatRel(t.relAltFt) + why;
+  }
+
+  function updateInstrument(data) {
+    shown.heading = shown.heading + wrap180(data.heading - shown.heading);
+    roseEl.style.transform = "rotate(" + (-shown.heading) + "deg)";
+
+    var step = data.rangeNm / 3;
+    document.getElementById("ring-1").textContent = formatRing(step);
+    document.getElementById("ring-2").textContent = formatRing(step * 2);
+    document.getElementById("ring-3").textContent = formatRing(data.rangeNm);
+
+    syncTargets(data);
+    paintBanner(data);
+
+    var hdg = Math.round(norm360(data.heading));
+    var sel = findTarget(data.targets, data.selectedId);
+    trDesc.textContent = "Heading " + hdg + " degrees, range " + data.rangeNm +
+      " nautical miles" + (sel ? ", selected " + sel.id : "") + ".";
+  }
+
+  function project() {
+    instrumentData.heading = world.heading;
+    instrumentData.ownAltFt = world.alt;
+    instrumentData.ownGsKt = world.gs;
+    var list = [];
+    for (var i = 0; i < world.targets.length; i++) {
+      var t = world.targets[i];
+      var de = t.e - world.e;
+      var dn = t.n - world.n;
+      list.push({
+        id: t.id,
+        bearingDeg: norm360(Math.atan2(de, dn) * 180 / Math.PI),
+        distanceNm: hypot(de, dn),
+        trackDeg: norm360(t.track),
+        altFt: t.alt,
+        relAltFt: t.alt - world.alt,
+        gsKt: t.gs,
+        category: t.category
+      });
+    }
+    instrumentData.targets = list;
+  }
+
+  function autoSelect() {
+    var ownH = world.heading * Math.PI / 180;
+    var ownVe = Math.sin(ownH) * world.gs;
+    var ownVn = Math.cos(ownH) * world.gs;
+    var threatId = null;
+    var threatTcpa = Infinity;
+    var closestId = null;
+    var closestDist = Infinity;
+    var i;
+    for (i = 0; i < world.targets.length; i++) {
+      var t = world.targets[i];
+      var de = t.e - world.e;
+      var dn = t.n - world.n;
+      var dist = hypot(de, dn);
+      if (!onScale(dist, instrumentData.rangeNm)) continue;
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestId = t.id;
+      }
+      var tr = t.track * Math.PI / 180;
+      var ve = Math.sin(tr) * t.gs - ownVe;
+      var vn = Math.cos(tr) * t.gs - ownVn;
+      var vv = ve * ve + vn * vn;
+      if (vv < 1) continue;
+      var tcpaH = -(de * ve + dn * vn) / vv;
+      if (tcpaH <= 0) continue;
+      var tcpaSec = tcpaH * 3600;
+      if (tcpaSec > 180) continue;
+      var miss = hypot(de + ve * tcpaH, dn + vn * tcpaH);
+      var dAlt = (t.alt + (t.vs / 60) * tcpaSec) - world.alt;
+      if (miss <= 1 && Math.abs(dAlt) <= 1000 && tcpaSec < threatTcpa) {
+        threatTcpa = tcpaSec;
+        threatId = t.id;
+      }
+    }
+    if (threatId) {
+      instrumentData.selectedId = threatId;
+      instrumentData.selectReason = "collision";
+    } else if (closestId) {
+      instrumentData.selectedId = closestId;
+      instrumentData.selectReason = "closest";
+    } else {
+      instrumentData.selectedId = null;
+      instrumentData.selectReason = null;
+    }
+  }
+
+  function integrate(dt) {
+    var hdg = world.heading * Math.PI / 180;
+    var nm = (world.gs / 3600) * dt;
+    world.e += Math.sin(hdg) * nm;
+    world.n += Math.cos(hdg) * nm;
+    world.heading = norm360(world.heading + TURN_DPS * dt);
+
+    for (var i = 0; i < world.targets.length; i++) {
+      var t = world.targets[i];
+      var tr = t.track * Math.PI / 180;
+      var step = (t.gs / 3600) * dt;
+      t.e += Math.sin(tr) * step;
+      t.n += Math.cos(tr) * step;
+      t.alt = clamp(t.alt + (t.vs / 60) * dt, 0, 45000);
+    }
+  }
+
+  function frame(ts) {
+    if (!running) return;
+    var dt = lastTs == null ? 0.016 : Math.min(0.05, (ts - lastTs) / 1000);
+    lastTs = ts;
+    integrate(dt);
+    project();
+    autoSelect();
+    updateInstrument(instrumentData);
+    syncSliders();
+    raf = requestAnimationFrame(frame);
+  }
+
+  function startSim() {
+    if (running) return;
+    running = true;
+    lastTs = null;
+    raf = requestAnimationFrame(frame);
+    playBtn.textContent = "Pause";
+    modeEl.textContent = "SIM";
+    modeEl.classList.remove("manual");
+  }
+
+  function stopSim() {
+    running = false;
+    if (raf) cancelAnimationFrame(raf);
+    raf = 0;
+    lastTs = null;
+    playBtn.textContent = "Play";
+    modeEl.textContent = "MANUAL";
+    modeEl.classList.add("manual");
+  }
+
+  function syncSliders() {
+    syncing = true;
+    setNum("sl-heading", norm360(instrumentData.heading));
+    setNum("sl-alt", instrumentData.ownAltFt);
+    setNum("sl-gs", instrumentData.ownGsKt);
+    paintSliderLabels();
+    syncing = false;
+  }
+
+  function setNum(id, value) {
+    var node = document.getElementById(id);
+    node.value = String(clamp(value, parseFloat(node.min), parseFloat(node.max)));
+  }
+
+  function paintSliderLabels() {
+    document.getElementById("out-heading").textContent = formatHdg(parseFloat(document.getElementById("sl-heading").value));
+    document.getElementById("out-alt").textContent = Math.round(parseFloat(document.getElementById("sl-alt").value)) + " ft";
+    document.getElementById("out-gs").textContent = Math.round(parseFloat(document.getElementById("sl-gs").value)) + " kt";
+  }
+
+  function onManual() {
+    if (syncing) return;
+    stopSim();
+    world.heading = parseFloat(document.getElementById("sl-heading").value);
+    world.alt = parseFloat(document.getElementById("sl-alt").value);
+    world.gs = parseFloat(document.getElementById("sl-gs").value);
+    project();
+    updateInstrument(instrumentData);
+    paintSliderLabels();
+  }
+
+  function resetInstrument() {
+    world = photoWorld();
+    instrumentData.selectedId = null;
+    instrumentData.rangeNm = 15;
+    shown.heading = 0;
+    project();
+    autoSelect();
+    updateInstrument(instrumentData);
+    syncSliders();
+  }
+
+  function chooseTarget(id) {
+    instrumentData.selectedId = instrumentData.selectedId === id ? null : id;
+    updateInstrument(instrumentData);
+  }
+
+  function visibleIds() {
+    var ids = [];
+    for (var i = 0; i < instrumentData.targets.length; i++) {
+      var t = instrumentData.targets[i];
+      if (onScale(t.distanceNm, instrumentData.rangeNm)) ids.push(t.id);
+    }
+    return ids;
+  }
+
+  function cycleSelection(dir) {
+    var ids = visibleIds();
+    ids.push(null);
+    var idx = ids.indexOf(instrumentData.selectedId);
+    if (idx < 0) idx = ids.length - 1;
+    instrumentData.selectedId = ids[(idx + dir + ids.length) % ids.length];
+    updateInstrument(instrumentData);
+  }
+
+  document.getElementById("map-hit").addEventListener("click", function () {
+    if (!instrumentData.selectedId) return;
+    instrumentData.selectedId = null;
+    updateInstrument(instrumentData);
+  });
+
+  playBtn.addEventListener("click", function () {
+    if (running) stopSim();
+    else startSim();
+  });
+  document.getElementById("btn-reset").addEventListener("click", resetInstrument);
+  document.getElementById("btn-select").addEventListener("click", function () { cycleSelection(1); });
+
+  var inputs = document.querySelectorAll(".panel input");
+  for (var i = 0; i < inputs.length; i++) inputs[i].addEventListener("input", onManual);
+
+  window.instrumentData = instrumentData;
+  window.updateInstrument = updateInstrument;
+
+  buildRose();
+  project();
+  autoSelect();
+  updateInstrument(instrumentData);
+  syncSliders();
+  startSim();
+})();
+</script>
+</body>
+</html>

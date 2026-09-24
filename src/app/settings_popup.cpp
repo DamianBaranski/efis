@@ -1,7 +1,8 @@
 /// \file settings_popup.cpp
-/// Draws the GENERAL window and edits imagery coverage, narration, and the situation source.
+/// Draws the GENERAL window and edits imagery, narration, the situation source, and layout.
 #include "settings_popup.h"
 #include "app_controller.h"
+#include "screen.h"
 #include "nav_voice.h"
 #include <GLES3/gl3.h>
 #include <algorithm>
@@ -374,6 +375,37 @@ bool SettingsPopup::handleSource(int x, int y)
     return true;
 }
 
+void SettingsPopup::adjustApp(int control)
+{
+    if (control != 0)
+    {
+        return;
+    }
+    Screen::setLayoutVertical(!Screen::layoutVertical());
+    mKey.clear();
+}
+
+void SettingsPopup::drawAppPage(int screenH)
+{
+    const int boxX = mWindow.contentX();
+    const int boxY = mWindow.contentY();
+    const int boxW = mWindow.contentW();
+    const int boxH = mWindow.contentH();
+    constexpr int kRows = 7;
+    const int rowH = std::max(1, boxH / kRows);
+    const int btnH = std::clamp(rowH * 2 / 3, 36, 72);
+    const int btnW = std::clamp(boxW / 4, 120, 200);
+    const float font = static_cast<float>(std::clamp(btnH / 3, 16, 28));
+    const int labelX = boxX + boxW * 22 / 100;
+    const int btnX = boxX + boxW - btnW - boxW / 14;
+    const int btnY = boxY + (rowH - btnH) / 2;
+    const float textY = static_cast<float>(screenH - (boxY + rowH / 2));
+    const bool vertical = Screen::layoutVertical();
+    mWindow.setText(0, "LAYOUT", font, static_cast<float>(labelX), textY, "efis-app-layout");
+    mWindow.setButton(0, btnX, btnY, btnW, btnH, vertical ? "VERT" : "HORIZ", font,
+                      vertical ? "efis-app-vert" : "efis-app-horiz", vertical ? 0x4DA3FFB0u : 0xFFFFFF40u);
+}
+
 void SettingsPopup::drawSourcesPage(int screenH)
 {
     const int boxX = mWindow.contentX();
@@ -511,6 +543,7 @@ void SettingsPopup::drawPage()
     mWindow.setTabLabel(1, "MAPS");
     mWindow.setTabLabel(2, "SOUND");
     mWindow.setTabLabel(3, "SOURCES");
+    mWindow.setTabLabel(4, "APP");
     const int menuPad = std::max(4, screenH / 160);
     const int menuGap = std::max(4, screenW / 220);
     const int menuBox = std::max(36, screenH / 18);
@@ -533,7 +566,8 @@ void SettingsPopup::drawPage()
                             (mSession.sensors().attitude ? "1" : "0") +
                             (mSession.sensorOn(0) ? "1" : "0") + (mSession.sensorOn(1) ? "1" : "0") +
                             (mSession.sensorOn(2) ? "1" : "0") + (mSession.sensorOn(3) ? "1" : "0") +
-                            std::to_string(mWindow.width()) + std::to_string(mWindow.height());
+                            (Screen::layoutVertical() ? "V" : "H") + std::to_string(mWindow.width()) +
+                            std::to_string(mWindow.height());
     if (key != mKey)
     {
         mKey = key;
@@ -585,6 +619,10 @@ void SettingsPopup::drawPage()
         else if (mWindow.activeTab() == 3)
         {
             drawSourcesPage(screenH);
+        }
+        else if (mWindow.activeTab() == 4)
+        {
+            drawAppPage(screenH);
         }
     }
     if (mWindow.activeTab() == 3)
