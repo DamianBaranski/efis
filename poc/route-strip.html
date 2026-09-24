@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Route strip</title>
+<style>
+  :root {
+    --magenta: #ff2fd0;
+    --green: #39ff6a;
+    --ink: #f2f2f2;
+    --muted: #d5d5d5;
+    --plate: rgba(6, 8, 10, 0.72);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    background: #10140c;
+    color: var(--ink);
+    font-family: "DejaVu Sans Mono", "Liberation Mono", ui-monospace, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  .page {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 2%;
+    width: 100%;
+    padding: 2%;
+  }
+  .stage {
+    flex: 1 1 60%;
+    width: 60%;
+    max-width: 920px;
+    aspect-ratio: 16 / 10;
+    position: relative;
+    overflow: hidden;
+    background:
+      linear-gradient(#7eb6dc 0%, #d7e7f2 42%, #8d9a5c 42%, #5c6b3a 68%, #3e4c28 100%);
+  }
+  .strip-anchor {
+    position: absolute;
+    left: 50%;
+    top: 68%;
+    width: 62%;
+    transform: translateX(-50%);
+  }
+  .route {
+    width: max-content;
+    max-width: 100%;
+    margin: 0 auto;
+    background: var(--plate);
+    color: var(--ink);
+    padding: 0.55em 0.85em 0.62em;
+    line-height: 1.15;
+    text-align: center;
+    user-select: none;
+  }
+  .leg, .stats {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 0.55em;
+  }
+  .stats {
+    align-items: flex-start;
+    margin-top: 0.35em;
+    gap: 1.6em;
+  }
+  .stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.12em;
+  }
+  .ident {
+    color: var(--magenta);
+    font-size: 1.35rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+  }
+  .arrow {
+    width: 1.35em;
+    height: 0.72em;
+    align-self: center;
+    overflow: visible;
+  }
+  .lbl {
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+  }
+  .val {
+    color: var(--green);
+    font-size: 1.05rem;
+    font-weight: 800;
+  }
+  .unit {
+    color: var(--green);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    margin-left: 0.12em;
+  }
+  .panel {
+    flex: 1 1 34%;
+    width: 34%;
+    padding: 1.2% 1.4%;
+    background: #141414;
+    border: 1px solid #2a2a2a;
+    border-radius: 12px;
+  }
+  @media (max-width: 52rem) {
+    .stage, .panel { flex-basis: 100%; width: 100%; }
+  }
+  .panel h1 {
+    margin: 0 0 0.6em;
+    font-size: 1rem;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+  }
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5em;
+    align-items: center;
+    margin-bottom: 0.9em;
+  }
+  button {
+    font: inherit;
+    font-weight: 700;
+    color: var(--ink);
+    background: #1c1c1c;
+    border: 1px solid #4a4a4a;
+    border-radius: 6px;
+    padding: 0.35em 0.85em;
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--magenta); }
+  #sim-mode {
+    margin-left: auto;
+    font-size: 0.78rem;
+    letter-spacing: 0.06em;
+    color: var(--green);
+  }
+  #sim-mode.manual { color: var(--magenta); }
+  label.field, label.slider {
+    display: block;
+    margin: 0.55em 0;
+    font-size: 0.82rem;
+    color: var(--muted);
+  }
+  label.slider span, label.field span {
+    float: right;
+    color: var(--ink);
+    font-weight: 700;
+  }
+  input[type="text"] {
+    display: block;
+    width: 100%;
+    margin-top: 0.25em;
+    font: inherit;
+    color: var(--magenta);
+    background: #101010;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    padding: 0.3em 0.5em;
+  }
+  label.slider input {
+    display: block;
+    width: 100%;
+    margin-top: 0.25em;
+    accent-color: var(--magenta);
+  }
+  .hint {
+    margin: 0.8em 0 0;
+    color: #8d8d8d;
+    font-size: 0.75rem;
+    line-height: 1.4;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="stage" aria-hidden="true">
+    <div class="strip-anchor">
+      <div class="route" id="route">
+        <div class="leg">
+          <span class="ident" id="from-id">TRAYL</span>
+          <svg class="arrow" viewBox="0 0 36 18">
+            <path d="M1 9 H26" fill="none" stroke="#ff2fd0" stroke-width="2.4" stroke-linecap="round"/>
+            <path d="M20 2.5 L32 9 L20 15.5 Z" fill="#ff2fd0"/>
+          </svg>
+          <span class="ident" id="to-id">BLAZR</span>
+        </div>
+        <div class="stats">
+          <span class="stat"><span class="val"><span id="dis-val">2.0</span><span class="unit">nm</span></span><span class="lbl">DIST</span></span>
+          <span class="stat"><span class="val" id="ete-val">01:00</span><span class="lbl">ETE</span></span>
+          <span class="stat"><span class="val"><span id="eta-val">21:41</span><span class="unit">utc</span></span><span class="lbl">ETA</span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <aside class="panel">
+    <h1>ROUTE STRIP</h1>
+    <div class="controls">
+      <button type="button" id="btn-play">Pause</button>
+      <button type="button" id="btn-reset">Reset</button>
+      <span id="sim-mode">SIM</span>
+    </div>
+    <label class="field">FROM <input id="in-from" type="text" maxlength="6" value="TRAYL" autocomplete="off" spellcheck="false"></label>
+    <label class="field">TO <input id="in-to" type="text" maxlength="6" value="BLAZR" autocomplete="off" spellcheck="false"></label>
+    <label class="slider">DIST NM <span id="out-dis">2.0 nm</span>
+      <input id="sl-dis" type="range" min="0" max="40" step="0.1" value="2">
+    </label>
+    <label class="slider">GS KT <span id="out-gs">120 kt</span>
+      <input id="sl-gs" type="range" min="40" max="180" step="1" value="120">
+    </label>
+    <p class="hint">Sits under the attitude display on the map. The leg is magenta. Distance, ETE, and ETA stay green. ETE is distance over ground speed. ETA is UTC arrival.</p>
+  </aside>
+</div>
+<script>
+(function () {
+  var TICK_MS = 250;
+  var photo = {
+    from: "TRAYL",
+    to: "BLAZR",
+    distanceNm: 2.0,
+    groundSpeedKt: 120,
+    utcSec: 21 * 3600 + 40 * 60
+  };
+
+  var data = {
+    from: photo.from,
+    to: photo.to,
+    distanceNm: photo.distanceNm,
+    groundSpeedKt: photo.groundSpeedKt,
+    utcSec: photo.utcSec
+  };
+
+  var simTimer = null;
+  var syncing = false;
+  var playBtn = document.getElementById("btn-play");
+  var modeEl = document.getElementById("sim-mode");
+
+  function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+
+  function pad2(n) { return (n < 10 ? "0" : "") + n; }
+
+  function clock(totalSec) {
+    var sec = ((totalSec % 86400) + 86400) % 86400;
+    var h = Math.floor(sec / 3600);
+    var m = Math.floor((sec % 3600) / 60);
+    return pad2(h) + ":" + pad2(m);
+  }
+
+  function eteSeconds() {
+    var gs = Math.max(1, data.groundSpeedKt);
+    return (data.distanceNm / gs) * 3600;
+  }
+
+  function formatEte(sec) {
+    sec = Math.max(0, Math.round(sec));
+    var h = Math.floor(sec / 3600);
+    var m = Math.floor((sec % 3600) / 60);
+    var s = sec % 60;
+    if (h > 0) return h + ":" + pad2(m);
+    return pad2(m) + ":" + pad2(s);
+  }
+
+  function updateInstrument(next) {
+    if (next) {
+      if (typeof next.from === "string") data.from = next.from;
+      if (typeof next.to === "string") data.to = next.to;
+      if (typeof next.distanceNm === "number") data.distanceNm = next.distanceNm;
+      if (typeof next.groundSpeedKt === "number") data.groundSpeedKt = next.groundSpeedKt;
+      if (typeof next.utcSec === "number") data.utcSec = next.utcSec;
+    }
+    document.getElementById("from-id").textContent = data.from || "----";
+    document.getElementById("to-id").textContent = data.to || "----";
+    document.getElementById("dis-val").textContent = Math.max(0, data.distanceNm).toFixed(1);
+    var ete = eteSeconds();
+    document.getElementById("ete-val").textContent = formatEte(ete);
+    document.getElementById("eta-val").textContent = clock(data.utcSec + ete);
+  }
+
+  function paintLabels() {
+    document.getElementById("out-dis").textContent = data.distanceNm.toFixed(1) + " nm";
+    document.getElementById("out-gs").textContent = Math.round(data.groundSpeedKt) + " kt";
+  }
+
+  function syncControls() {
+    syncing = true;
+    document.getElementById("in-from").value = data.from;
+    document.getElementById("in-to").value = data.to;
+    document.getElementById("sl-dis").value = String(data.distanceNm);
+    document.getElementById("sl-gs").value = String(Math.round(data.groundSpeedKt));
+    paintLabels();
+    syncing = false;
+  }
+
+  function stopSim() {
+    if (simTimer) {
+      clearInterval(simTimer);
+      simTimer = null;
+    }
+    playBtn.textContent = "Play";
+    modeEl.textContent = "MANUAL";
+    modeEl.classList.add("manual");
+  }
+
+  function startSim() {
+    if (simTimer) return;
+    simTimer = setInterval(simTick, TICK_MS);
+    playBtn.textContent = "Pause";
+    modeEl.textContent = "SIM";
+    modeEl.classList.remove("manual");
+  }
+
+  function simTick() {
+    var dt = TICK_MS / 1000;
+    var nmPerSec = data.groundSpeedKt / 3600;
+    data.distanceNm = Math.max(0, data.distanceNm - nmPerSec * dt);
+    data.utcSec += dt;
+    updateInstrument();
+    syncControls();
+  }
+
+  function onManual() {
+    if (syncing) return;
+    stopSim();
+    data.from = document.getElementById("in-from").value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+    data.to = document.getElementById("in-to").value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+    data.distanceNm = clamp(parseFloat(document.getElementById("sl-dis").value), 0, 40);
+    data.groundSpeedKt = clamp(parseFloat(document.getElementById("sl-gs").value), 40, 180);
+    document.getElementById("in-from").value = data.from;
+    document.getElementById("in-to").value = data.to;
+    updateInstrument();
+    paintLabels();
+  }
+
+  function resetInstrument() {
+    data.from = photo.from;
+    data.to = photo.to;
+    data.distanceNm = photo.distanceNm;
+    data.groundSpeedKt = photo.groundSpeedKt;
+    data.utcSec = photo.utcSec;
+    updateInstrument();
+    syncControls();
+  }
+
+  playBtn.addEventListener("click", function () {
+    if (simTimer) stopSim();
+    else startSim();
+  });
+  document.getElementById("btn-reset").addEventListener("click", resetInstrument);
+  var inputs = document.querySelectorAll(".panel input");
+  for (var i = 0; i < inputs.length; i++) inputs[i].addEventListener("input", onManual);
+
+  window.routeData = data;
+  window.updateInstrument = updateInstrument;
+
+  updateInstrument();
+  syncControls();
+  startSim();
+})();
+</script>
+</body>
+</html>

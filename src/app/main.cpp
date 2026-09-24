@@ -1,6 +1,8 @@
 /// \file main.cpp
 /// Builds the window, the situation source, and the 3D and AHRS layers, then runs the frame.
 #include "ahrs_widget.h"
+#include "hsi_widget.h"
+#include "route_strip.h"
 #include "app_controller.h"
 #include "frame.h"
 #include "hud.h"
@@ -75,9 +77,13 @@ int main(int argc, char **argv)
     TerrainWidget terrain(frame, session->data());
     AhrsWidget ahrs(frame, session->data());
 
-    // Draw order: 3D world, then the attitude instrument on top of it.
+    // Draw order: 3D world, attitude instrument, the strip under it, then the corner HSI.
     frame.add(&terrain);
     frame.add(&ahrs);
+    RouteStrip route(frame, session->data());
+    frame.add(&route);
+    HsiWidget hsi(frame, session->data());
+    frame.add(&hsi);
 
     // Mode keys and layer switches. Holds the real widgets because the frame list is only IRenderer.
     // Registers for keys ahead of the widgets. Does not draw.

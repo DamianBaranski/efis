@@ -40,6 +40,8 @@ set(SRC
     src/flight/data_manager_sim.cpp
     src/flight/data_manager_internal.cpp
     src/ahrs/ahrs_widget.cpp
+    src/ahrs/hsi_widget.cpp
+    src/ahrs/route_strip.cpp
     src/terrain/bucket.cpp
     src/terrain/bucket_container.cpp
     src/terrain/btg_file.cpp
@@ -83,6 +85,8 @@ set(INC
     src/flight/iobserver.h
     src/flight/subject.h
     src/ahrs/ahrs_widget.h
+    src/ahrs/hsi_widget.h
+    src/ahrs/route_strip.h
     src/world/iscene_layer.h
     src/world/iworld_read.h
     src/world/terrain_widget.h
