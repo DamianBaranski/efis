@@ -42,6 +42,7 @@ set(SRC
     src/ahrs/ahrs_widget.cpp
     src/ahrs/hsi_widget.cpp
     src/ahrs/traffic_widget.cpp
+    src/ahrs/tape_widget.cpp
     src/ahrs/route_strip.cpp
     src/terrain/bucket.cpp
     src/terrain/bucket_container.cpp
@@ -88,6 +89,7 @@ set(INC
     src/ahrs/ahrs_widget.h
     src/ahrs/hsi_widget.h
     src/ahrs/traffic_widget.h
+    src/ahrs/tape_widget.h
     src/ahrs/route_strip.h
     src/world/iscene_layer.h
     src/world/iworld_read.h

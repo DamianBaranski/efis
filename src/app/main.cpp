@@ -3,6 +3,7 @@
 #include "ahrs_widget.h"
 #include "hsi_widget.h"
 #include "traffic_widget.h"
+#include "tape_widget.h"
 #include "route_strip.h"
 #include "app_controller.h"
 #include "frame.h"
@@ -91,6 +92,8 @@ int main(int argc, char **argv)
     frame.add(&hsiLeftTop);
     frame.add(&hsiRightBottom);
     frame.add(&trafficRightTop);
+    TapeWidget tapes(frame, session->data());
+    frame.add(&tapes);
 
     // Mode keys and layer switches. Holds the real widgets because the frame list is only IRenderer.
     // Registers for keys ahead of the widgets. Does not draw.
