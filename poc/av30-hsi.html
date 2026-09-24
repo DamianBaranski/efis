@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AV-30 HSI</title>
+<style>
+  :root {
+    --bg: #0c0c0c;
+    --magenta: #ff2fd0;
+    --green: #39ff6a;
+    --ink: #f2f2f2;
+    --muted: #c8c8c8;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "DejaVu Sans Mono", "Liberation Mono", ui-monospace, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  .page {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 2%;
+    width: 100%;
+    padding: 2%;
+  }
+  .instrument {
+    flex: 1 1 60%;
+    width: 60%;
+    max-width: 96vh;
+  }
+  .instrument svg {
+    width: 100%;
+    height: auto;
+    display: block;
+    user-select: none;
+  }
+  .panel {
+    flex: 1 1 34%;
+    width: 34%;
+    padding: 1.2% 1.4%;
+    background: #141414;
+    border: 1px solid #2a2a2a;
+    border-radius: 12px;
+  }
+  @media (max-width: 52rem) {
+    .instrument, .panel { flex-basis: 100%; width: 100%; max-width: 100%; }
+  }
+  .panel h1 {
+    margin: 0 0 0.6em;
+    font-size: 1rem;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+  }
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5em;
+    align-items: center;
+    margin-bottom: 0.9em;
+  }
+  button {
+    font: inherit;
+    font-weight: 700;
+    color: var(--ink);
+    background: #1c1c1c;
+    border: 1px solid #4a4a4a;
+    border-radius: 6px;
+    padding: 0.35em 0.85em;
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--magenta); }
+  #sim-mode {
+    margin-left: auto;
+    font-size: 0.78rem;
+    letter-spacing: 0.06em;
+    color: var(--green);
+  }
+  #sim-mode.manual { color: var(--magenta); }
+  label.slider {
+    display: block;
+    margin: 0.55em 0;
+    font-size: 0.82rem;
+    color: var(--muted);
+  }
+  label.slider span {
+    float: right;
+    color: var(--ink);
+    font-weight: 700;
+  }
+  label.slider input {
+    display: block;
+    width: 100%;
+    margin-top: 0.25em;
+    accent-color: var(--magenta);
+  }
+  .hint {
+    margin: 0.8em 0 0;
+    color: #8d8d8d;
+    font-size: 0.75rem;
+    line-height: 1.4;
+  }
+  svg text {
+    font-family: "DejaVu Sans Mono", "Liberation Mono", ui-monospace, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+  }
+  .rose-num { fill: #ececec; font-size: 15px; }
+  .rose-card { fill: #ffffff; font-size: 22px; font-weight: 800; }
+  .lbl {
+    fill: #d5d5d5;
+    font-size: 12px;
+    font-weight: 650;
+    letter-spacing: 0.12em;
+  }
+  .wpt-id { fill: var(--green); font-size: 26px; }
+  .bar { stroke: var(--magenta); stroke-width: 4.5; stroke-linecap: butt; }
+  .pivot { fill: none; stroke: none; pointer-events: none; }
+  .spin, .slide {
+    transform-box: fill-box;
+    transform-origin: 50% 50%;
+  }
+  .spin { transition: transform 0.3s linear; }
+  .slide { transition: transform 0.3s ease-out; }
+  @media (prefers-reduced-motion: reduce) {
+    .spin, .slide { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="instrument">
+    <svg id="hsi" viewBox="0 0 600 600" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="hsi-title hsi-desc">
+      <title id="hsi-title">AV-30 horizontal situation indicator</title>
+      <desc id="hsi-desc">Heading, waypoint KABQ, bearing, distance, and cross-track error.</desc>
+      <defs>
+        <radialGradient id="screenGrad" cx="50%" cy="42%" r="68%">
+          <stop offset="0%" stop-color="#1a1a1a"/>
+          <stop offset="100%" stop-color="#0a0a0a"/>
+        </radialGradient>
+        <linearGradient id="bezelGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#2c2c2c"/>
+          <stop offset="45%" stop-color="#161616"/>
+          <stop offset="100%" stop-color="#0a0a0a"/>
+        </linearGradient>
+        <clipPath id="glass">
+          <circle cx="300" cy="300" r="266"/>
+        </clipPath>
+      </defs>
+
+      <rect x="8" y="8" width="584" height="584" rx="36" fill="url(#bezelGrad)" stroke="#3a3a3a" stroke-width="2"/>
+      <g fill="#242424" stroke="#6a6a6a" stroke-width="1">
+        <g transform="translate(40,40)">
+          <circle r="8"/>
+          <line x1="-4.5" y1="0" x2="4.5" y2="0" stroke="#0a0a0a" stroke-width="1.4"/>
+        </g>
+        <g transform="translate(560,40)">
+          <circle r="8"/>
+          <line x1="-4.5" y1="0" x2="4.5" y2="0" stroke="#0a0a0a" stroke-width="1.4"/>
+        </g>
+        <g transform="translate(40,560)">
+          <circle r="8"/>
+          <line x1="-4.5" y1="0" x2="4.5" y2="0" stroke="#0a0a0a" stroke-width="1.4"/>
+        </g>
+        <g transform="translate(560,560)">
+          <circle r="8"/>
+          <line x1="-4.5" y1="0" x2="4.5" y2="0" stroke="#0a0a0a" stroke-width="1.4"/>
+        </g>
+      </g>
+
+      <g clip-path="url(#glass)">
+        <circle cx="300" cy="300" r="266" fill="url(#screenGrad)"/>
+
+        <g id="rose" class="spin" style="transform: rotate(-3deg)">
+          <rect class="pivot" x="0" y="0" width="600" height="600"/>
+          <circle cx="300" cy="300" r="188" fill="none" stroke="#2a2a2a" stroke-width="1"/>
+          <line x1="300.00" y1="136.00" x2="300.00" y2="112.00" stroke="#f4f4f4" stroke-width="2.2" stroke-linecap="butt"/>
+          <line x1="315.69" y1="120.68" x2="316.39" y2="112.72" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="329.87" y1="130.61" x2="332.65" y2="114.86" stroke="#d0d0d0" stroke-width="1.7" stroke-linecap="butt"/>
+          <line x1="346.59" y1="126.13" x2="348.66" y2="118.41" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="358.83" y1="138.37" x2="364.30" y2="123.34" stroke="#d0d0d0" stroke-width="1.7" stroke-linecap="butt"/>
+          <line x1="376.07" y1="136.86" x2="379.45" y2="129.61" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="382.00" y1="157.97" x2="394.00" y2="137.19" stroke="#f4f4f4" stroke-width="2.2" stroke-linecap="butt"/>
+          <line x1="403.24" y1="152.55" x2="407.83" y2="146.00" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="410.56" y1="168.24" x2="420.84" y2="155.98" stroke="#d0d0d0" stroke-width="1.7" stroke-linecap="butt"/>
+          <line x1="427.28" y1="172.72" x2="432.94" y2="167.06" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="431.76" y1="189.44" x2="444.02" y2="179.16" stroke="#d0d0d0" stroke-width="1.7" stroke-linecap="butt"/>
+          <line x1="447.45" y1="196.76" x2="454.00" y2="192.17" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="442.03" y1="218.00" x2="462.81" y2="206.00" stroke="#f4f4f4" stroke-width="2.2" stroke-linecap="butt"/>
+          <line x1="463.14" y1="223.93" x2="470.39" y2="220.55" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="461.63" y1="241.17" x2="476.66" y2="235.70" stroke="#d0d0d0" stroke-width="1.7" stroke-linecap="butt"/>
+          <line x1="473.87" y1="253.41" x2="481.59" y2="251.34" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="469.39" y1="270.13" x2="485.14" y2="267.35" stroke="#d0d0d0" stroke-width="1.7" stroke-linecap="butt"/>
+          <line x1="479.32" y1="284.31" x2="487.28" y2="283.61" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="464.00" y1="300.00" x2="488.00" y2="300.00" stroke="#f4f4f4" stroke-width="2.2" stroke-linecap="butt"/>
+          <line x1="479.32" y1="315.69" x2="487.28" y2="316.39" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="469.39" y1="329.87" x2="485.14" y2="332.65" stroke="#d0d0d0" stroke-width="1.7" stroke-linecap="butt"/>
+          <line x1="473.87" y1="346.59" x2="481.59" y2="348.66" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="461.63" y1="358.83" x2="476.66" y2="364.30" stroke="#d0d0d0" stroke-width="1.7" stroke-linecap="butt"/>
+          <line x1="463.14" y1="376.07" x2="470.39" y2="379.45" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="442.03" y1="382.00" x2="462.81" y2="394.00" stroke="#f4f4f4" stroke-width="2.2" stroke-linecap="butt"/>
+          <line x1="447.45" y1="403.24" x2="454.00" y2="407.83" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="431.76" y1="410.56" x2="444.02" y2="420.84" stroke="#d0d0d0" stroke-width="1.7" stroke-linecap="butt"/>
+          <line x1="427.28" y1="427.28" x2="432.94" y2="432.94" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="410.56" y1="431.76" x2="420.84" y2="444.02" stroke="#d0d0d0" stroke-width="1.7" stroke-linecap="butt"/>
+          <line x1="403.24" y1="447.45" x2="407.83" y2="454.00" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="382.00" y1="442.03" x2="394.00" y2="462.81" stroke="#f4f4f4" stroke-width="2.2" stroke-linecap="butt"/>
+          <line x1="376.07" y1="463.14" x2="379.45" y2="470.39" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="358.83" y1="461.63" x2="364.30" y2="476.66" stroke="#d0d0d0" stroke-width="1.7" stroke-linecap="butt"/>
+          <line x1="346.59" y1="473.87" x2="348.66" y2="481.59" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="329.87" y1="469.39" x2="332.65" y2="485.14" stroke="#d0d0d0" stroke-width="1.7" stroke-linecap="butt"/>
+          <line x1="315.69" y1="479.32" x2="316.39" y2="487.28" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="300.00" y1="464.00" x2="300.00" y2="488.00" stroke="#f4f4f4" stroke-width="2.2" stroke-linecap="butt"/>
+          <line x1="284.31" y1="479.32" x2="283.61" y2="487.28" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="270.13" y1="469.39" x2="267.35" y2="485.14" stroke="#d0d0d0" stroke-width="1.7" stroke-linecap="butt"/>
+          <line x1="253.41" y1="473.87" x2="251.34" y2="481.59" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="241.17" y1="461.63" x2="235.70" y2="476.66" stroke="#d0d0d0" stroke-width="1.7" stroke-linecap="butt"/>
+          <line x1="223.93" y1="463.14" x2="220.55" y2="470.39" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="218.00" y1="442.03" x2="206.00" y2="462.81" stroke="#f4f4f4" stroke-width="2.2" stroke-linecap="butt"/>
+          <line x1="196.76" y1="447.45" x2="192.17" y2="454.00" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="189.44" y1="431.76" x2="179.16" y2="444.02" stroke="#d0d0d0" stroke-width="1.7" stroke-linecap="butt"/>
+          <line x1="172.72" y1="427.28" x2="167.06" y2="432.94" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="168.24" y1="410.56" x2="155.98" y2="420.84" stroke="#d0d0d0" stroke-width="1.7" stroke-linecap="butt"/>
+          <line x1="152.55" y1="403.24" x2="146.00" y2="407.83" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="157.97" y1="382.00" x2="137.19" y2="394.00" stroke="#f4f4f4" stroke-width="2.2" stroke-linecap="butt"/>
+          <line x1="136.86" y1="376.07" x2="129.61" y2="379.45" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="138.37" y1="358.83" x2="123.34" y2="364.30" stroke="#d0d0d0" stroke-width="1.7" stroke-linecap="butt"/>
+          <line x1="126.13" y1="346.59" x2="118.41" y2="348.66" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="130.61" y1="329.87" x2="114.86" y2="332.65" stroke="#d0d0d0" stroke-width="1.7" stroke-linecap="butt"/>
+          <line x1="120.68" y1="315.69" x2="112.72" y2="316.39" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="136.00" y1="300.00" x2="112.00" y2="300.00" stroke="#f4f4f4" stroke-width="2.2" stroke-linecap="butt"/>
+          <line x1="120.68" y1="284.31" x2="112.72" y2="283.61" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="130.61" y1="270.13" x2="114.86" y2="267.35" stroke="#d0d0d0" stroke-width="1.7" stroke-linecap="butt"/>
+          <line x1="126.13" y1="253.41" x2="118.41" y2="251.34" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="138.37" y1="241.17" x2="123.34" y2="235.70" stroke="#d0d0d0" stroke-width="1.7" stroke-linecap="butt"/>
+          <line x1="136.86" y1="223.93" x2="129.61" y2="220.55" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="157.97" y1="218.00" x2="137.19" y2="206.00" stroke="#f4f4f4" stroke-width="2.2" stroke-linecap="butt"/>
+          <line x1="152.55" y1="196.76" x2="146.00" y2="192.17" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="168.24" y1="189.44" x2="155.98" y2="179.16" stroke="#d0d0d0" stroke-width="1.7" stroke-linecap="butt"/>
+          <line x1="172.72" y1="172.72" x2="167.06" y2="167.06" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="189.44" y1="168.24" x2="179.16" y2="155.98" stroke="#d0d0d0" stroke-width="1.7" stroke-linecap="butt"/>
+          <line x1="196.76" y1="152.55" x2="192.17" y2="146.00" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="218.00" y1="157.97" x2="206.00" y2="137.19" stroke="#f4f4f4" stroke-width="2.2" stroke-linecap="butt"/>
+          <line x1="223.93" y1="136.86" x2="220.55" y2="129.61" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="241.17" y1="138.37" x2="235.70" y2="123.34" stroke="#d0d0d0" stroke-width="1.7" stroke-linecap="butt"/>
+          <line x1="253.41" y1="126.13" x2="251.34" y2="118.41" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <line x1="270.13" y1="130.61" x2="267.35" y2="114.86" stroke="#d0d0d0" stroke-width="1.7" stroke-linecap="butt"/>
+          <line x1="284.31" y1="120.68" x2="283.61" y2="112.72" stroke="#7d7d7d" stroke-width="1.15" stroke-linecap="butt"/>
+          <text class="rose-card" x="300.00" y="148.00" text-anchor="middle" dominant-baseline="middle" transform="rotate(0, 300.00, 148.00)">N</text>
+          <text class="rose-num" x="376.00" y="168.36" text-anchor="middle" dominant-baseline="middle" transform="rotate(30, 376.00, 168.36)">3</text>
+          <text class="rose-num" x="431.64" y="224.00" text-anchor="middle" dominant-baseline="middle" transform="rotate(60, 431.64, 224.00)">6</text>
+          <text class="rose-card" x="452.00" y="300.00" text-anchor="middle" dominant-baseline="middle" transform="rotate(90, 452.00, 300.00)">E</text>
+          <text class="rose-num" x="431.64" y="376.00" text-anchor="middle" dominant-baseline="middle" transform="rotate(120, 431.64, 376.00)">12</text>
+          <text class="rose-num" x="376.00" y="431.64" text-anchor="middle" dominant-baseline="middle" transform="rotate(150, 376.00, 431.64)">15</text>
+          <text class="rose-card" x="300.00" y="452.00" text-anchor="middle" dominant-baseline="middle" transform="rotate(180, 300.00, 452.00)">S</text>
+          <text class="rose-num" x="224.00" y="431.64" text-anchor="middle" dominant-baseline="middle" transform="rotate(210, 224.00, 431.64)">21</text>
+          <text class="rose-num" x="168.36" y="376.00" text-anchor="middle" dominant-baseline="middle" transform="rotate(240, 168.36, 376.00)">24</text>
+          <text class="rose-card" x="148.00" y="300.00" text-anchor="middle" dominant-baseline="middle" transform="rotate(270, 148.00, 300.00)">W</text>
+          <text class="rose-num" x="168.36" y="224.00" text-anchor="middle" dominant-baseline="middle" transform="rotate(300, 168.36, 224.00)">30</text>
+          <text class="rose-num" x="224.00" y="168.36" text-anchor="middle" dominant-baseline="middle" transform="rotate(330, 224.00, 168.36)">33</text>
+        </g>
+
+        <polygon id="lubber" points="293,86 307,86 300,100" fill="#f3f3f3" aria-hidden="true">
+          <title>Lubber line</title>
+        </polygon>
+
+        <g id="bearing-chevron" class="spin" style="transform: rotate(13deg)">
+          <rect class="pivot" x="0" y="0" width="600" height="600"/>
+          <polygon points="300,118 308,136 292,136" fill="#ff2fd0">
+            <title>Bearing to waypoint</title>
+          </polygon>
+        </g>
+
+        <g id="wind-chevron" class="spin" style="transform: rotate(180deg)">
+          <rect class="pivot" x="0" y="0" width="600" height="600"/>
+          <polygon points="300,118 308,136 292,136" fill="#39ff6a">
+            <title>Wind or track marker</title>
+          </polygon>
+        </g>
+
+        <g id="dev-scale" fill="none" stroke="#d8d8d8" stroke-width="1.7" stroke-linecap="butt" aria-hidden="true">
+          <line x1="324" y1="286" x2="324" y2="314"/>
+          <line x1="348" y1="286" x2="348" y2="314"/>
+          <line x1="372" y1="286" x2="372" y2="314"/>
+          <line x1="276" y1="286" x2="276" y2="314"/>
+          <line x1="252" y1="286" x2="252" y2="314"/>
+          <line x1="228" y1="286" x2="228" y2="314"/>
+          <line x1="286" y1="276" x2="314" y2="276"/>
+          <line x1="286" y1="252" x2="314" y2="252"/>
+          <line x1="286" y1="228" x2="314" y2="228"/>
+          <line x1="286" y1="324" x2="314" y2="324"/>
+          <line x1="286" y1="348" x2="314" y2="348"/>
+          <line x1="286" y1="372" x2="314" y2="372"/>
+        </g>
+
+        <g id="cdi-lateral" class="slide" style="transform: translate(18.333%, 0)">
+          <rect class="pivot" x="0" y="0" width="600" height="600"/>
+          <line class="bar" x1="300" y1="214" x2="300" y2="404"/>
+        </g>
+        <g id="gs-bar" class="slide" style="transform: translate(0, 0)">
+          <rect class="pivot" x="0" y="0" width="600" height="600"/>
+          <line class="bar" x1="176" y1="300" x2="424" y2="300"/>
+        </g>
+
+        <circle id="aircraft" cx="300" cy="300" r="13" fill="#121212" stroke="#f4f4f4" stroke-width="2">
+          <title>Aircraft symbol</title>
+        </circle>
+
+        <g id="wpt-readout">
+          <title id="wpt-title">Waypoint KABQ</title>
+          <text class="lbl" x="242" y="188" text-anchor="middle">WPT</text>
+          <text id="wpt-id" class="wpt-id" x="242" y="216" text-anchor="middle">KABQ</text>
+        </g>
+        <g id="brg-readout">
+          <title id="brg-title">Bearing 016 degrees</title>
+          <text class="lbl" x="358" y="188" text-anchor="middle">BRG</text>
+          <text id="brg-val" class="wpt-id" x="358" y="216" text-anchor="middle">016</text>
+        </g>
+
+        <g id="dist-readout">
+          <title id="dist-title">Distance 19.1 nautical miles</title>
+          <text class="lbl" x="242" y="384" text-anchor="middle">DIST</text>
+          <text id="dist-val" class="wpt-id" x="242" y="412" text-anchor="middle">19.1</text>
+        </g>
+        <g id="xte-readout">
+          <title id="xte-title">Cross track error 0.5 nautical miles</title>
+          <text class="lbl" x="358" y="384" text-anchor="middle">XTE</text>
+          <text id="xte-val" class="wpt-id" x="358" y="412" text-anchor="middle">0.5</text>
+        </g>
+
+      </g>
+
+      <circle cx="300" cy="300" r="266" fill="none" stroke="#3a3a3a" stroke-width="5"/>
+      <circle cx="300" cy="300" r="260" fill="none" stroke="#141414" stroke-width="2"/>
+    </svg>
+  </div>
+
+  <aside class="panel">
+    <h1>AV-30 HSI</h1>
+    <div class="controls">
+      <button type="button" id="btn-play">Pause</button>
+      <button type="button" id="btn-reset">Reset</button>
+      <span id="sim-mode">SIM</span>
+    </div>
+    <label class="slider">Heading <span id="out-heading">3°</span>
+      <input id="sl-heading" type="range" min="0" max="360" step="0.1" value="3" aria-label="Heading degrees">
+    </label>
+    <label class="slider">Cross-track error <span id="out-xte">0.5 nm</span>
+      <input id="sl-xte" type="range" min="-2" max="2" step="0.01" value="0.5" aria-label="Cross-track error nautical miles">
+    </label>
+    <label class="slider">Distance <span id="out-dist">19.1 nm</span>
+      <input id="sl-dist" type="range" min="0" max="30" step="0.1" value="19.1" aria-label="Distance nautical miles">
+    </label>
+    <label class="slider">Bearing to waypoint <span id="out-brg">016°</span>
+      <input id="sl-brg" type="range" min="0" max="360" step="0.1" value="16" aria-label="Bearing to waypoint degrees">
+    </label>
+    <label class="slider">Groundspeed <span id="out-gs">155 kt</span>
+      <input id="sl-gs" type="range" min="0" max="300" step="1" value="155" aria-label="Groundspeed knots">
+    </label>
+    <label class="slider">Vertical speed <span id="out-vs">0 fpm</span>
+      <input id="sl-vs" type="range" min="-1500" max="2000" step="10" value="0" aria-label="Vertical speed feet per minute">
+    </label>
+    <p class="hint">Moving a slider pauses the simulated flight. Play continues from those values. Reset restores the reference indication.</p>
+  </aside>
+</div>
+
+<script>
+(function () {
+  var VB = 600;
+  var XTE_PX_PER_NM = 220;
+  var XTE_MAX_PX = 112;
+  var VDEV_PX_PER_DOT = 90;
+  var VDEV_MAX_PX = 90;
+  var TICK_MS = 250;
+  var VS_MID = 250;
+  var VS_AMP = 750;
+  var VS_PHASE0 = Math.asin(-VS_MID / VS_AMP);
+  var BASE_COURSE = 16 - Math.atan2(-0.5, 19.1) * 180 / Math.PI;
+
+  function photoData() {
+    return {
+      heading: 3,
+      waypointId: "KABQ",
+      bearingToWaypoint: 16,
+      distanceNm: 19.1,
+      groundSpeedKt: 155,
+      verticalSpeedFpm: 0,
+      xteNm: 0.5,
+      vDevDots: 0,
+      windOrTrackAngle: 180,
+      apprMode: "LPV",
+      apprActive: false,
+      page: "1:2",
+      batteryPct: 100
+    };
+  }
+
+  function photoSim() {
+    return {
+      headingDeg: 3,
+      targetHeading: 16,
+      turnRateDegPerSec: 3,
+      groundSpeedKt: 155,
+      verticalSpeedFpm: 0,
+      distanceNm: 19.1,
+      xteNm: 0.5,
+      windPhaseDeg: 180
+    };
+  }
+
+  var instrumentData = photoData();
+  var simState = photoSim();
+  var gsBase = 155;
+  var vsPhase = VS_PHASE0;
+  var vdevPhase = 0;
+  var simTimer = null;
+  var lastTs = null;
+  var syncing = false;
+  var shown = {
+    rose: instrumentData.heading,
+    brg: norm360(instrumentData.bearingToWaypoint - instrumentData.heading),
+    wind: instrumentData.windOrTrackAngle
+  };
+
+  var roseEl = document.getElementById("rose");
+  var brgChev = document.getElementById("bearing-chevron");
+  var windChev = document.getElementById("wind-chevron");
+  var cdiEl = document.getElementById("cdi-lateral");
+  var gsBarEl = document.getElementById("gs-bar");
+  var wptEl = document.getElementById("wpt-id");
+  var distEl = document.getElementById("dist-val");
+  var brgText = document.getElementById("brg-val");
+  var xteText = document.getElementById("xte-val");
+  var wptTitle = document.getElementById("wpt-title");
+  var distTitle = document.getElementById("dist-title");
+  var brgTitle = document.getElementById("brg-title");
+  var xteTitle = document.getElementById("xte-title");
+  var hsiDesc = document.getElementById("hsi-desc");
+  var playBtn = document.getElementById("btn-play");
+  var modeEl = document.getElementById("sim-mode");
+
+  function clamp(v, lo, hi) {
+    return Math.min(hi, Math.max(lo, v));
+  }
+
+  function norm360(d) {
+    var x = d % 360;
+    if (x < 0) x += 360;
+    return x;
+  }
+
+  function wrap180(d) {
+    var x = (d + 180) % 360;
+    if (x < 0) x += 360;
+    return x - 180;
+  }
+
+  function formatVs(fpm) {
+    var v = Math.round(fpm / 10) * 10;
+    if (v === 0) return "0";
+    return (v > 0 ? "+" : "") + v;
+  }
+
+  function formatDist(nm) {
+    return (Math.round(nm * 10) / 10).toFixed(1);
+  }
+
+  function formatXte(nm) {
+    var v = Math.round(nm * 10) / 10;
+    if (v === 0) return "0.0";
+    return v.toFixed(1);
+  }
+
+  function formatBrg(deg) {
+    var d = Math.round(norm360(deg)) % 360;
+    var s = String(d);
+    while (s.length < 3) s = "0" + s;
+    return s;
+  }
+
+  function updateInstrument(data) {
+    shown.rose = shown.rose + wrap180(data.heading - shown.rose);
+    roseEl.style.transform = "rotate(" + (-shown.rose) + "deg)";
+
+    var relBrg = norm360(data.bearingToWaypoint - data.heading);
+    shown.brg = shown.brg + wrap180(relBrg - shown.brg);
+    brgChev.style.transform = "rotate(" + shown.brg + "deg)";
+
+    var wind = norm360(data.windOrTrackAngle);
+    shown.wind = shown.wind + wrap180(wind - shown.wind);
+    windChev.style.transform = "rotate(" + shown.wind + "deg)";
+
+    var xOff = clamp(data.xteNm * XTE_PX_PER_NM, -XTE_MAX_PX, XTE_MAX_PX);
+    var yOff = clamp(data.vDevDots * VDEV_PX_PER_DOT, -VDEV_MAX_PX, VDEV_MAX_PX);
+    cdiEl.style.transform = "translate(" + (xOff / VB * 100) + "%, 0)";
+    gsBarEl.style.transform = "translate(0, " + (yOff / VB * 100) + "%)";
+
+    var distText = formatDist(data.distanceNm);
+    var brgNum = formatBrg(data.bearingToWaypoint);
+    var xteNum = formatXte(data.xteNm);
+
+    wptEl.textContent = data.waypointId;
+    distEl.textContent = distText;
+    brgText.textContent = brgNum;
+    xteText.textContent = xteNum;
+
+    wptTitle.textContent = "Waypoint " + data.waypointId;
+    distTitle.textContent = "Distance " + distText + " nautical miles";
+    brgTitle.textContent = "Bearing " + brgNum + " degrees";
+    xteTitle.textContent = "Cross track error " + xteNum + " nautical miles";
+    hsiDesc.textContent = "Heading " + Math.round(norm360(data.heading)) +
+      " degrees, waypoint " + data.waypointId +
+      ", bearing " + brgNum +
+      ", distance " + distText + " nautical miles.";
+  }
+
+  function simTick() {
+    var now = performance.now();
+    var dt = lastTs == null ? TICK_MS / 1000 : Math.min(0.5, (now - lastTs) / 1000);
+    lastTs = now;
+
+    var err = wrap180(simState.targetHeading - simState.headingDeg);
+    var step = simState.turnRateDegPerSec * dt;
+    if (Math.abs(err) <= step) simState.headingDeg = norm360(simState.targetHeading);
+    else simState.headingDeg = norm360(simState.headingDeg + Math.sign(err) * step);
+
+    simState.distanceNm -= (simState.groundSpeedKt / 3600) * dt;
+    if (simState.distanceNm < 0.3) simState.distanceNm = 20;
+
+    simState.xteNm += (Math.random() - 0.5) * 0.05;
+    simState.xteNm += (0 - simState.xteNm) * 0.04;
+    simState.xteNm = clamp(simState.xteNm, -2, 2);
+
+    var correction = Math.atan2(-simState.xteNm, Math.max(simState.distanceNm, 0.25)) * 180 / Math.PI;
+    var bearing = norm360(BASE_COURSE + correction);
+    simState.targetHeading = bearing;
+
+    simState.windPhaseDeg = norm360(simState.windPhaseDeg + 22 * dt);
+    var wind = norm360(180 + 30 * Math.sin(simState.windPhaseDeg * Math.PI / 180));
+
+    vsPhase += dt * (2 * Math.PI / 50);
+    var vs = Math.round((VS_MID + VS_AMP * Math.sin(vsPhase)) / 10) * 10;
+
+    vdevPhase += dt * (2 * Math.PI / 34);
+    var vdev = Math.sin(vdevPhase) * 0.8;
+
+    var gs = gsBase + (Math.random() - 0.5) * 4;
+
+    instrumentData.heading = simState.headingDeg;
+    instrumentData.bearingToWaypoint = bearing;
+    instrumentData.distanceNm = simState.distanceNm;
+    instrumentData.groundSpeedKt = gs;
+    instrumentData.verticalSpeedFpm = vs;
+    instrumentData.xteNm = simState.xteNm;
+    instrumentData.vDevDots = vdev;
+    instrumentData.windOrTrackAngle = wind;
+    instrumentData.apprActive = simState.distanceNm < 10;
+    instrumentData.waypointId = "KABQ";
+    instrumentData.apprMode = "LPV";
+    instrumentData.page = "1:2";
+    instrumentData.batteryPct = 100;
+
+    updateInstrument(instrumentData);
+    syncSliders();
+  }
+
+  function startSim() {
+    if (simTimer) return;
+    lastTs = null;
+    simTimer = setInterval(simTick, TICK_MS);
+    playBtn.textContent = "Pause";
+    modeEl.textContent = "SIM";
+    modeEl.classList.remove("manual");
+  }
+
+  function stopSim() {
+    if (simTimer) {
+      clearInterval(simTimer);
+      simTimer = null;
+    }
+    lastTs = null;
+    playBtn.textContent = "Play";
+    modeEl.textContent = "MANUAL";
+    modeEl.classList.add("manual");
+  }
+
+  function syncSliders() {
+    syncing = true;
+    setNum("sl-heading", norm360(instrumentData.heading));
+    setNum("sl-xte", instrumentData.xteNm);
+    setNum("sl-dist", instrumentData.distanceNm);
+    setNum("sl-brg", norm360(instrumentData.bearingToWaypoint));
+    setNum("sl-gs", Math.round(instrumentData.groundSpeedKt));
+    setNum("sl-vs", Math.round(instrumentData.verticalSpeedFpm));
+    paintSliderLabels();
+    syncing = false;
+  }
+
+  function setNum(id, value) {
+    var el = document.getElementById(id);
+    var min = parseFloat(el.min);
+    var max = parseFloat(el.max);
+    el.value = String(clamp(value, min, max));
+  }
+
+  function paintSliderLabels() {
+    document.getElementById("out-heading").textContent = norm360(parseFloat(document.getElementById("sl-heading").value)).toFixed(1) + "°";
+    document.getElementById("out-xte").textContent = parseFloat(document.getElementById("sl-xte").value).toFixed(2) + " nm";
+    document.getElementById("out-dist").textContent = parseFloat(document.getElementById("sl-dist").value).toFixed(1) + " nm";
+    document.getElementById("out-brg").textContent = formatBrg(parseFloat(document.getElementById("sl-brg").value)) + "°";
+    document.getElementById("out-gs").textContent = Math.round(parseFloat(document.getElementById("sl-gs").value)) + " kt";
+    document.getElementById("out-vs").textContent = formatVs(parseFloat(document.getElementById("sl-vs").value)) + " fpm";
+  }
+
+  function onManual() {
+    if (syncing) return;
+    stopSim();
+    instrumentData.heading = parseFloat(document.getElementById("sl-heading").value);
+    instrumentData.xteNm = parseFloat(document.getElementById("sl-xte").value);
+    instrumentData.distanceNm = parseFloat(document.getElementById("sl-dist").value);
+    instrumentData.bearingToWaypoint = parseFloat(document.getElementById("sl-brg").value);
+    instrumentData.groundSpeedKt = parseFloat(document.getElementById("sl-gs").value);
+    instrumentData.verticalSpeedFpm = parseFloat(document.getElementById("sl-vs").value);
+    instrumentData.apprActive = instrumentData.distanceNm < 10;
+
+    simState.headingDeg = instrumentData.heading;
+    simState.distanceNm = instrumentData.distanceNm;
+    simState.xteNm = instrumentData.xteNm;
+    simState.targetHeading = instrumentData.bearingToWaypoint;
+    simState.groundSpeedKt = instrumentData.groundSpeedKt;
+    simState.verticalSpeedFpm = instrumentData.verticalSpeedFpm;
+    gsBase = instrumentData.groundSpeedKt;
+
+    updateInstrument(instrumentData);
+    paintSliderLabels();
+  }
+
+  function resetInstrument() {
+    var fresh = photoData();
+    var keys = Object.keys(fresh);
+    for (var i = 0; i < keys.length; i++) instrumentData[keys[i]] = fresh[keys[i]];
+    var sim = photoSim();
+    keys = Object.keys(sim);
+    for (i = 0; i < keys.length; i++) simState[keys[i]] = sim[keys[i]];
+    gsBase = 155;
+    vsPhase = VS_PHASE0;
+    vdevPhase = 0;
+    updateInstrument(instrumentData);
+    syncSliders();
+  }
+
+  playBtn.addEventListener("click", function () {
+    if (simTimer) stopSim();
+    else startSim();
+  });
+  document.getElementById("btn-reset").addEventListener("click", resetInstrument);
+  var inputs = document.querySelectorAll(".panel input");
+  for (var i = 0; i < inputs.length; i++) inputs[i].addEventListener("input", onManual);
+
+  window.instrumentData = instrumentData;
+  window.updateInstrument = updateInstrument;
+
+  updateInstrument(instrumentData);
+  syncSliders();
+  startSim();
+})();
+</script>
+</body>
+</html>
