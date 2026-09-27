@@ -21,6 +21,7 @@ INCLUDE_DIRS = [
     "resources/textures/skybox",
     "resources/airports",
     "resources/airspaces",
+    "resources/navigation",
     "resources/vrp",
     "resources/obstacles",
 ]

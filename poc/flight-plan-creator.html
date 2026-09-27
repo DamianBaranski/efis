@@ -1,0 +1,2874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>EFIS Flight Plan Creator — Touch POC</title>
+<style>
+  :root {
+    --bg-cockpit: #0a0d10;
+    --bg-card: #131920;
+    --bg-card-subtle: #19222c;
+    --bg-input: #080c0f;
+    --border-card: #273444;
+    --border-active: #4d9fff;
+    --magenta: #ff2fd0;
+    --green: #39ff6a;
+    --amber: #ffb700;
+    --red: #ff3b47;
+    --cyan: #00e5ff;
+    --ink: #f0f4f8;
+    --muted: #8899a8;
+    --subtle: #4c5d6e;
+    --touch-min: 48px;
+    --touch-target: 56px;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--bg-cockpit);
+    color: var(--ink);
+    font-family: "DejaVu Sans Mono", "Liberation Mono", ui-monospace, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    overflow-x: hidden;
+    user-select: none;
+  }
+
+  /* Simulator Toolbar at Top (For desktop testing of tablet dimensions) */
+  .device-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    background: #06080a;
+    border-bottom: 1px solid #1a232f;
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+  .device-toolbar .title {
+    font-weight: 700;
+    color: var(--cyan);
+    letter-spacing: 0.08em;
+  }
+  .device-toolbar .toggles {
+    display: flex;
+    gap: 8px;
+  }
+  .device-toolbar button {
+    background: #182029;
+    color: var(--ink);
+    border: 1px solid #2a3848;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    cursor: pointer;
+  }
+  .device-toolbar button.active {
+    background: #234366;
+    border-color: var(--cyan);
+    color: #ffffff;
+  }
+
+  /* Tablet Stage Container */
+  .stage-viewport {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 12px;
+    min-height: calc(100vh - 46px);
+  }
+
+  .tablet-frame {
+    width: 100%;
+    max-width: 1180px;
+    background: #0d1217;
+    border: 2px solid #23303f;
+    border-radius: 14px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.8);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .tablet-frame.portrait {
+    max-width: 680px;
+  }
+  .tablet-frame.portrait .legs-table-container {
+    overflow-x: auto;
+  }
+  .tablet-frame.portrait .nav-tab-btn {
+    font-size: 0.82rem;
+    padding: 0 6px;
+    gap: 6px;
+  }
+  .tablet-frame.portrait .legs-table th,
+  .tablet-frame.portrait .legs-table td {
+    padding: 8px 6px;
+    font-size: 0.85rem;
+  }
+  .tablet-frame.portrait .wpt-sub {
+    display: none;
+  }
+  .tablet-frame.portrait .btn-icon-touch {
+    width: 32px;
+    height: 32px;
+    font-size: 0.85rem;
+  }
+  .tablet-frame.portrait .btn-dto {
+    padding: 3px 6px;
+    font-size: 0.75rem;
+  }
+
+  /* In-Cockpit Top Status & HUD Bar */
+  .efis-header {
+    background: #090d11;
+    border-bottom: 2px solid #1a2533;
+    padding: 10px 16px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .efis-sys-info {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 0.85rem;
+  }
+  .efis-badge {
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    font-size: 0.75rem;
+  }
+  .badge-vfr { background: rgba(57, 255, 106, 0.15); color: var(--green); border: 1px solid var(--green); }
+  .badge-mvfr { background: rgba(0, 229, 255, 0.15); color: var(--cyan); border: 1px solid var(--cyan); }
+  .badge-ifr { background: rgba(255, 183, 0, 0.15); color: var(--amber); border: 1px solid var(--amber); }
+  .badge-lifr { background: rgba(255, 59, 71, 0.15); color: var(--red); border: 1px solid var(--red); }
+
+  .flight-metrics-hud {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .hud-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+  }
+  .hud-label {
+    font-size: 0.65rem;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    font-weight: 700;
+  }
+  .hud-value {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: var(--green);
+  }
+  .hud-value.magenta { color: var(--magenta); }
+  .hud-value.cyan { color: var(--cyan); }
+  .hud-value.amber { color: var(--amber); }
+
+  /* Navigation Tabs Strip (Huge tactile tap targets) */
+  .efis-nav-tabs {
+    display: flex;
+    background: #090c10;
+    border-bottom: 2px solid #23303f;
+  }
+
+  .nav-tab-btn {
+    flex: 1;
+    height: var(--touch-target);
+    background: transparent;
+    border: none;
+    border-bottom: 4px solid transparent;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 0.95rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .nav-tab-btn:active {
+    background: #192533;
+  }
+  .nav-tab-btn.active {
+    color: #ffffff;
+    background: #131b24;
+    border-bottom-color: var(--cyan);
+  }
+  .nav-tab-btn .tab-num {
+    background: #1f2b38;
+    color: var(--muted);
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+  }
+  .nav-tab-btn.active .tab-num {
+    background: var(--cyan);
+    color: #000000;
+    font-weight: 900;
+  }
+
+  /* Content Panes */
+  .tab-pane {
+    display: none;
+    padding: 16px;
+  }
+  .tab-pane.active {
+    display: block;
+  }
+
+  /* ========================================================
+     TAB 1: ROUTE & NAVIGATION (THE OPERATIONAL HEART)
+     ======================================================== */
+  .route-bar-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-card);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .route-summary-flow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-grow: 1;
+  }
+  .route-node {
+    background: var(--bg-input);
+    border: 1.5px solid var(--border-card);
+    border-radius: 6px;
+    padding: 8px 12px;
+    min-width: 90px;
+    text-align: center;
+  }
+  .route-node.active-dest {
+    border-color: var(--magenta);
+    box-shadow: 0 0 10px rgba(255, 47, 208, 0.25);
+  }
+  .route-node .node-type {
+    font-size: 0.65rem;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+  }
+  .route-node .node-id {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--magenta);
+  }
+  .route-arrow {
+    color: var(--muted);
+    font-size: 1.2rem;
+  }
+
+  .route-string-input-box {
+    display: flex;
+    flex-grow: 2;
+    min-width: 280px;
+    gap: 6px;
+  }
+  .tactile-input {
+    width: 100%;
+    height: 48px;
+    background: var(--bg-input);
+    border: 1.5px solid var(--border-card);
+    border-radius: 6px;
+    color: var(--ink);
+    font-family: inherit;
+    font-size: 1.05rem;
+    font-weight: 700;
+    padding: 0 14px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  select.tactile-input {
+    -webkit-appearance: none;
+    appearance: none;
+    background-color: #1a2533;
+    color: #ffffff;
+    border: 1.5px solid #35475c;
+    cursor: pointer;
+    font-size: 0.95rem;
+    font-weight: 700;
+    padding-right: 24px;
+    background-image: url('data:image/svg+xml;utf8,<svg fill="%2300e5ff" height="20" viewBox="0 0 24 24" width="20" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/></svg>');
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+  }
+  select.tactile-input option {
+    background-color: #10161f;
+    color: #ffffff;
+  }
+  .tactile-input:focus {
+    border-color: var(--cyan);
+    outline: none;
+    box-shadow: 0 0 8px rgba(0, 229, 255, 0.25);
+  }
+
+  .btn-tactile {
+    min-height: var(--touch-min);
+    min-width: var(--touch-min);
+    background: #1a2533;
+    border: 1px solid #324458;
+    border-radius: 6px;
+    color: var(--ink);
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    padding: 0 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    cursor: pointer;
+  }
+  .btn-tactile:active {
+    background: #25364a;
+    border-color: var(--cyan);
+  }
+  .btn-tactile.primary {
+    background: #005a9e;
+    border-color: var(--cyan);
+    color: #ffffff;
+  }
+  .btn-tactile.magenta {
+    background: #6e0b57;
+    border-color: var(--magenta);
+    color: #ffffff;
+  }
+  .btn-tactile.green {
+    background: #0b572a;
+    border-color: var(--green);
+    color: #ffffff;
+  }
+
+  /* Preset Routes Selector */
+  .route-presets-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    margin-top: 4px;
+    font-size: 0.78rem;
+    color: var(--muted);
+  }
+  .preset-pill {
+    background: #111822;
+    border: 1px solid #233346;
+    border-radius: 14px;
+    padding: 4px 10px;
+    color: var(--ink);
+    cursor: pointer;
+    font-weight: 700;
+  }
+  .preset-pill:hover, .preset-pill:active {
+    border-color: var(--cyan);
+    color: var(--cyan);
+  }
+
+  /* Flight Plan Legs Strip Table (Cockpit Touch Grid) */
+  .legs-table-container {
+    background: var(--bg-card);
+    border: 1px solid var(--border-card);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .legs-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+  }
+  .legs-table th {
+    background: #0a0f14;
+    padding: 10px 12px;
+    font-size: 0.7rem;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    border-bottom: 2px solid #1c2734;
+    text-transform: uppercase;
+  }
+  .legs-table td {
+    padding: 12px;
+    border-bottom: 1px solid #18222e;
+    font-size: 0.95rem;
+    font-weight: 700;
+  }
+  .legs-table tr.active-leg {
+    background: rgba(255, 47, 208, 0.08);
+  }
+  .legs-table tr.active-leg td {
+    border-bottom-color: rgba(255, 47, 208, 0.35);
+  }
+  .legs-table tr:last-child td {
+    border-bottom: none;
+  }
+
+  .wpt-ident-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .wpt-code {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: var(--magenta);
+    letter-spacing: 0.05em;
+  }
+  .wpt-sub {
+    font-size: 0.7rem;
+    color: var(--muted);
+    font-weight: 400;
+  }
+  .wpt-badge {
+    font-size: 0.65rem;
+    padding: 2px 5px;
+    border-radius: 3px;
+    background: #1b2633;
+    color: var(--muted);
+  }
+  .wpt-val {
+    color: var(--green);
+  }
+  .wpt-val.cyan {
+    color: var(--cyan);
+  }
+
+  /* In-Table Touch Action Buttons */
+  .table-actions {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+  }
+  .btn-dto {
+    background: #381232;
+    border: 1px solid var(--magenta);
+    color: #ff9ee9;
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 0.8rem;
+    font-weight: 800;
+    cursor: pointer;
+  }
+  .btn-dto:active {
+    background: var(--magenta);
+    color: #ffffff;
+  }
+  .btn-icon-touch {
+    width: 36px;
+    height: 36px;
+    background: #18222d;
+    border: 1px solid #283749;
+    border-radius: 4px;
+    color: var(--muted);
+    font-size: 1rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .btn-icon-touch:active {
+    color: var(--ink);
+    border-color: var(--cyan);
+  }
+
+  /* Bottom Route Control Dock */
+  .route-dock-bar {
+    display: flex;
+    gap: 10px;
+    margin-top: 14px;
+    flex-wrap: wrap;
+  }
+
+  /* ========================================================
+     TAB 2: SETUP & CONDITIONS (PERFORMANCE, FUEL, WEATHER)
+     ======================================================== */
+  .setup-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px;
+  }
+
+  .tactical-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-card);
+    border-radius: 10px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #1c2734;
+    padding-bottom: 8px;
+  }
+  .card-title {
+    font-size: 0.9rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    color: var(--cyan);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-subtitle {
+    font-size: 0.72rem;
+    color: var(--muted);
+  }
+
+  .param-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .param-label {
+    display: flex;
+    flex-direction: column;
+  }
+  .param-title {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .param-hint {
+    font-size: 0.7rem;
+    color: var(--muted);
+  }
+
+  /* Stepper Widget for Cockpit (Fat-Finger Friendly) */
+  .stepper-box {
+    display: flex;
+    align-items: center;
+    background: var(--bg-input);
+    border: 1.5px solid var(--border-card);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .stepper-btn {
+    width: 44px;
+    height: 44px;
+    background: #17212c;
+    border: none;
+    color: var(--cyan);
+    font-size: 1.25rem;
+    font-weight: 900;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .stepper-btn:active {
+    background: #253648;
+  }
+  .stepper-val {
+    min-width: 70px;
+    text-align: center;
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: var(--green);
+    padding: 0 6px;
+  }
+  .stepper-unit {
+    font-size: 0.7rem;
+    color: var(--muted);
+    margin-right: 8px;
+  }
+
+  /* Wind Vector Display Widget */
+  .wind-vector-widget {
+    background: #0d141b;
+    border: 1px solid #1e2b3a;
+    border-radius: 8px;
+    padding: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+  }
+  .wind-compass-dial {
+    width: 72px;
+    height: 72px;
+    border: 2px dashed #2a3c50;
+    border-radius: 50%;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .wind-pointer {
+    width: 4px;
+    height: 30px;
+    background: var(--cyan);
+    position: absolute;
+    transform-origin: bottom center;
+    bottom: 36px;
+    border-radius: 2px;
+  }
+  .wind-pointer::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -4px;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-bottom: 8px solid var(--cyan);
+  }
+  .wind-readouts {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .wind-item {
+    font-size: 0.8rem;
+  }
+  .wind-item .val {
+    font-weight: 800;
+    color: var(--cyan);
+  }
+
+  /* Fuel & Endurance Gauge */
+  .fuel-status-box {
+    background: #0c1218;
+    border: 1px solid #1e2c3c;
+    border-radius: 8px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .fuel-bar-wrap {
+    height: 14px;
+    background: #151f2a;
+    border-radius: 7px;
+    overflow: hidden;
+    position: relative;
+    border: 1px solid #233345;
+  }
+  .fuel-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--green), #2ed85e);
+    width: 68%;
+    border-radius: 6px;
+  }
+  .fuel-bar-reserve-mark {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 25%;
+    width: 2px;
+    background: var(--amber);
+  }
+  .fuel-calc-summary {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+  }
+  .fuel-calc-summary .reserve-ok {
+    color: var(--green);
+    font-weight: 800;
+  }
+
+  /* SimBrief / Import Quick Drawer */
+  .sync-card-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  /* Modal Dialog for Adding Waypoint */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.75);
+    z-index: 999;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+  .modal-overlay.open {
+    display: flex;
+  }
+  .modal-dialog {
+    background: #11171f;
+    border: 2px solid var(--border-card);
+    border-radius: 12px;
+    width: 100%;
+    max-width: 480px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    box-shadow: 0 16px 40px rgba(0,0,0,0.9);
+  }
+  .modal-title {
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: var(--cyan);
+    margin: 0;
+  }
+  .quick-search-results {
+    max-height: 200px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .search-result-item {
+    background: #17212c;
+    border: 1px solid #243446;
+    border-radius: 6px;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+  }
+  .search-result-item:hover, .search-result-item:active {
+    border-color: var(--cyan);
+    background: #1e2c3c;
+  }
+
+  /* ========================================================
+     TAB 4: OPENAIP ROUTE PREVIEW MAP
+     ======================================================== */
+  .map-container-wrap {
+    position: relative;
+    width: 100%;
+    height: 580px;
+    background: #080d12;
+    border: 1px solid var(--border-card);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .tablet-frame.portrait .map-container-wrap {
+    height: 520px;
+  }
+
+  .openaip-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: grab;
+  }
+  .openaip-canvas:active {
+    cursor: grabbing;
+  }
+
+  /* Map Floating Cockpit Controls */
+  .map-overlay-card {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    background: rgba(10, 15, 22, 0.92);
+    border: 1px solid #233446;
+    border-radius: 8px;
+    padding: 10px 14px;
+    backdrop-filter: blur(6px);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    pointer-events: auto;
+    z-index: 10;
+    max-width: 320px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+  }
+  .map-overlay-title {
+    font-size: 0.85rem;
+    font-weight: 800;
+    color: var(--cyan);
+    letter-spacing: 0.08em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .map-overlay-sub {
+    font-size: 0.72rem;
+    color: var(--muted);
+  }
+
+  .map-controls-floating {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 10;
+  }
+  .btn-map-control {
+    width: 46px;
+    height: 46px;
+    background: rgba(16, 24, 34, 0.92);
+    border: 1.5px solid #283c50;
+    border-radius: 8px;
+    color: #ffffff;
+    font-size: 1.1rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    user-select: none;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .btn-map-control:active {
+    background: #243950;
+    border-color: var(--cyan);
+    color: var(--cyan);
+  }
+  .btn-map-control.toggle-active {
+    background: #005a9e;
+    border-color: var(--cyan);
+    color: #ffffff;
+  }
+  .btn-map-pill {
+    padding: 0 10px;
+    height: 36px;
+    background: rgba(16, 24, 34, 0.92);
+    border: 1.5px solid #283c50;
+    border-radius: 6px;
+    color: #a0c4e0;
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    user-select: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    transition: all 0.15s;
+  }
+  .btn-map-pill:hover, .btn-map-pill:active {
+    background: #1f3348;
+    border-color: var(--cyan);
+    color: #fff;
+  }
+  .btn-map-pill.active {
+    background: rgba(0, 150, 220, 0.28);
+    border-color: var(--cyan);
+    color: #00e5ff;
+  }
+
+  .map-legend-bar {
+    position: absolute;
+    bottom: 12px;
+    left: 14px;
+    right: 14px;
+    background: rgba(8, 13, 18, 0.88);
+    border: 1px solid #1c2b3a;
+    border-radius: 6px;
+    padding: 8px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.72rem;
+    color: var(--muted);
+    backdrop-filter: blur(4px);
+    z-index: 10;
+  }
+  .map-legend-items {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .legend-line {
+    width: 18px;
+    height: 3px;
+    background: var(--magenta);
+    border-radius: 1px;
+  }
+  .legend-line.active {
+    background: var(--magenta);
+    box-shadow: 0 0 6px var(--magenta);
+  }
+  .legend-line.airspace {
+    background: rgba(0, 229, 255, 0.8);
+    border: 1px dashed var(--cyan);
+    height: 2px;
+  }
+  .legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+
+  /* Notification Toast */
+  .cockpit-toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1b2633;
+    border: 1.5px solid var(--cyan);
+    color: #ffffff;
+    padding: 10px 22px;
+    border-radius: 30px;
+    font-weight: 800;
+    font-size: 0.85rem;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.7);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+    z-index: 1000;
+  }
+  .cockpit-toast.show {
+    opacity: 1;
+  }
+
+</style>
+</head>
+<body>
+
+<!-- Device & Orientation Simulator Toolbar (For Desktop Dev Preview) -->
+<div class="device-toolbar">
+  <div class="title">✈ EFIS TOUCH FLIGHT PLANNER — ANDROID POC</div>
+  <div class="toggles">
+    <button id="btn-orient-land" class="active" onclick="setOrientation('landscape')">Landscape (Tablet 16:10)</button>
+    <button id="btn-orient-port" onclick="setOrientation('portrait')">Portrait (Kneeboard 9:16)</button>
+    <button id="btn-sim-gps" onclick="toggleSimGps()">Sim GPS: EPWR</button>
+  </div>
+</div>
+
+<!-- Main Tablet Viewport Stage -->
+<div class="stage-viewport">
+  <div class="tablet-frame" id="tablet-frame">
+
+    <!-- EFIS Cockpit Header & Flight Metrics HUD Banner -->
+    <header class="efis-header">
+      <div class="efis-sys-info">
+        <span style="font-weight: 800; color: #fff; letter-spacing: 0.05em;">EFIS NAV</span>
+        <span id="badge-flight-cat" class="efis-badge badge-vfr">VFR</span>
+        <span style="color: var(--muted); font-size: 0.75rem;" id="live-utc-clock">12:30:00 UTC</span>
+      </div>
+
+      <div class="flight-metrics-hud">
+        <div class="hud-item">
+          <span class="hud-label">DESTINATION</span>
+          <span class="hud-value magenta" id="hud-dest">EPKK</span>
+        </div>
+        <div class="hud-item">
+          <span class="hud-label">TOTAL DIST</span>
+          <span class="hud-value" id="hud-dist">126 NM</span>
+        </div>
+        <div class="hud-item">
+          <span class="hud-label">EST TIME ENROUTE</span>
+          <span class="hud-value cyan" id="hud-ete">1h 03m</span>
+        </div>
+        <div class="hud-item">
+          <span class="hud-label">FUEL REQ (INCL RES)</span>
+          <span class="hud-value" id="hud-fuel">28 L <span style="font-size: 0.75rem; color: var(--muted);">(+32L RES)</span></span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Navigation Tabs Strip (Huge tactile tap targets) -->
+    <nav class="efis-nav-tabs">
+      <button class="nav-tab-btn active" id="tab-nav-btn" onclick="switchTab('tab-route')">
+        <span class="tab-num">1</span>
+        <span>Route &amp; Waypoints</span>
+      </button>
+      <button class="nav-tab-btn" id="tab-setup-btn" onclick="switchTab('tab-setup')">
+        <span class="tab-num">2</span>
+        <span>Aircraft &amp; Flight Setup</span>
+      </button>
+      <button class="nav-tab-btn" id="tab-brief-btn" onclick="switchTab('tab-brief')">
+        <span class="tab-num">3</span>
+        <span>Weather &amp; Briefing</span>
+      </button>
+      <button class="nav-tab-btn" id="tab-map-btn" onclick="switchTab('tab-map')">
+        <span class="tab-num">4</span>
+        <span>OpenAIP Map Preview</span>
+      </button>
+    </nav>
+
+    <!-- ================================================================= -->
+    <!-- TAB 1: ROUTE & WAYPOINTS (CORE IN-FLIGHT EXECUTION) -->
+    <!-- ================================================================= -->
+    <main class="tab-pane active" id="tab-route">
+      
+      <!-- Quick Route Command Bar -->
+      <section class="route-bar-card">
+        <div class="route-summary-flow">
+          <div class="route-node">
+            <div class="node-type">DEP AIRPORT</div>
+            <div class="node-id" id="flow-origin">EPWR</div>
+          </div>
+          <span class="route-arrow">➔</span>
+          <div class="route-node active-dest">
+            <div class="node-type">ARR AIRPORT</div>
+            <div class="node-id" id="flow-dest">EPKK</div>
+          </div>
+        </div>
+
+        <div class="route-string-input-box">
+          <input type="text" id="route-string-input" class="tactile-input" value="EPWR KUKUS DODUS EPKK" placeholder="TYPE ROUTE: DEP [WPTS...] ARR" onchange="handleRouteStringChange(this.value)">
+          <button class="btn-tactile primary" onclick="parseCurrentRouteString()">Apply</button>
+          <button class="btn-tactile" title="Invert / Reverse Route" onclick="invertRoute()">⇄ Reverse</button>
+        </div>
+
+        <div class="route-presets-row">
+          <span>Quick Presets:</span>
+          <span class="preset-pill" onclick="loadPreset('EPWR', 'EPKK', ['KUKUS', 'DODUS'])">EPWR ➔ EPKK (Wrocław - Kraków)</span>
+          <span class="preset-pill" onclick="loadPreset('LKPR', 'EPWR', ['VELIK', 'OKL'])">LKPR ➔ EPWR (Prague - Wrocław)</span>
+          <span class="preset-pill" onclick="loadPreset('KEYW', 'KMIA', ['MTH', 'DHP'])">KEYW ➔ KMIA (Florida Keys)</span>
+          <span class="preset-pill" onclick="loadPreset('KBLI', 'KSEA', ['PAE'])">KBLI ➔ KSEA (Seattle)</span>
+        </div>
+      </section>
+
+      <!-- Tactical Flight Plan Legs Table -->
+      <section class="legs-table-container">
+        <table class="legs-table">
+          <thead>
+            <tr>
+              <th style="width: 22%;">Waypoint</th>
+              <th style="width: 13%;">Track (°M)</th>
+              <th style="width: 13%;">Heading (°M)</th>
+              <th style="width: 12%;">Altitude</th>
+              <th style="width: 12%;">Leg Dist</th>
+              <th style="width: 12%;">GS / ETE</th>
+              <th style="width: 16%; text-align: right;">Action</th>
+            </tr>
+          </thead>
+          <tbody id="legs-table-body">
+            <!-- Dynamic Waypoint Rows Rendered Here -->
+          </tbody>
+        </table>
+      </section>
+
+      <!-- Bottom Action Dock -->
+      <div class="route-dock-bar">
+        <button class="btn-tactile primary" onclick="openAddWaypointModal()">＋ Add Waypoint</button>
+        <button class="btn-tactile magenta" onclick="activateDirectTo()">Direct-To [-D->]</button>
+        <button class="btn-tactile green" onclick="activateActiveLeg()">✔ Activate Route</button>
+        <button class="btn-tactile" onclick="clearFlightPlan()">✕ Clear Plan</button>
+        <span style="margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--muted);">
+          <span>Auto-Sequencing:</span>
+          <strong style="color: var(--green);">ENABLED (GPS)</strong>
+        </span>
+      </div>
+    </main>
+
+    <!-- ================================================================= -->
+    <!-- TAB 2: AIRCRAFT & FLIGHT SETUP (PERFORMANCE, FUEL & WINDS) -->
+    <!-- ================================================================= -->
+    <main class="tab-pane" id="tab-setup">
+      <div class="setup-grid">
+
+        <!-- Card 1: Aircraft Profile & Cruise Performance -->
+        <div class="tactical-card">
+          <div class="card-header">
+            <span class="card-title">✈ AIRCRAFT &amp; CRUISE PROFILE</span>
+            <span class="card-subtitle">Performance Model</span>
+          </div>
+
+          <div class="param-row">
+            <div class="param-label">
+              <span class="param-title">Aircraft Type</span>
+              <span class="param-hint">Preset performance envelope</span>
+            </div>
+            <select id="select-aircraft" class="tactile-input" style="width: 160px; height: 44px;" onchange="handleAircraftChange(this.value)">
+              <option value="C172" selected>Cessna 172SP</option>
+              <option value="PA28">Piper Archer II</option>
+              <option value="VL3">JMB VL-3 Evolution</option>
+              <option value="RV7">Vans RV-7</option>
+            </select>
+          </div>
+
+          <div class="param-row">
+            <div class="param-label">
+              <span class="param-title">Cruise TAS</span>
+              <span class="param-hint">True Airspeed (Knots)</span>
+            </div>
+            <div class="stepper-box">
+              <button class="stepper-btn" onclick="stepParam('tas', -5)">−</button>
+              <span class="stepper-val" id="val-tas">115</span>
+              <span class="stepper-unit">KTS</span>
+              <button class="stepper-btn" onclick="stepParam('tas', +5)">+</button>
+            </div>
+          </div>
+
+          <div class="param-row">
+            <div class="param-label">
+              <span class="param-title">Planned Altitude</span>
+              <span class="param-hint">Enroute cruising level</span>
+            </div>
+            <div class="stepper-box">
+              <button class="stepper-btn" onclick="stepParam('alt', -500)">−</button>
+              <span class="stepper-val" id="val-alt">4500</span>
+              <span class="stepper-unit">FT</span>
+              <button class="stepper-btn" onclick="stepParam('alt', +500)">+</button>
+            </div>
+          </div>
+
+          <div class="param-row">
+            <div class="param-label">
+              <span class="param-title">Fuel Flow</span>
+              <span class="param-hint">Hourly cruise consumption</span>
+            </div>
+            <div class="stepper-box">
+              <button class="stepper-btn" onclick="stepParam('burn', -1)">−</button>
+              <span class="stepper-val" id="val-burn">32</span>
+              <span class="stepper-unit">L/H</span>
+              <button class="stepper-btn" onclick="stepParam('burn', +1)">+</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 2: Winds Aloft & Environment -->
+        <div class="tactical-card">
+          <div class="card-header">
+            <span class="card-title">༄ WINDS ALOFT &amp; WEATHER</span>
+            <span class="card-subtitle">Real-time Drift &amp; GS</span>
+          </div>
+
+          <div class="wind-vector-widget">
+            <div class="wind-compass-dial">
+              <div class="wind-pointer" id="wind-dial-pointer" style="transform: rotate(260deg);"></div>
+              <span style="font-size: 0.65rem; color: var(--muted); position: absolute; top: 4px;">N</span>
+            </div>
+            <div class="wind-readouts">
+              <div class="wind-item">Vector: <span class="val" id="wind-vector-text">260° / 14 KTS</span></div>
+              <div class="wind-item">Avg Crosswind: <span class="val" id="wind-crosswind-text">8 KTS (R)</span></div>
+              <div class="wind-item">Avg Head/Tail: <span class="val" id="wind-headwind-text">-11 KTS HEAD</span></div>
+              <div class="wind-item">OAT: <span class="val" id="oat-text">+14°C</span></div>
+            </div>
+          </div>
+
+          <div class="param-row">
+            <div class="param-label">
+              <span class="param-title">Wind Direction</span>
+              <span class="param-hint">True / Magnetic degrees</span>
+            </div>
+            <div class="stepper-box">
+              <button class="stepper-btn" onclick="stepParam('windDir', -10)">−</button>
+              <span class="stepper-val" id="val-wind-dir">260</span>
+              <span class="stepper-unit">°</span>
+              <button class="stepper-btn" onclick="stepParam('windDir', +10)">+</button>
+            </div>
+          </div>
+
+          <div class="param-row">
+            <div class="param-label">
+              <span class="param-title">Wind Speed</span>
+              <span class="param-hint">Knots aloft</span>
+            </div>
+            <div class="stepper-box">
+              <button class="stepper-btn" onclick="stepParam('windSpd', -2)">−</button>
+              <span class="stepper-val" id="val-wind-spd">14</span>
+              <span class="stepper-unit">KTS</span>
+              <button class="stepper-btn" onclick="stepParam('windSpd', +2)">+</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 3: Usable Fuel & Mass / Endurance -->
+        <div class="tactical-card">
+          <div class="card-header">
+            <span class="card-title">⛽ FUEL &amp; ENDURANCE</span>
+            <span class="card-subtitle">Safety Reserves</span>
+          </div>
+
+          <div class="fuel-status-box">
+            <div class="fuel-bar-wrap">
+              <div class="fuel-bar-fill" id="fuel-bar-fill"></div>
+              <div class="fuel-bar-reserve-mark" title="VFR 30min reserve"></div>
+            </div>
+            <div class="fuel-calc-summary">
+              <span>Trip Burn: <strong id="summary-trip-fuel">28 L</strong></span>
+              <span>Reserve: <strong class="reserve-ok" id="summary-reserve-time">2h 15m (72 L)</strong></span>
+            </div>
+          </div>
+
+          <div class="param-row">
+            <div class="param-label">
+              <span class="param-title">Fuel On Board</span>
+              <span class="param-hint">Total usable fuel</span>
+            </div>
+            <div class="stepper-box">
+              <button class="stepper-btn" onclick="stepParam('fuelTotal', -10)">−</button>
+              <span class="stepper-val" id="val-fuel-total">100</span>
+              <span class="stepper-unit">L</span>
+              <button class="stepper-btn" onclick="stepParam('fuelTotal', +10)">+</button>
+            </div>
+          </div>
+
+          <div class="param-row">
+            <div class="param-label">
+              <span class="param-title">Persons On Board (POB)</span>
+              <span class="param-hint">Crew + Passengers</span>
+            </div>
+            <div class="stepper-box">
+              <button class="stepper-btn" onclick="stepParam('pob', -1)">−</button>
+              <span class="stepper-val" id="val-pob">2</span>
+              <span class="stepper-unit">PAX</span>
+              <button class="stepper-btn" onclick="stepParam('pob', +1)">+</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 4: Connected Integrations (1-Tap SimBrief & METAR) -->
+        <div class="tactical-card">
+          <div class="card-header">
+            <span class="card-title">⚡ SYNC &amp; FILE INTEGRATIONS</span>
+            <span class="card-subtitle">External Systems</span>
+          </div>
+
+          <div class="param-row">
+            <div class="param-label">
+              <span class="param-title">SimBrief Username</span>
+              <span class="param-hint">1-tap latest dispatch fetch</span>
+            </div>
+            <input type="text" id="simbrief-user" class="tactile-input" style="width: 140px; height: 42px;" value="PILOT_ONE">
+          </div>
+
+          <div class="sync-card-actions">
+            <button class="btn-tactile primary" onclick="fetchSimBrief()">⬇ Fetch SimBrief</button>
+            <button class="btn-tactile" onclick="fetchMetars()">☁ Live METAR</button>
+            <button class="btn-tactile" onclick="importFplFile()">📂 Open .FPL / .PLN</button>
+            <button class="btn-tactile" onclick="exportFlightPlan()">💾 Export Flight Plan</button>
+          </div>
+        </div>
+
+      </div>
+    </main>
+
+    <!-- ================================================================= -->
+    <!-- TAB 3: WEATHER & BRIEFING (DEEP DIVE / DECODED METAR) -->
+    <!-- ================================================================= -->
+    <main class="tab-pane" id="tab-brief">
+      <div class="setup-grid">
+        <div class="tactical-card" style="grid-column: 1 / -1;">
+          <div class="card-header">
+            <span class="card-title">📋 DEPARTURE &amp; ARRIVAL METAR BRIEFING</span>
+            <button class="btn-tactile" onclick="fetchMetars()">↻ Refresh</button>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div style="background: #0d141c; padding: 12px; border-radius: 8px; border-left: 4px solid var(--green);">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                <strong>EPWR (WROCŁAW STRASZOWICE) — ORIGIN</strong>
+                <span class="efis-badge badge-vfr">VFR</span>
+              </div>
+              <div style="font-family: inherit; color: var(--green); margin-bottom: 4px;" id="metar-raw-origin">
+                EPWR 271730Z 26012KT 9999 FEW030 SCT050 14/06 Q1018 NOSIG
+              </div>
+              <div style="font-size: 0.8rem; color: var(--muted);">
+                Decoded: Wind 260° at 12 kts. Visibility >10km. Clouds Few at 3000ft, Scattered at 5000ft. Temp 14°C, Dewpoint 6°C. QNH 1018 hPa.
+              </div>
+            </div>
+
+            <div style="background: #0d141c; padding: 12px; border-radius: 8px; border-left: 4px solid var(--green);">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                <strong>EPKK (KRAKÓW BALICE) — DESTINATION</strong>
+                <span class="efis-badge badge-vfr">VFR</span>
+              </div>
+              <div style="font-family: inherit; color: var(--green); margin-bottom: 4px;" id="metar-raw-dest">
+                EPKK 271730Z 25010KT 9999 SCT040 15/07 Q1017 NOSIG
+              </div>
+              <div style="font-size: 0.8rem; color: var(--muted);">
+                Decoded: Wind 250° at 10 kts. Visibility >10km. Clouds Scattered at 4000ft. Temp 15°C, Dewpoint 7°C. QNH 1017 hPa.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ================================================================= -->
+    <!-- TAB 4: OPENAIP MAP PREVIEW (TACTICAL ROUTE & AIRSPACE) -->
+    <!-- ================================================================= -->
+    <main class="tab-pane" id="tab-map">
+      <div class="map-container-wrap" id="map-wrap">
+        <!-- HTML5 Canvas for Interactive OpenAIP Tile + Vector Flight Path Preview -->
+        <canvas id="openaip-canvas" class="openaip-canvas"></canvas>
+
+        <!-- Top-Left Route Summary Floating Card -->
+        <div class="map-overlay-card">
+          <div class="map-overlay-title">
+            <span>🗺 OPENAIP VFR VECTOR PREVIEW</span>
+          </div>
+          <div class="map-overlay-sub" id="map-route-summary">
+            ROUTE: EPWR ➔ KUKUS ➔ DODUS ➔ EPKK
+          </div>
+          <div style="font-size: 0.75rem; color: var(--green); font-weight: 700;" id="map-quick-stats">
+            127 NM • 1h 00m • Cruising 4500 FT
+          </div>
+        </div>
+
+        <!-- Top-Right Floating Cockpit Touch Map Controls -->
+        <div class="map-controls-floating">
+          <button class="btn-map-control" onclick="zoomMap(1)" title="Zoom In">＋</button>
+          <button class="btn-map-control" onclick="zoomMap(-1)" title="Zoom Out">−</button>
+          <button class="btn-map-control" onclick="centerRouteOnMap()" title="Fit Entire Flight Plan">⛶</button>
+          <button class="btn-map-control toggle-active" id="btn-toggle-airspace" onclick="toggleAirspace()" title="Toggle Airspaces (CTR/TMA)">AS</button>
+          <button class="btn-map-control" id="btn-toggle-tiles" onclick="toggleTileLayer()" title="Toggle Basemap Style">SAT</button>
+          <button class="btn-map-control" id="btn-load-aip-csv" onclick="triggerAipCsvPicker()" title="Load AIP Zones CSV from file" style="font-size: 0.95rem;">📂</button>
+          <input type="file" id="aip-csv-file-input" accept=".csv,text/csv,text/plain" style="display: none;" onchange="handleAipCsvFileSelect(event)">
+        </div>
+
+        <!-- Top Filter Bar for Airspaces -->
+        <div style="position: absolute; top: 14px; left: 350px; display: flex; gap: 6px; z-index: 10; flex-wrap: wrap;" id="map-airspace-filter-bar">
+          <button class="btn-map-pill active" id="asp-filter-ALL" onclick="setAirspaceFilter('ALL')">ALL AIP</button>
+          <button class="btn-map-pill" id="asp-filter-CTR" onclick="setAirspaceFilter('CTR')">CTR / TMA</button>
+          <button class="btn-map-pill" id="asp-filter-RPD" onclick="setAirspaceFilter('RPD')">R / P / D</button>
+          <button class="btn-map-pill" id="asp-filter-TRA" onclick="setAirspaceFilter('TRA')">TRA / TSA</button>
+          <button class="btn-map-pill" id="asp-filter-ATZ" onclick="setAirspaceFilter('ATZ')">ATZ</button>
+        </div>
+
+        <!-- Bottom Status & Aviation Legend Strip -->
+        <div class="map-legend-bar">
+          <div class="map-legend-items">
+            <div class="legend-item">
+              <div class="legend-line active"></div>
+              <span>Active Leg (Magenta)</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-line" style="background: #a82285;"></div>
+              <span>Flight Plan Course</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-line airspace"></div>
+              <span>Airspace Boundary (OpenAIP)</span>
+            </div>
+            <div class="legend-item">
+              <span style="color: var(--green); font-size: 0.9rem;">✈</span>
+              <span>Ownship Position</span>
+            </div>
+          </div>
+
+          <div style="font-weight: 700; color: var(--cyan);" id="map-coords-cursor">
+            N 50°45.2' E 017°22.8'
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Action Bar below map -->
+      <div class="route-dock-bar" style="margin-top: 12px;">
+        <button class="btn-tactile magenta" onclick="activateDirectTo()">Direct-To [-D->]</button>
+        <button class="btn-tactile green" onclick="activateActiveLeg()">✔ Send Route to Avionics</button>
+        <button class="btn-tactile" onclick="triggerAipCsvPicker()">📂 Load AIP CSV</button>
+        <button class="btn-tactile" onclick="switchTab('tab-route')">← Return to Waypoint List</button>
+        <span style="margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--muted);">
+          <span>Chart Source:</span>
+          <strong style="color: var(--cyan);" id="map-airspace-status">OpenAIP AIP Zones</strong>
+        </span>
+      </div>
+    </main>
+
+  </div>
+</div>
+
+<!-- Add Waypoint Modal Overlay -->
+<div class="modal-overlay" id="add-wpt-modal">
+  <div class="modal-dialog">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <h3 class="modal-title">＋ Insert Waypoint</h3>
+      <button class="btn-tactile" onclick="closeAddWaypointModal()">✕</button>
+    </div>
+
+    <input type="text" id="wpt-search-input" class="tactile-input" placeholder="Search ICAO / FIX (e.g. DODUS, OKL, KUKUS)" oninput="handleWaypointSearch(this.value)">
+
+    <div class="quick-search-results" id="search-results-list">
+      <!-- Populated via JS -->
+    </div>
+
+    <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;">
+      <button class="btn-tactile" onclick="closeAddWaypointModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Notification Toast for Cockpit Feedback -->
+<div class="cockpit-toast" id="cockpit-toast">ROUTE ACTIVATED</div>
+
+<script>
+/**
+ * EFIS FLIGHT PLAN CREATOR STATE & NAVIGATION MATH
+ */
+const WAYPOINT_DB = {
+  // Poland / Europe
+  "EPWR": { ident: "EPWR", name: "Wrocław Copernicus", type: "AIRPORT", lat: 51.1027, lon: 16.8858, elev: 404, freq: "120.675" },
+  "EPKK": { ident: "EPKK", name: "Kraków Balice", type: "AIRPORT", lat: 50.0777, lon: 19.7848, elev: 791, freq: "123.250" },
+  "EPWA": { ident: "EPWA", name: "Warsaw Chopin", type: "AIRPORT", lat: 52.1657, lon: 20.9671, elev: 362, freq: "128.800" },
+  "LKPR": { ident: "LKPR", name: "Prague Ruzyne", type: "AIRPORT", lat: 50.1008, lon: 14.2600, elev: 1247, freq: "118.300" },
+  "EDDC": { ident: "EDDC", name: "Dresden", type: "AIRPORT", lat: 51.1328, lon: 13.7672, elev: 755, freq: "125.875" },
+  "KUKUS": { ident: "KUKUS", name: "KUKUS Fix", type: "FIX", lat: 50.6800, lon: 17.8500, elev: 0, freq: null },
+  "DODUS": { ident: "DODUS", name: "DODUS Fix", type: "FIX", lat: 50.3200, lon: 18.7200, elev: 0, freq: null },
+  "VELIK": { ident: "VELIK", name: "VELIK Fix", type: "FIX", lat: 50.5500, lon: 15.1500, elev: 0, freq: null },
+  "OKL": { ident: "OKL", name: "Okmulgee VOR", type: "VOR", lat: 50.8122, lon: 16.2056, elev: 1500, freq: "114.10" },
+
+  // US Presets
+  "KEYW": { ident: "KEYW", name: "Key West Intl", type: "AIRPORT", lat: 24.5561, lon: -81.7599, elev: 3, freq: "118.200" },
+  "KMIA": { ident: "KMIA", name: "Miami Intl", type: "AIRPORT", lat: 25.7954, lon: -80.2901, elev: 9, freq: "118.300" },
+  "MTH": { ident: "MTH", name: "Marathon VOR", type: "VOR", lat: 24.7200, lon: -81.0800, elev: 5, freq: "115.30" },
+  "DHP": { ident: "DHP", name: "Dolphin VOR", type: "VOR", lat: 25.8000, lon: -80.3500, elev: 10, freq: "113.90" },
+  "KBLI": { ident: "KBLI", name: "Bellingham Intl", type: "AIRPORT", lat: 48.7928, lon: -122.5375, elev: 170, freq: "124.900" },
+  "KSEA": { ident: "KSEA", name: "Seattle-Tacoma", type: "AIRPORT", lat: 47.4502, lon: -122.3088, elev: 433, freq: "119.900" },
+  "PAE": { ident: "PAE", name: "Snohomish County", type: "VOR", lat: 47.9064, lon: -122.2816, elev: 606, freq: "120.200" }
+};
+
+// Flight State
+const flightPlan = {
+  route: ["EPWR", "KUKUS", "DODUS", "EPKK"],
+  activeLegIndex: 1, // Flying towards KUKUS
+  aircraft: "C172",
+  tas: 115, // Knots
+  altitude: 4500, // Feet
+  fuelBurnRate: 32, // L/hr
+  fuelTotal: 100, // Liters on board
+  pob: 2,
+  windDir: 260, // Degrees
+  windSpd: 14 // Knots
+};
+
+// Great Circle Distance & Bearing Math
+function calcDistanceNm(lat1, lon1, lat2, lon2) {
+  const R = 3440.065; // Radius of earth in Nautical Miles
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return Math.round(R * c);
+}
+
+function calcBearingDeg(lat1, lon1, lat2, lon2) {
+  const y = Math.sin((lon2 - lon1) * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180);
+  const x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
+            Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos((lon2 - lon1) * Math.PI / 180);
+  let brng = Math.atan2(y, x) * 180 / Math.PI;
+  return Math.round((brng + 360) % 360);
+}
+
+// Wind Triangle Calculator (Heading and Ground Speed)
+function calcWindCorrection(trackDeg, tasKts, windDirDeg, windSpdKts) {
+  const windAngleRad = (windDirDeg - trackDeg) * Math.PI / 180;
+  // Crosswind component = Vw * sin(alpha)
+  const crosswind = windSpdKts * Math.sin(windAngleRad);
+  // Headwind component = Vw * cos(alpha)
+  const headwind = windSpdKts * Math.cos(windAngleRad);
+
+  // WCA = arcsin(crosswind / TAS)
+  let wcaRad = 0;
+  if (tasKts > 0) {
+    const ratio = crosswind / tasKts;
+    if (Math.abs(ratio) <= 1) {
+      wcaRad = Math.asin(ratio);
+    }
+  }
+  const wcaDeg = Math.round(wcaRad * 180 / Math.PI);
+  const headingDeg = (trackDeg + wcaDeg + 360) % 360;
+  const groundSpeed = Math.max(20, Math.round(tasKts * Math.cos(wcaRad) - headwind));
+
+  return { headingDeg, groundSpeed, crosswind: Math.round(crosswind), headwind: Math.round(headwind) };
+}
+
+// UI Rendering
+function renderFlightPlan() {
+  const originId = flightPlan.route[0] || "---";
+  const destId = flightPlan.route[flightPlan.route.length - 1] || "---";
+
+  document.getElementById("flow-origin").textContent = originId;
+  document.getElementById("flow-dest").textContent = destId;
+  document.getElementById("hud-dest").textContent = destId;
+  document.getElementById("route-string-input").value = flightPlan.route.join(" ");
+
+  const tbody = document.getElementById("legs-table-body");
+  tbody.innerHTML = "";
+
+  let totalDistNm = 0;
+  let totalTimeMin = 0;
+
+  for (let i = 0; i < flightPlan.route.length; i++) {
+    const ident = flightPlan.route[i];
+    const wpt = WAYPOINT_DB[ident] || { ident, name: "Custom Fix", type: "FIX", lat: 50.0, lon: 18.0, elev: 0 };
+    
+    let legDist = 0;
+    let trackDeg = 0;
+    let headingDeg = 0;
+    let legGs = flightPlan.tas;
+    let legEteMin = 0;
+
+    if (i > 0) {
+      const prevIdent = flightPlan.route[i - 1];
+      const prevWpt = WAYPOINT_DB[prevIdent] || { lat: 50.0, lon: 17.0 };
+      legDist = calcDistanceNm(prevWpt.lat, prevWpt.lon, wpt.lat, wpt.lon);
+      trackDeg = calcBearingDeg(prevWpt.lat, prevWpt.lon, wpt.lat, wpt.lon);
+
+      const windCorr = calcWindCorrection(trackDeg, flightPlan.tas, flightPlan.windDir, flightPlan.windSpd);
+      headingDeg = windCorr.headingDeg;
+      legGs = windCorr.groundSpeed;
+
+      legEteMin = Math.round((legDist / legGs) * 60);
+      totalDistNm += legDist;
+      totalTimeMin += legEteMin;
+    }
+
+    const tr = document.createElement("tr");
+    if (i === flightPlan.activeLegIndex) {
+      tr.classList.add("active-leg");
+    }
+
+    tr.innerHTML = `
+      <td>
+        <div class="wpt-ident-cell">
+          <div>
+            <div class="wpt-code">${wpt.ident} ${i === flightPlan.activeLegIndex ? '<span style="color:var(--magenta); font-size:0.8rem;">[ACT]</span>' : ''}</div>
+            <div class="wpt-sub">${wpt.name}</div>
+          </div>
+          <span class="wpt-badge">${wpt.type}</span>
+        </div>
+      </td>
+      <td><span class="wpt-val cyan">${i === 0 ? '---' : String(trackDeg).padStart(3, '0') + '°'}</span></td>
+      <td><span class="wpt-val">${i === 0 ? '---' : String(headingDeg).padStart(3, '0') + '°'}</span></td>
+      <td>${wpt.elev > 0 ? wpt.elev + ' FT' : flightPlan.altitude + ' FT'}</td>
+      <td><span class="wpt-val">${i === 0 ? '0 NM' : legDist + ' NM'}</span></td>
+      <td>
+        <div><span class="wpt-val">${i === 0 ? '---' : legGs + ' KT'}</span></div>
+        <div style="font-size: 0.72rem; color: var(--muted);">${i === 0 ? 'DEP' : legEteMin + 'm'}</div>
+      </td>
+      <td>
+        <div class="table-actions">
+          <button class="btn-dto" onclick="directToWpt(${i})" title="Fly Direct to this waypoint">-D-&gt;</button>
+          <button class="btn-icon-touch" onclick="moveWaypoint(${i}, -1)" title="Move Up">↑</button>
+          <button class="btn-icon-touch" onclick="moveWaypoint(${i}, 1)" title="Move Down">↓</button>
+          <button class="btn-icon-touch" onclick="deleteWaypoint(${i})" title="Delete">✕</button>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  }
+
+  // Update HUD
+  const hours = Math.floor(totalTimeMin / 60);
+  const mins = totalTimeMin % 60;
+  document.getElementById("hud-dist").textContent = totalDistNm + " NM";
+  document.getElementById("hud-ete").textContent = `${hours}h ${String(mins).padStart(2, '0')}m`;
+
+  // Fuel Calculations
+  const tripFuelLiters = Math.round((totalTimeMin / 60) * flightPlan.fuelBurnRate);
+  const reserveFuelLiters = Math.round(0.75 * flightPlan.fuelBurnRate); // 45 min reserve
+  const reqTotalFuel = tripFuelLiters + reserveFuelLiters;
+
+  document.getElementById("hud-fuel").innerHTML = `${tripFuelLiters} L <span style="font-size:0.75rem; color:var(--muted);">(+${reserveFuelLiters}L RES)</span>`;
+  document.getElementById("summary-trip-fuel").textContent = tripFuelLiters + " L";
+
+  const fuelRemaining = flightPlan.fuelTotal - tripFuelLiters;
+  const reserveRemainingMin = Math.round((fuelRemaining / flightPlan.fuelBurnRate) * 60);
+  const resHours = Math.floor(reserveRemainingMin / 60);
+  const resMins = reserveRemainingMin % 60;
+
+  const reserveEl = document.getElementById("summary-reserve-time");
+  if (fuelRemaining < reserveFuelLiters) {
+    reserveEl.textContent = `${resHours}h ${resMins}m (LOW RESERVES!)`;
+    reserveEl.style.color = "var(--red)";
+  } else {
+    reserveEl.textContent = `${resHours}h ${resMins}m (${fuelRemaining} L)`;
+    reserveEl.style.color = "var(--green)";
+  }
+
+  const fuelPct = Math.min(100, Math.round((flightPlan.fuelTotal / 140) * 100));
+  document.getElementById("fuel-bar-fill").style.width = fuelPct + "%";
+
+  // Wind Widget
+  document.getElementById("wind-dial-pointer").style.transform = `rotate(${flightPlan.windDir}deg)`;
+  document.getElementById("wind-vector-text").textContent = `${flightPlan.windDir}° / ${flightPlan.windSpd} KTS`;
+  document.getElementById("val-wind-dir").textContent = flightPlan.windDir;
+  document.getElementById("val-wind-spd").textContent = flightPlan.windSpd;
+
+  // Steppers text
+  document.getElementById("val-tas").textContent = flightPlan.tas;
+  document.getElementById("val-alt").textContent = flightPlan.altitude;
+  document.getElementById("val-burn").textContent = flightPlan.fuelBurnRate;
+  document.getElementById("val-fuel-total").textContent = flightPlan.fuelTotal;
+  document.getElementById("val-pob").textContent = flightPlan.pob;
+
+  // Refresh map if currently open or visible
+  if (document.getElementById("tab-map")?.classList.contains("active")) {
+    initOrUpdateMap();
+  }
+}
+
+// User Actions
+function switchTab(tabId) {
+  document.querySelectorAll(".tab-pane").forEach(p => p.classList.remove("active"));
+  document.querySelectorAll(".nav-tab-btn").forEach(b => b.classList.remove("active"));
+
+  document.getElementById(tabId).classList.add("active");
+  if (tabId === 'tab-route') document.getElementById("tab-nav-btn").classList.add("active");
+  if (tabId === 'tab-setup') document.getElementById("tab-setup-btn").classList.add("active");
+  if (tabId === 'tab-brief') document.getElementById("tab-brief-btn").classList.add("active");
+  if (tabId === 'tab-map') {
+    document.getElementById("tab-map-btn").classList.add("active");
+    setTimeout(initOrUpdateMap, 30);
+  }
+}
+
+function handleRouteStringChange(val) {
+  const parts = val.trim().toUpperCase().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    flightPlan.route = parts;
+    flightPlan.activeLegIndex = 1;
+    renderFlightPlan();
+    showToast("ROUTE PARSED: " + parts.length + " WAYPOINTS");
+  }
+}
+
+function parseCurrentRouteString() {
+  const val = document.getElementById("route-string-input").value;
+  handleRouteStringChange(val);
+}
+
+function invertRoute() {
+  flightPlan.route.reverse();
+  flightPlan.activeLegIndex = 1;
+  renderFlightPlan();
+  showToast("ROUTE INVERTED");
+}
+
+function loadPreset(dep, arr, wpts) {
+  flightPlan.route = [dep, ...wpts, arr];
+  flightPlan.activeLegIndex = 1;
+  renderFlightPlan();
+  showToast(`LOADED PRESET: ${dep} ➔ ${arr}`);
+}
+
+function directToWpt(idx) {
+  flightPlan.activeLegIndex = idx;
+  renderFlightPlan();
+  showToast(`DIRECT-TO ${flightPlan.route[idx]} ACTIVATED`);
+}
+
+function moveWaypoint(idx, dir) {
+  const newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= flightPlan.route.length) return;
+  const temp = flightPlan.route[idx];
+  flightPlan.route[idx] = flightPlan.route[newIdx];
+  flightPlan.route[newIdx] = temp;
+  renderFlightPlan();
+}
+
+function deleteWaypoint(idx) {
+  if (flightPlan.route.length <= 2) {
+    showToast("CANNOT DELETE: MINIMUM 2 WAYPOINTS (DEP/ARR)");
+    return;
+  }
+  flightPlan.route.splice(idx, 1);
+  if (flightPlan.activeLegIndex >= flightPlan.route.length) {
+    flightPlan.activeLegIndex = flightPlan.route.length - 1;
+  }
+  renderFlightPlan();
+  showToast("WAYPOINT REMOVED");
+}
+
+function clearFlightPlan() {
+  flightPlan.route = ["EPWR", "EPKK"];
+  flightPlan.activeLegIndex = 1;
+  renderFlightPlan();
+  showToast("RESET TO DEFAULT LEGS");
+}
+
+function stepParam(param, delta) {
+  if (param === 'tas') flightPlan.tas = Math.max(60, Math.min(250, flightPlan.tas + delta));
+  if (param === 'alt') flightPlan.altitude = Math.max(1000, Math.min(18000, flightPlan.altitude + delta));
+  if (param === 'burn') flightPlan.fuelBurnRate = Math.max(10, Math.min(120, flightPlan.fuelBurnRate + delta));
+  if (param === 'windDir') flightPlan.windDir = (flightPlan.windDir + delta + 360) % 360;
+  if (param === 'windSpd') flightPlan.windSpd = Math.max(0, Math.min(60, flightPlan.windSpd + delta));
+  if (param === 'fuelTotal') flightPlan.fuelTotal = Math.max(20, Math.min(250, flightPlan.fuelTotal + delta));
+  if (param === 'pob') flightPlan.pob = Math.max(1, Math.min(6, flightPlan.pob + delta));
+  renderFlightPlan();
+}
+
+function handleAircraftChange(code) {
+  if (code === "C172") { flightPlan.tas = 115; flightPlan.fuelBurnRate = 32; }
+  if (code === "PA28") { flightPlan.tas = 110; flightPlan.fuelBurnRate = 34; }
+  if (code === "VL3") { flightPlan.tas = 145; flightPlan.fuelBurnRate = 22; }
+  if (code === "RV7") { flightPlan.tas = 160; flightPlan.fuelBurnRate = 38; }
+  renderFlightPlan();
+  showToast(`LOADED ${code} PERFORMANCE PROFILE`);
+}
+
+function activateDirectTo() {
+  showToast("SELECT WAYPOINT FOR DIRECT-TO");
+}
+
+function activateActiveLeg() {
+  showToast("ROUTE ARMED & SENT TO HSI / AHRS");
+}
+
+// Modal Search
+function openAddWaypointModal() {
+  document.getElementById("add-wpt-modal").classList.add("open");
+  handleWaypointSearch("");
+}
+function closeAddWaypointModal() {
+  document.getElementById("add-wpt-modal").classList.remove("open");
+}
+function handleWaypointSearch(query) {
+  const list = document.getElementById("search-results-list");
+  list.innerHTML = "";
+  const q = query.trim().toUpperCase();
+
+  const allWpts = Object.values(WAYPOINT_DB);
+  const matches = allWpts.filter(w => !q || w.ident.includes(q) || (w.name && w.name.toUpperCase().includes(q)));
+  matches.sort((a, b) => {
+    if (!q) return 0;
+    const aStarts = a.ident.startsWith(q);
+    const bStarts = b.ident.startsWith(q);
+    if (aStarts && !bStarts) return -1;
+    if (!aStarts && bStarts) return 1;
+    return a.ident.localeCompare(b.ident);
+  });
+
+  matches.slice(0, 12).forEach(w => {
+    const item = document.createElement("div");
+    item.className = "search-result-item";
+    const freqLabel = w.freq ? `<span style="font-size:10px; color:var(--cyan); margin-left:6px;">${w.freq}</span>` : "";
+    const countryLabel = w.country ? `<span style="font-size:10px; color:var(--text-dim); margin-left:4px;">(${w.country})</span>` : "";
+    item.innerHTML = `
+      <div>
+        <strong style="color:var(--magenta);">${w.ident}</strong> — <span>${w.name}</span>${countryLabel}${freqLabel}
+      </div>
+      <span class="wpt-badge">${w.type}</span>
+    `;
+    item.onclick = () => {
+      // Insert before destination
+      const dest = flightPlan.route.pop();
+      flightPlan.route.push(w.ident);
+      flightPlan.route.push(dest);
+      closeAddWaypointModal();
+      renderFlightPlan();
+      showToast(`INSERTED ${w.ident}`);
+    };
+    list.appendChild(item);
+  });
+}
+
+// Integrations
+function fetchSimBrief() {
+  const user = document.getElementById("simbrief-user").value || "PILOT_ONE";
+  showToast(`FETCHING SIMBRIEF FOR: ${user}...`);
+  setTimeout(() => {
+    flightPlan.route = ["EPWR", "KUKUS", "DODUS", "EPKK"];
+    flightPlan.altitude = 5500;
+    flightPlan.tas = 118;
+    flightPlan.fuelTotal = 110;
+    renderFlightPlan();
+    showToast("SIMBRIEF DISPATCH IMPORTED SUCCESSFULLY");
+  }, 700);
+}
+
+function fetchMetars() {
+  showToast("METAR UPDATED: VFR ACROSS ROUTE");
+}
+
+function importFplFile() {
+  showToast("SIMULATING GARMIN .FPL IMPORT");
+}
+
+function exportFlightPlan() {
+  showToast("EXPORTED .FPL & GEOJSON TO SD CARD");
+}
+
+function showToast(msg) {
+  const toast = document.getElementById("cockpit-toast");
+  toast.textContent = msg;
+  toast.classList.add("show");
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => toast.classList.remove("show"), 2200);
+}
+
+function setOrientation(mode) {
+  const frame = document.getElementById("tablet-frame");
+  const landBtn = document.getElementById("btn-orient-land");
+  const portBtn = document.getElementById("btn-orient-port");
+
+  if (mode === 'portrait') {
+    frame.classList.add("portrait");
+    portBtn.classList.add("active");
+    landBtn.classList.remove("active");
+  } else {
+    frame.classList.remove("portrait");
+    landBtn.classList.add("active");
+    portBtn.classList.remove("active");
+  }
+}
+
+function toggleSimGps() {
+  showToast("SIMULATING GPS FIX: 51.10°N 16.88°E (EPWR)");
+}
+
+// Clock
+setInterval(() => {
+  const d = new Date();
+  document.getElementById("live-utc-clock").textContent = d.toISOString().substring(11, 19) + " UTC";
+}, 1000);
+
+// ========================================================
+// OPENAIP MAP PREVIEW RENDERER & AIP CSV ZONE BOUNDARY LOADER
+// ========================================================
+const mapState = {
+  centerLat: 50.6,
+  centerLon: 18.3,
+  zoom: 8,
+  showAirspace: true,
+  tileLayer: "vector", // "vector" or "satellite"
+  canvas: null,
+  ctx: null,
+  isDragging: false,
+  dragStartX: 0,
+  dragStartY: 0,
+  startCenterLat: 0,
+  startCenterLon: 0,
+  airspaceFilter: "ALL" // "ALL", "CTR", "RPD", "TRA", "ATZ"
+};
+
+// Global Store for Parsed AIP Airspaces loaded from CSV
+let LOADED_AIRSPACES = [];
+let AIRSPACE_SOURCE_NAME = "Embedded Defaults";
+
+// OpenAIP Airspace fallback polygons (CTR / TMA / Prohibited sectors in Poland/CZ)
+const SAMPLE_AIRSPACES = [
+  {
+    name: "CTR EPWR",
+    country: "PL",
+    type: "CTR",
+    class: "D",
+    floor: "GND",
+    ceiling: "2100ft",
+    minLat: 51.05, maxLat: 51.18, minLon: 16.78, maxLon: 17.02,
+    coords: [
+      [51.17, 16.78], [51.17, 17.02], [51.06, 17.02], [51.06, 16.78], [51.17, 16.78]
+    ]
+  },
+  {
+    name: "TMA WROCŁAW SECTOR 1",
+    country: "PL",
+    type: "TMA",
+    class: "D",
+    floor: "2100ft",
+    ceiling: "6500ft",
+    minLat: 50.85, maxLat: 51.35, minLon: 16.40, maxLon: 17.40,
+    coords: [
+      [51.35, 16.40], [51.35, 17.40], [50.85, 17.40], [50.85, 16.40], [51.35, 16.40]
+    ]
+  },
+  {
+    name: "CTR EPKK",
+    country: "PL",
+    type: "CTR",
+    class: "D",
+    floor: "GND",
+    ceiling: "2300ft",
+    minLat: 49.98, maxLat: 50.18, minLon: 19.65, maxLon: 20.05,
+    coords: [
+      [50.18, 19.65], [50.18, 20.05], [49.98, 20.05], [49.98, 19.65], [50.18, 19.65]
+    ]
+  },
+  {
+    name: "TMA KRAKÓW SECTOR A",
+    country: "PL",
+    type: "TMA",
+    class: "D",
+    floor: "2300ft",
+    ceiling: "FL095",
+    minLat: 49.75, maxLat: 50.40, minLon: 19.30, maxLon: 20.40,
+    coords: [
+      [50.40, 19.30], [50.40, 20.40], [49.75, 20.40], [49.75, 19.30], [50.40, 19.30]
+    ]
+  },
+  {
+    name: "CTR EPWA",
+    country: "PL",
+    type: "CTR",
+    class: "D",
+    floor: "GND",
+    ceiling: "2000ft",
+    minLat: 52.08, maxLat: 52.28, minLon: 20.82, maxLon: 21.18,
+    coords: [
+      [52.28, 20.82], [52.28, 21.18], [52.08, 21.18], [52.08, 20.82], [52.28, 20.82]
+    ]
+  },
+  {
+    name: "CTR EPPO",
+    country: "PL",
+    type: "CTR",
+    class: "D",
+    floor: "GND",
+    ceiling: "2300ft",
+    minLat: 52.34, maxLat: 52.52, minLon: 16.70, maxLon: 17.06,
+    coords: [
+      [52.52, 16.70], [52.52, 17.06], [52.34, 17.06], [52.34, 16.70], [52.52, 16.70]
+    ]
+  },
+  {
+    name: "CTR LKPR",
+    country: "CZ",
+    type: "CTR",
+    class: "D",
+    floor: "GND",
+    ceiling: "3500ft",
+    minLat: 50.00, maxLat: 50.20, minLon: 14.12, maxLon: 14.45,
+    coords: [
+      [50.20, 14.12], [50.20, 14.45], [50.00, 14.45], [50.00, 14.12], [50.20, 14.12]
+    ]
+  },
+  {
+    name: "EP P1 KRAKOW",
+    country: "PL",
+    type: "PROHIBITED",
+    class: "G",
+    floor: "GND",
+    ceiling: "4920ft",
+    minLat: 50.04, maxLat: 50.08, minLon: 19.91, maxLon: 19.98,
+    coords: [
+      [50.08, 19.91], [50.08, 19.98], [50.04, 19.98], [50.04, 19.91], [50.08, 19.91]
+    ]
+  }
+];
+
+// Initialize with default sample zones
+LOADED_AIRSPACES = SAMPLE_AIRSPACES;
+
+/**
+ * Fast RFC-compliant CSV line parser handling quotes and commas
+ */
+function parseCsvLine(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === ',' && !inQuotes) {
+      result.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current);
+  return result;
+}
+
+/**
+ * Parses CSV text containing AIP zone boundaries into in-memory airspace objects
+ * Expected Schema: id,country,name,type,type_id,icao_class,floor,ceiling,lower_m,upper_m,min_lat,max_lat,min_lon,max_lon,polygon
+ */
+function parseAipAirspacesCsv(csvText, sourceName = "CSV") {
+  if (!csvText || typeof csvText !== "string") return 0;
+  const lines = csvText.split(/\r?\n/);
+  if (lines.length < 2) return 0;
+
+  const headerLine = lines[0].trim();
+  const headers = parseCsvLine(headerLine);
+  const nameIdx = headers.indexOf("name");
+  const typeIdx = headers.indexOf("type");
+  const classIdx = headers.indexOf("icao_class");
+  const floorIdx = headers.indexOf("floor");
+  const ceilIdx = headers.indexOf("ceiling");
+  const polyIdx = headers.indexOf("polygon");
+  const minLatIdx = headers.indexOf("min_lat");
+  const maxLatIdx = headers.indexOf("max_lat");
+  const minLonIdx = headers.indexOf("min_lon");
+  const maxLonIdx = headers.indexOf("max_lon");
+  const countryIdx = headers.indexOf("country");
+
+  if (nameIdx === -1 || polyIdx === -1) {
+    console.error("Airspace CSV missing required name or polygon column:", headers);
+    return 0;
+  }
+
+  const parsedAirspaces = [];
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const row = parseCsvLine(line);
+    if (row.length <= polyIdx) continue;
+
+    const polyStr = row[polyIdx];
+    if (!polyStr) continue;
+
+    // Parse lat,lon;lat,lon;...
+    const pointPairs = polyStr.split(';');
+    const coords = [];
+    let minLat = 90, maxLat = -90, minLon = 180, maxLon = -180;
+
+    for (let p = 0; p < pointPairs.length; p++) {
+      const ptStr = pointPairs[p];
+      if (!ptStr) continue;
+      const comma = ptStr.indexOf(',');
+      if (comma === -1) continue;
+      const lat = parseFloat(ptStr.substring(0, comma));
+      const lon = parseFloat(ptStr.substring(comma + 1));
+      if (!isNaN(lat) && !isNaN(lon)) {
+        coords.push([lat, lon]);
+        if (lat < minLat) minLat = lat;
+        if (lat > maxLat) maxLat = lat;
+        if (lon < minLon) minLon = lon;
+        if (lon > maxLon) maxLon = lon;
+      }
+    }
+
+    if (coords.length < 3) continue;
+
+    const airspace = {
+      name: row[nameIdx] || "AIRSPACE",
+      type: typeIdx !== -1 ? (row[typeIdx] || "OTHER").toUpperCase() : "OTHER",
+      class: classIdx !== -1 ? (row[classIdx] || "G").toUpperCase() : "G",
+      floor: floorIdx !== -1 ? row[floorIdx] : "GND",
+      ceiling: ceilIdx !== -1 ? row[ceilIdx] : "UNL",
+      country: countryIdx !== -1 ? row[countryIdx] : "",
+      minLat: minLatIdx !== -1 && row[minLatIdx] ? parseFloat(row[minLatIdx]) : minLat,
+      maxLat: maxLatIdx !== -1 && row[maxLatIdx] ? parseFloat(row[maxLatIdx]) : maxLat,
+      minLon: minLonIdx !== -1 && row[minLonIdx] ? parseFloat(row[minLonIdx]) : minLon,
+      maxLon: maxLonIdx !== -1 && row[maxLonIdx] ? parseFloat(row[maxLonIdx]) : maxLon,
+      coords: coords
+    };
+    parsedAirspaces.push(airspace);
+  }
+
+  if (parsedAirspaces.length > 0) {
+    LOADED_AIRSPACES = parsedAirspaces;
+    AIRSPACE_SOURCE_NAME = `${sourceName} (${parsedAirspaces.length} zones)`;
+    updateAirspaceStatusBadge();
+    if (mapState.canvas) {
+      renderOpenAipMap(mapState.canvas.clientWidth, mapState.canvas.clientHeight);
+    }
+  }
+  return parsedAirspaces.length;
+}
+
+/**
+ * Triggers native system file picker for CSV
+ */
+function triggerAipCsvPicker() {
+  const input = document.getElementById("aip-csv-file-input");
+  if (input) {
+    input.value = "";
+    input.click();
+  }
+}
+
+/**
+ * Handles user file selection from file input
+ */
+function handleAipCsvFileSelect(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const text = e.target.result;
+    const count = parseAipAirspacesCsv(text, file.name);
+    if (count > 0) {
+      showToast(`LOADED ${count} AIP AIRSPACES FROM ${file.name}`);
+    } else {
+      showToast("ERROR: COULD NOT PARSE AIP AIRSPACES CSV");
+    }
+  };
+  reader.readAsText(file);
+}
+
+/**
+ * Automatically attempts to fetch airspaces.csv from local server or assets
+ */
+async function autoLoadAipCsv() {
+  const candidates = [
+    "airspaces.csv",
+    "../resources/airspaces/airspaces.csv",
+    "resources/airspaces/airspaces.csv"
+  ];
+
+  for (const url of candidates) {
+    try {
+      const resp = await fetch(url, { cache: "no-store" });
+      if (resp.ok) {
+        const text = await resp.text();
+        const count = parseAipAirspacesCsv(text, url.split('/').pop());
+        if (count > 0) {
+          console.log(`Auto-loaded ${count} AIP airspaces from ${url}`);
+          return;
+        }
+      }
+    } catch (e) {
+      // Local file protocol or 404 - ignore and proceed to next candidate
+    }
+  }
+  updateAirspaceStatusBadge();
+}
+
+/**
+ * Automatically loads enroute IFR navigation points from CSV into WAYPOINT_DB
+ */
+async function autoLoadEnrouteCsv() {
+  const candidates = [
+    "enroute_points.csv",
+    "../resources/navigation/enroute_points.csv",
+    "resources/navigation/enroute_points.csv"
+  ];
+
+  for (const url of candidates) {
+    try {
+      const resp = await fetch(url, { cache: "no-store" });
+      if (resp.ok) {
+        const text = await resp.text();
+        const lines = text.split("\n");
+        if (lines.length < 2) continue;
+        const header = lines[0].split(",");
+        const identIdx = header.indexOf("ident");
+        const nameIdx = header.indexOf("name");
+        const typeIdx = header.indexOf("type");
+        const countryIdx = header.indexOf("country");
+        const latIdx = header.indexOf("lat");
+        const lonIdx = header.indexOf("lon");
+        const elevIdx = header.indexOf("elevation_ft");
+        const freqIdx = header.indexOf("frequency_khz");
+
+        let count = 0;
+        for (let i = 1; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
+          const cols = line.split(",");
+          const id = cols[identIdx]?.trim().toUpperCase();
+          if (!id || WAYPOINT_DB[id]) continue;
+
+          let freqStr = null;
+          if (cols[freqIdx]) {
+            const val = parseFloat(cols[freqIdx]);
+            if (!isNaN(val)) {
+              freqStr = val >= 10000 ? (val / 1000.0).toFixed(2) + " MHz" : val.toString() + " kHz";
+            }
+          }
+
+          WAYPOINT_DB[id] = {
+            ident: id,
+            name: cols[nameIdx] || id,
+            type: cols[typeIdx] || "FIX",
+            country: cols[countryIdx] || "",
+            lat: parseFloat(cols[latIdx]),
+            lon: parseFloat(cols[lonIdx]),
+            elev: cols[elevIdx] ? parseInt(cols[elevIdx]) : 0,
+            freq: freqStr
+          };
+          count++;
+        }
+        if (count > 0) {
+          console.log(`Auto-loaded ${count} enroute IFR points from ${url} into WAYPOINT_DB.`);
+          renderFlightPlan();
+          return;
+        }
+      }
+    } catch (e) {
+      // Local file protocol or 404 - proceed to next candidate
+    }
+  }
+}
+
+/**
+ * Updates UI badge for loaded airspaces
+ */
+function updateAirspaceStatusBadge() {
+  const badge = document.getElementById("map-airspace-status");
+  if (badge) {
+    badge.textContent = `AIP: ${LOADED_AIRSPACES.length} Zones (${AIRSPACE_SOURCE_NAME})`;
+  }
+}
+
+/**
+ * Filter airspaces by category
+ */
+function setAirspaceFilter(category) {
+  mapState.airspaceFilter = category;
+  ["ALL", "CTR", "RPD", "TRA", "ATZ"].forEach(cat => {
+    const btn = document.getElementById(`asp-filter-${cat}`);
+    if (btn) btn.classList.toggle("active", cat === category);
+  });
+  showToast(`AIRSPACE FILTER: ${category}`);
+  if (mapState.canvas) {
+    renderOpenAipMap(mapState.canvas.clientWidth, mapState.canvas.clientHeight);
+  }
+}
+
+/**
+ * Checks if an airspace matches the active category filter
+ */
+function matchesAirspaceFilter(as) {
+  if (mapState.airspaceFilter === "ALL") return true;
+  const type = as.type.toUpperCase();
+  const name = as.name.toUpperCase();
+
+  if (mapState.airspaceFilter === "CTR") {
+    return type === "CTR" || type === "TMA" || name.includes("CTR") || name.includes("TMA");
+  }
+  if (mapState.airspaceFilter === "RPD") {
+    return type.includes("PROHIBITED") || type.includes("RESTRICTED") || type.includes("DANGER") ||
+           name.startsWith("EP P") || name.startsWith("EP R") || name.startsWith("EP D") ||
+           name.startsWith("LK P") || name.startsWith("LK R") || name.startsWith("LK D");
+  }
+  if (mapState.airspaceFilter === "TRA") {
+    return type.includes("TRA") || type.includes("TSA") || type.includes("CBA") ||
+           name.includes("TRA") || name.includes("TSA") || name.includes("CBA");
+  }
+  if (mapState.airspaceFilter === "ATZ") {
+    return type.includes("ATZ") || type.includes("MATZ") || name.includes("ATZ") || name.includes("MATZ");
+  }
+  return true;
+}
+
+/**
+ * Returns rendering styling (stroke, fill, dash, width) for given airspace
+ */
+function getAirspaceStyle(as) {
+  const type = as.type.toUpperCase();
+  const name = as.name.toUpperCase();
+  const cls = as.class.toUpperCase();
+
+  // CTR & TMA (Controlled Airspace)
+  if (type === "CTR" || name.includes("CTR")) {
+    return {
+      fill: "rgba(0, 160, 255, 0.12)",
+      stroke: "rgba(0, 220, 255, 0.95)",
+      lineWidth: 2,
+      dash: [],
+      labelColor: "#00f0ff"
+    };
+  }
+  if (type === "TMA" || name.includes("TMA")) {
+    return {
+      fill: "rgba(0, 100, 220, 0.08)",
+      stroke: "rgba(60, 160, 255, 0.85)",
+      lineWidth: 1.5,
+      dash: [],
+      labelColor: "#66b8ff"
+    };
+  }
+
+  // Prohibited / Restricted / Danger (EP P / EP R / EP D)
+  if (type.includes("PROHIBITED") || name.startsWith("EP P") || name.startsWith("LK P")) {
+    return {
+      fill: "rgba(230, 30, 60, 0.22)",
+      stroke: "rgba(255, 40, 80, 0.95)",
+      lineWidth: 2,
+      dash: [],
+      labelColor: "#ff4d6d"
+    };
+  }
+  if (type.includes("RESTRICTED") || name.startsWith("EP R") || name.startsWith("LK R")) {
+    return {
+      fill: "rgba(220, 90, 20, 0.15)",
+      stroke: "rgba(255, 120, 30, 0.90)",
+      lineWidth: 1.5,
+      dash: [6, 3],
+      labelColor: "#ff9233"
+    };
+  }
+  if (type.includes("DANGER") || name.startsWith("EP D") || name.startsWith("LK D")) {
+    return {
+      fill: "rgba(220, 30, 30, 0.12)",
+      stroke: "rgba(255, 60, 60, 0.85)",
+      lineWidth: 1.5,
+      dash: [5, 4],
+      labelColor: "#ff6666"
+    };
+  }
+
+  // TRA / TSA (Temporary Reserved / Segregated)
+  if (type.includes("TRA") || type.includes("TSA") || name.includes("TRA") || name.includes("TSA")) {
+    return {
+      fill: "rgba(220, 180, 20, 0.08)",
+      stroke: "rgba(240, 190, 30, 0.85)",
+      lineWidth: 1.2,
+      dash: [7, 4],
+      labelColor: "#ffd13b"
+    };
+  }
+
+  // ATZ / MATZ (Aerodrome Traffic Zone)
+  if (type.includes("ATZ") || name.includes("ATZ") || name.includes("MATZ")) {
+    return {
+      fill: "rgba(80, 220, 100, 0.08)",
+      stroke: "rgba(100, 235, 120, 0.85)",
+      lineWidth: 1.5,
+      dash: [4, 4],
+      labelColor: "#59f07a"
+    };
+  }
+
+  // Generic fallback
+  return {
+    fill: "rgba(140, 160, 180, 0.06)",
+    stroke: "rgba(140, 170, 200, 0.60)",
+    lineWidth: 1,
+    dash: [],
+    labelColor: "#a3c2de"
+  };
+}
+
+function latLonToCanvas(lat, lon, width, height) {
+  // Web Mercator / Equirectangular local projection around center
+  const scale = Math.pow(1.8, mapState.zoom) * 22;
+  const cosCenter = Math.cos(mapState.centerLat * Math.PI / 180);
+  
+  const x = (width / 2) + (lon - mapState.centerLon) * scale * cosCenter;
+  const y = (height / 2) - (lat - mapState.centerLat) * scale;
+  return { x, y };
+}
+
+function canvasToLatLon(x, y, width, height) {
+  const scale = Math.pow(2, mapState.zoom) * 35;
+  const cosCenter = Math.cos(mapState.centerLat * Math.PI / 180);
+
+  const lon = mapState.centerLon + (x - width / 2) / (scale * cosCenter);
+  const lat = mapState.centerLat - (y - height / 2) / scale;
+  return { lat, lon };
+}
+
+function initOrUpdateMap() {
+  const canvas = document.getElementById("openaip-canvas");
+  if (!canvas) return;
+  mapState.canvas = canvas;
+  mapState.ctx = canvas.getContext("2d");
+
+  // Handle container dimensions
+  const container = document.getElementById("map-wrap");
+  const width = (container ? container.clientWidth : 0) || canvas.clientWidth || 1000;
+  const height = (container ? container.clientHeight : 0) || canvas.clientHeight || 580;
+
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(width * dpr);
+  canvas.height = Math.round(height * dpr);
+  canvas.style.width = width + "px";
+  canvas.style.height = height + "px";
+  mapState.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  // Auto center on current route
+  if (!mapState._hasCentered) {
+    mapState._hasCentered = true;
+    centerRouteOnMap();
+    return;
+  }
+
+  setupMapInteractions(canvas);
+  renderOpenAipMap(width, height);
+}
+
+function setupMapInteractions(canvas) {
+  if (canvas._hasInteractions) return;
+  canvas._hasInteractions = true;
+
+  // Drag & Drop CSV files directly onto the Map Canvas
+  const mapWrap = document.getElementById("map-wrap");
+  if (mapWrap) {
+    mapWrap.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      mapWrap.style.borderColor = "var(--cyan)";
+    });
+    mapWrap.addEventListener("dragleave", (e) => {
+      e.preventDefault();
+      mapWrap.style.borderColor = "";
+    });
+    mapWrap.addEventListener("drop", (e) => {
+      e.preventDefault();
+      mapWrap.style.borderColor = "";
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        const file = e.dataTransfer.files[0];
+        const reader = new FileReader();
+        reader.onload = (re) => {
+          const text = re.target.result;
+          const count = parseAipAirspacesCsv(text, file.name);
+          if (count > 0) {
+            showToast(`LOADED ${count} AIP AIRSPACES FROM ${file.name}`);
+          } else {
+            showToast("ERROR: COULD NOT PARSE AIP AIRSPACES CSV");
+          }
+        };
+        reader.readAsText(file);
+      }
+    });
+  }
+
+  canvas.addEventListener("mousedown", (e) => {
+    mapState.isDragging = true;
+    mapState.dragStartX = e.clientX;
+    mapState.dragStartY = e.clientY;
+    mapState.startCenterLat = mapState.centerLat;
+    mapState.startCenterLon = mapState.centerLon;
+  });
+
+  window.addEventListener("mousemove", (e) => {
+    if (!mapState.isDragging) return;
+    const dx = e.clientX - mapState.dragStartX;
+    const dy = e.clientY - mapState.dragStartY;
+    const scale = Math.pow(1.8, mapState.zoom) * 22;
+    const cosCenter = Math.cos(mapState.centerLat * Math.PI / 180);
+
+    mapState.centerLon = mapState.startCenterLon - dx / (scale * cosCenter);
+    mapState.centerLat = mapState.startCenterLat + dy / scale;
+    renderOpenAipMap(canvas.clientWidth || 800, canvas.clientHeight || 580);
+  });
+
+  window.addEventListener("mouseup", () => {
+    mapState.isDragging = false;
+  });
+
+  // Touch Support for Tablet
+  canvas.addEventListener("touchstart", (e) => {
+    if (e.touches.length === 1) {
+      mapState.isDragging = true;
+      mapState.dragStartX = e.touches[0].clientX;
+      mapState.dragStartY = e.touches[0].clientY;
+      mapState.startCenterLat = mapState.centerLat;
+      mapState.startCenterLon = mapState.centerLon;
+    }
+  }, { passive: true });
+
+  canvas.addEventListener("touchmove", (e) => {
+    if (!mapState.isDragging || e.touches.length !== 1) return;
+    const dx = e.touches[0].clientX - mapState.dragStartX;
+    const dy = e.touches[0].clientY - mapState.dragStartY;
+    const scale = Math.pow(1.8, mapState.zoom) * 22;
+    const cosCenter = Math.cos(mapState.centerLat * Math.PI / 180);
+
+    mapState.centerLon = mapState.startCenterLon - dx / (scale * cosCenter);
+    mapState.centerLat = mapState.startCenterLat + dy / scale;
+    renderOpenAipMap(canvas.clientWidth || 800, canvas.clientHeight || 580);
+  }, { passive: true });
+
+  canvas.addEventListener("touchend", () => {
+    mapState.isDragging = false;
+  });
+
+  canvas.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    zoomMap(e.deltaY < 0 ? 0.3 : -0.3);
+  }, { passive: false });
+}
+
+function zoomMap(delta) {
+  mapState.zoom = Math.max(5, Math.min(14, mapState.zoom + delta));
+  if (mapState.canvas) {
+    renderOpenAipMap(mapState.canvas.clientWidth, mapState.canvas.clientHeight);
+  }
+}
+
+function toggleAirspace() {
+  mapState.showAirspace = !mapState.showAirspace;
+  const btn = document.getElementById("btn-toggle-airspace");
+  if (btn) {
+    btn.classList.toggle("toggle-active", mapState.showAirspace);
+  }
+  showToast(mapState.showAirspace ? "OPENAIP AIRSPACES: VISIBLE" : "AIRSPACES: HIDDEN");
+  if (mapState.canvas) {
+    renderOpenAipMap(mapState.canvas.clientWidth, mapState.canvas.clientHeight);
+  }
+}
+
+function toggleTileLayer() {
+  mapState.tileLayer = mapState.tileLayer === "vector" ? "satellite" : "vector";
+  const btn = document.getElementById("btn-toggle-tiles");
+  if (btn) {
+    btn.textContent = mapState.tileLayer === "vector" ? "SAT" : "VEC";
+    btn.classList.toggle("toggle-active", mapState.tileLayer === "satellite");
+  }
+  showToast(mapState.tileLayer === "vector" ? "BASEMAP: OPENAIP VECTOR / NIGHT" : "BASEMAP: SATELLITE TILES");
+  if (mapState.canvas) {
+    renderOpenAipMap(mapState.canvas.clientWidth, mapState.canvas.clientHeight);
+  }
+}
+
+function centerRouteOnMap() {
+  if (!flightPlan.route.length) return;
+  let minLat = 90, maxLat = -90, minLon = 180, maxLon = -180;
+  flightPlan.route.forEach(id => {
+    const w = WAYPOINT_DB[id];
+    if (w) {
+      if (w.lat < minLat) minLat = w.lat;
+      if (w.lat > maxLat) maxLat = w.lat;
+      if (w.lon < minLon) minLon = w.lon;
+      if (w.lon > maxLon) maxLon = w.lon;
+    }
+  });
+  if (minLat < 90) {
+    mapState.centerLat = (minLat + maxLat) / 2;
+    mapState.centerLon = (minLon + maxLon) / 2;
+
+    const spanLat = Math.max(0.3, maxLat - minLat);
+    const spanLon = Math.max(0.3, (maxLon - minLon) * Math.cos(mapState.centerLat * Math.PI / 180));
+    const maxSpan = Math.max(spanLat, spanLon);
+
+    // Fit route comfortably inside canvas
+    // scale * maxSpan ≈ 400px => Math.pow(1.8, zoom) * 22 * maxSpan ≈ 400
+    mapState.zoom = Math.max(5, Math.min(11, Math.round(Math.log(420 / (22 * maxSpan)) / Math.log(1.8))));
+
+    if (mapState.canvas) {
+      const container = document.getElementById("map-wrap");
+      const w = (container ? container.clientWidth : 0) || mapState.canvas.clientWidth || 1000;
+      const h = (container ? container.clientHeight : 0) || mapState.canvas.clientHeight || 580;
+      setupMapInteractions(mapState.canvas);
+      renderOpenAipMap(w, h);
+    }
+  }
+}
+
+function renderOpenAipMap(w, h) {
+  const ctx = mapState.ctx;
+  if (!ctx) return;
+  if (!w || !h) {
+    w = 1000;
+    h = 580;
+  }
+
+  // Background
+  if (mapState.tileLayer === "satellite") {
+    ctx.fillStyle = "#121b22";
+  } else {
+    ctx.fillStyle = "#0a0e14";
+  }
+  ctx.fillRect(0, 0, w, h);
+
+  // Draw Geo / Aeronautical Grid lines (Lat / Lon lines)
+  ctx.strokeStyle = "rgba(40, 60, 80, 0.4)";
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 6]);
+  for (let lat = Math.floor(mapState.centerLat - 4); lat <= Math.ceil(mapState.centerLat + 4); lat += 1) {
+    const p1 = latLonToCanvas(lat, mapState.centerLon - 6, w, h);
+    const p2 = latLonToCanvas(lat, mapState.centerLon + 6, w, h);
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.stroke();
+
+    ctx.fillStyle = "rgba(100, 130, 160, 0.6)";
+    ctx.font = "10px monospace";
+    ctx.fillText(`${lat}°00'N`, 10, p1.y - 3);
+  }
+  for (let lon = Math.floor(mapState.centerLon - 6); lon <= Math.ceil(mapState.centerLon + 6); lon += 1) {
+    const p1 = latLonToCanvas(mapState.centerLat - 4, lon, w, h);
+    const p2 = latLonToCanvas(mapState.centerLat + 4, lon, w, h);
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.stroke();
+
+    ctx.fillStyle = "rgba(100, 130, 160, 0.6)";
+    ctx.font = "10px monospace";
+    ctx.fillText(`${lon}°00'E`, p1.x + 4, h - 25);
+  }
+  ctx.setLineDash([]);
+
+  // Draw OpenAIP Airspaces (CTR, TMA, R/P/D, TRA/TSA, ATZ)
+  if (mapState.showAirspace) {
+    // Determine view coordinates bounding box for spatial culling
+    const topLeft = canvasToLatLon(0, 0, w, h);
+    const bottomRight = canvasToLatLon(w, h, w, h);
+    const viewMinLat = Math.min(topLeft.lat, bottomRight.lat) - 0.15;
+    const viewMaxLat = Math.max(topLeft.lat, bottomRight.lat) + 0.15;
+    const viewMinLon = Math.min(topLeft.lon, bottomRight.lon) - 0.25;
+    const viewMaxLon = Math.max(topLeft.lon, bottomRight.lon) + 0.25;
+
+    const airspacesToRender = LOADED_AIRSPACES.length > 0 ? LOADED_AIRSPACES : SAMPLE_AIRSPACES;
+
+    airspacesToRender.forEach(as => {
+      // 1. Filter category check
+      if (!matchesAirspaceFilter(as)) return;
+
+      // 2. Fast Bounding Box Culling (Skip offscreen zones)
+      if (as.maxLat !== undefined) {
+        if (as.maxLat < viewMinLat || as.minLat > viewMaxLat ||
+            as.maxLon < viewMinLon || as.minLon > viewMaxLon) {
+          return;
+        }
+      }
+
+      if (!as.coords || as.coords.length < 3) return;
+
+      ctx.beginPath();
+      as.coords.forEach((c, idx) => {
+        const pt = latLonToCanvas(c[0], c[1], w, h);
+        if (idx === 0) ctx.moveTo(pt.x, pt.y);
+        else ctx.lineTo(pt.x, pt.y);
+      });
+      ctx.closePath();
+
+      // Airspace Styling
+      const style = getAirspaceStyle(as);
+      ctx.fillStyle = style.fill;
+      ctx.fill();
+
+      ctx.strokeStyle = style.stroke;
+      ctx.lineWidth = style.lineWidth;
+      ctx.setLineDash(style.dash || []);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Airspace Centered / Corner Label (Only render if zoom is sufficiently detailed or prominent zone)
+      if (mapState.zoom >= 7 || as.type === "CTR" || as.type === "TMA") {
+        const labelLat = as.minLat && as.maxLat ? (as.minLat + as.maxLat) / 2 : as.coords[0][0];
+        const labelLon = as.minLon && as.maxLon ? (as.minLon + as.maxLon) / 2 : as.coords[0][1];
+        const centerPt = latLonToCanvas(labelLat, labelLon, w, h);
+
+        if (centerPt.x >= 20 && centerPt.x <= w - 60 && centerPt.y >= 20 && centerPt.y <= h - 20) {
+          ctx.fillStyle = style.labelColor;
+          ctx.font = "bold 10px monospace";
+          const title = as.class && as.class !== "OTHER" && as.class !== "G" ? `${as.name} [${as.class}]` : as.name;
+          ctx.fillText(title, centerPt.x - 30, centerPt.y);
+
+          if (mapState.zoom >= 8 && as.floor && as.ceiling) {
+            ctx.font = "9px monospace";
+            ctx.fillStyle = "rgba(190, 215, 235, 0.75)";
+            ctx.fillText(`${as.floor} - ${as.ceiling}`, centerPt.x - 30, centerPt.y + 11);
+          }
+        }
+      }
+    });
+  }
+
+  // Draw Other Regional NavAids & Fixes from Database
+  Object.values(WAYPOINT_DB).forEach(wItem => {
+    // Only if not in route or already drawn
+    const pt = latLonToCanvas(wItem.lat, wItem.lon, w, h);
+    if (pt.x < -40 || pt.x > w + 40 || pt.y < -40 || pt.y > h + 40) return;
+
+    if (!flightPlan.route.includes(wItem.ident)) {
+      ctx.beginPath();
+      if (wItem.type === "AIRPORT") {
+        ctx.arc(pt.x, pt.y, 4, 0, 2 * Math.PI);
+        ctx.fillStyle = "#3a5673";
+        ctx.fill();
+        ctx.strokeStyle = "#6fa3d8";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      } else if (wItem.type === "VOR") {
+        ctx.rect(pt.x - 3, pt.y - 3, 6, 6);
+        ctx.fillStyle = "#2d527c";
+        ctx.fill();
+        ctx.strokeStyle = "#4da3ff";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      } else {
+        ctx.arc(pt.x, pt.y, 2, 0, 2 * Math.PI);
+        ctx.fillStyle = "#4a627a";
+        ctx.fill();
+      }
+      ctx.fillStyle = "#617d9b";
+      ctx.font = "9px monospace";
+      ctx.fillText(wItem.ident, pt.x + 6, pt.y + 3);
+    }
+  });
+
+  // Draw Flight Plan Route Track Lines
+  const routePoints = [];
+  flightPlan.route.forEach(id => {
+    const wItem = WAYPOINT_DB[id];
+    if (wItem) {
+      routePoints.push({
+        ident: id,
+        item: wItem,
+        canvasPt: latLonToCanvas(wItem.lat, wItem.lon, w, h)
+      });
+    }
+  });
+
+  if (routePoints.length >= 2) {
+    // 1. Draw Inactive route segments
+    ctx.beginPath();
+    ctx.strokeStyle = "#801e6a";
+    ctx.lineWidth = 3.5;
+    routePoints.forEach((rp, idx) => {
+      if (idx === 0) ctx.moveTo(rp.canvasPt.x, rp.canvasPt.y);
+      else ctx.lineTo(rp.canvasPt.x, rp.canvasPt.y);
+    });
+    ctx.stroke();
+
+    // 2. Draw Active Leg with Glowing Magenta
+    const actIdx = flightPlan.activeLegIndex;
+    if (actIdx > 0 && actIdx < routePoints.length) {
+      const fromPt = routePoints[actIdx - 1].canvasPt;
+      const toPt = routePoints[actIdx].canvasPt;
+
+      ctx.save();
+      ctx.shadowColor = "rgba(255, 47, 208, 0.8)";
+      ctx.shadowBlur = 10;
+      ctx.strokeStyle = "var(--magenta)";
+      ctx.lineWidth = 4.5;
+      ctx.beginPath();
+      ctx.moveTo(fromPt.x, fromPt.y);
+      ctx.lineTo(toPt.x, toPt.y);
+      ctx.stroke();
+      ctx.restore();
+
+      // Heading arrow along active leg
+      const midX = (fromPt.x + toPt.x) / 2;
+      const midY = (fromPt.y + toPt.y) / 2;
+      const angle = Math.atan2(toPt.y - fromPt.y, toPt.x - fromPt.x);
+      ctx.save();
+      ctx.translate(midX, midY);
+      ctx.rotate(angle);
+      ctx.fillStyle = "#ff2fd0";
+      ctx.beginPath();
+      ctx.moveTo(8, 0);
+      ctx.lineTo(-6, -6);
+      ctx.lineTo(-3, 0);
+      ctx.lineTo(-6, 6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // Draw Route Waypoints Pins & Identifiers
+  routePoints.forEach((rp, idx) => {
+    const pt = rp.canvasPt;
+    const isAct = idx === flightPlan.activeLegIndex;
+    const isDep = idx === 0;
+    const isArr = idx === routePoints.length - 1;
+
+    // Pin circle
+    ctx.beginPath();
+    ctx.arc(pt.x, pt.y, isAct ? 7 : 5.5, 0, 2 * Math.PI);
+    ctx.fillStyle = isAct ? "var(--magenta)" : (isDep || isArr ? "#00e5ff" : "#1b2938");
+    ctx.fill();
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Callout Label Box
+    ctx.font = "bold 11px monospace";
+    const text = rp.ident;
+    const textW = ctx.measureText(text).width;
+    const boxX = pt.x + 9;
+    const boxY = pt.y - 18;
+
+    ctx.fillStyle = "rgba(13, 20, 28, 0.85)";
+    ctx.fillRect(boxX - 3, boxY - 2, textW + 6, 17);
+    ctx.strokeStyle = isAct ? "var(--magenta)" : "var(--border-card)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(boxX - 3, boxY - 2, textW + 6, 17);
+
+    ctx.fillStyle = isAct ? "#ff80e5" : "#ffffff";
+    ctx.fillText(text, boxX, boxY + 11);
+  });
+
+  // Draw Simulated Ownship Aircraft Symbol (At departure airport or along active leg)
+  if (routePoints.length > 0) {
+    const ownPt = routePoints[0].canvasPt;
+    ctx.save();
+    ctx.translate(ownPt.x, ownPt.y);
+    
+    // Draw miniature aircraft airplane icon
+    ctx.fillStyle = "var(--green)";
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    // Fuselage
+    ctx.moveTo(0, -10);
+    ctx.lineTo(2.5, -4);
+    ctx.lineTo(10, 2);
+    ctx.lineTo(10, 5);
+    ctx.lineTo(2.5, 3);
+    ctx.lineTo(2.5, 8);
+    ctx.lineTo(5.5, 11);
+    ctx.lineTo(5.5, 13);
+    ctx.lineTo(0, 11);
+    ctx.lineTo(-5.5, 13);
+    ctx.lineTo(-5.5, 11);
+    ctx.lineTo(-2.5, 8);
+    ctx.lineTo(-2.5, 3);
+    ctx.lineTo(-10, 5);
+    ctx.lineTo(-10, 2);
+    ctx.lineTo(-2.5, -4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  // Update cursor coordinate readout
+  const centerLatMin = Math.abs((mapState.centerLat % 1) * 60).toFixed(1);
+  const centerLonMin = Math.abs((mapState.centerLon % 1) * 60).toFixed(1);
+  const coordStr = `${mapState.centerLat >= 0 ? 'N' : 'S'} ${Math.floor(Math.abs(mapState.centerLat))}°${centerLatMin}' ${mapState.centerLon >= 0 ? 'E' : 'W'} ${String(Math.floor(Math.abs(mapState.centerLon))).padStart(3, '0')}°${centerLonMin}'`;
+  const coordsEl = document.getElementById("map-coords-cursor");
+  if (coordsEl) coordsEl.textContent = coordStr;
+
+  // Update Route Summary in card
+  const summaryEl = document.getElementById("map-route-summary");
+  if (summaryEl) summaryEl.textContent = "ROUTE: " + flightPlan.route.join(" ➔ ");
+  const statsEl = document.getElementById("map-quick-stats");
+  const hudDist = document.getElementById("hud-dist")?.textContent || "---";
+  const hudEte = document.getElementById("hud-ete")?.textContent || "---";
+  if (statsEl) statsEl.textContent = `${hudDist} • ${hudEte} • Altitude ${flightPlan.altitude} FT`;
+}
+
+// Initial boot
+const urlParams = new URLSearchParams(window.location.search);
+const initialTab = urlParams.get('tab') || window.location.hash.replace('#', '');
+const initialOrient = urlParams.get('orient');
+if (initialOrient === 'portrait') {
+  setOrientation('portrait');
+}
+renderFlightPlan();
+autoLoadAipCsv();
+autoLoadEnrouteCsv();
+
+if (initialTab === 'setup') {
+  switchTab('tab-setup');
+} else if (initialTab === 'brief') {
+  switchTab('tab-brief');
+} else if (initialTab === 'map') {
+  switchTab('tab-map');
+  initOrUpdateMap();
+} else {
+  switchTab('tab-route');
+}
+</script>
+
+</body>
+</html>
