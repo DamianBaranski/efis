@@ -1,5 +1,6 @@
 /// \file planning_map.h
-/// Planner Map tab: night vector chart or Esri satellite tiles, plus airspaces.
+/// Planner Map tab: night vector chart or Esri satellite tiles, plus airspaces
+/// and close-zoom obstacle markers.
 
 #ifndef PLANNING_MAP_H
 #define PLANNING_MAP_H
@@ -37,7 +38,7 @@ public:
     /// Positions the map viewport in SDL coordinates.
     void place(int x, int y, int w, int h);
 
-    /// Recentres the view on the middle of the plan and picks a fitting zoom.
+    /// Centres the map on the route and zooms so the whole plan fills the viewport.
     void fitRoute();
 
     /// Steps the zoom by `delta`. Clamps to the working range.
@@ -60,6 +61,18 @@ public:
     }
     /// True when airspace polygons are being drawn.
     bool airspaceVisible() const { return mShowAirspace; }
+
+    /// Turns IFR navaids and intersections on or off.
+    void setIfrVisible(bool visible)
+    {
+        if (mShowIfr != visible)
+        {
+            mShowIfr = visible;
+            markDirty();
+        }
+    }
+    /// True when VOR / NDB / intersection points are drawn.
+    bool ifrVisible() const { return mShowIfr; }
 
     /// Sets the airspace category filter.
     void setFilter(AirspaceFilter f)
@@ -96,7 +109,7 @@ public:
     double centerLat() const { return mCenterLat; }
     /// Longitude at the map centre.
     double centerLon() const { return mCenterLon; }
-    /// Zoom in POC units (5..14).
+    /// Zoom in planner units. Pinch and wheel; no floor on zoom-out, max 14.
     float zoomLevel() const { return mZoom; }
 
     /// Rectangle in SDL pixels.
@@ -123,6 +136,8 @@ private:
     void viewBounds(double &minLat, double &maxLat, double &minLon, double &maxLon) const;
     Point toSurf(double lat, double lon, int texW, int texH, double minLat, double maxLat, double minLon,
                  double maxLon) const;
+    void ensureOwnshipArt();
+    void drawOwnship(float glX, float glY);
 
     Screen &mScreen;
     IDataManager &mData;
@@ -130,7 +145,8 @@ private:
 
     Shader mUpload;   ///< Uploads the raster atlas into the shared texture cache.
     Render2D mPanel;  ///< One textured quad covering the map viewport.
-    Render2D mMarker; ///< Live ownship square.
+    Render2D mMarker; ///< Live ownship aircraft symbol.
+    Shader mPing;     ///< Expanding range rings around ownship.
 
     int mX = 0;
     int mY = 0;
@@ -141,6 +157,7 @@ private:
     double mCenterLon = 18.3;
     float mZoom = 7.0f;
     bool mShowAirspace = true;
+    bool mShowIfr = false;
     bool mBackgroundVector = true;
     AirspaceFilter mFilter = AirspaceFilter::All;
     bool mCentered = false;

@@ -1,6 +1,7 @@
 /// \file nav_db.cpp
-/// Lazy loaders and lookups for `airports.csv`, `enroute_points.csv`, and
-/// `airspaces.csv`. Files are parsed once and kept in memory for the session.
+/// Lazy loaders and lookups for `airports.csv`, `enroute_points.csv`,
+/// `airspaces.csv`, and OpenAIP obstacle GeoJSON. Files are parsed once and
+/// kept in memory for the session.
 #include "nav_db.h"
 
 #include "asset_path.h"
@@ -10,8 +11,10 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <nlohmann/json.hpp>
 #include <sstream>
 #include <unordered_set>
 
@@ -83,6 +86,63 @@ int findCol(const std::vector<std::string> &headers, const std::string &name)
         }
     }
     return -1;
+}
+
+int jsonInt(const nlohmann::json &obj, const char *key, int fallback = 0)
+{
+    if (!obj.contains(key) || obj[key].is_null())
+    {
+        return fallback;
+    }
+    if (obj[key].is_number_integer())
+    {
+        return obj[key].get<int>();
+    }
+    if (obj[key].is_number())
+    {
+        return static_cast<int>(obj[key].get<double>());
+    }
+    return fallback;
+}
+
+float jsonFloat(const nlohmann::json &obj, const char *key, float fallback = 0.0f)
+{
+    if (!obj.contains(key) || obj[key].is_null() || !obj[key].is_number())
+    {
+        return fallback;
+    }
+    return obj[key].get<float>();
+}
+
+float quantityToM(const nlohmann::json &qty)
+{
+    if (!qty.is_object())
+    {
+        return 0.0f;
+    }
+    const float value = jsonFloat(qty, "value", 0.0f);
+    if (value <= 0.0f)
+    {
+        return 0.0f;
+    }
+    return jsonInt(qty, "unit", 0) == 0 ? value : value * 0.3048f;
+}
+
+std::string tagValue(const nlohmann::json &tags, const char *name)
+{
+    if (!tags.is_object())
+    {
+        return {};
+    }
+    if (tags.value("key", std::string()) == name && tags.contains("value") && tags["value"].is_string())
+    {
+        return tags["value"].get<std::string>();
+    }
+    if (tags.contains(name) && tags[name].is_string())
+    {
+        return tags[name].get<std::string>();
+    }
+    return {};
 }
 } // namespace
 
@@ -205,6 +265,36 @@ void NavDb::ensureAirspacesLoaded()
     mAirspacesLoaded = true;
     loadAirspacesCsv(AssetPath::resolve("resources/airspaces/airspaces.csv"));
     std::cout << "NavDb: " << mAirspaces.size() << " airspaces loaded" << std::endl;
+}
+
+const std::vector<ObstaclePoint> &NavDb::obstacles()
+{
+    ensureObstaclesLoaded();
+    return mObstacles;
+}
+
+void NavDb::ensureObstaclesLoaded()
+{
+    if (mObstaclesLoaded)
+    {
+        return;
+    }
+    mObstaclesLoaded = true;
+    namespace fs = std::filesystem;
+    const fs::path dir(AssetPath::resolve("resources/obstacles"));
+    if (!fs::exists(dir) || !fs::is_directory(dir))
+    {
+        std::cerr << "NavDb: missing obstacle catalog " << dir << std::endl;
+        return;
+    }
+    for (const auto &entry : fs::directory_iterator(dir))
+    {
+        if (entry.path().extension() == ".geojson")
+        {
+            loadObstacleGeoJson(entry.path().string());
+        }
+    }
+    std::cout << "NavDb: " << mObstacles.size() << " obstacles loaded from " << dir << std::endl;
 }
 
 void NavDb::loadAirportsCsv(const std::string &path)
@@ -543,5 +633,77 @@ void NavDb::loadAirspacesCsv(const std::string &path)
             ring.maxLon = *std::max_element(ring.lon.begin(), ring.lon.end());
         }
         mAirspaces.push_back(std::move(ring));
+    }
+}
+
+void NavDb::loadObstacleGeoJson(const std::string &path)
+{
+    std::ifstream in(path);
+    if (!in)
+    {
+        std::cerr << "NavDb: cannot read " << path << std::endl;
+        return;
+    }
+    nlohmann::json doc = nlohmann::json::parse(in, nullptr, false);
+    if (doc.is_discarded() || !doc.is_object())
+    {
+        std::cerr << "NavDb: bad obstacle JSON " << path << std::endl;
+        return;
+    }
+    const auto &features = doc.value("features", nlohmann::json::array());
+    if (!features.is_array())
+    {
+        return;
+    }
+    for (const auto &feature : features)
+    {
+        if (!feature.is_object())
+        {
+            continue;
+        }
+        const auto &geom = feature.value("geometry", nlohmann::json::object());
+        if (geom.value("type", std::string()) != "Point")
+        {
+            continue;
+        }
+        const auto &coords = geom.value("coordinates", nlohmann::json::array());
+        if (!coords.is_array() || coords.size() < 2 || !coords[0].is_number() || !coords[1].is_number())
+        {
+            continue;
+        }
+        const auto &props = feature.value("properties", nlohmann::json::object());
+        const auto &tags = props.value("osmTags", nlohmann::json::object());
+        const std::string manMade = tagValue(tags, "man_made");
+        const std::string source = tagValue(tags, "generator:source");
+        const std::string method = tagValue(tags, "generator:method");
+        const int type = jsonInt(props, "type", -1);
+
+        ObstaclePoint point;
+        point.lon = coords[0].get<double>();
+        point.lat = coords[1].get<double>();
+        point.heightM = quantityToM(props.value("height", nlohmann::json::object()));
+        point.name = props.value("name", std::string());
+        if (point.name == "Obstacle")
+        {
+            point.name.clear();
+        }
+        if (manMade == "chimney" || type == 1)
+        {
+            point.kind = ObstaclePoint::Kind::Chimney;
+        }
+        else if (manMade == "tower" || manMade == "mast" || manMade == "communications_tower" ||
+                 manMade == "cooling_tower" || manMade == "antenna" || manMade == "crane" || type == 4)
+        {
+            point.kind = ObstaclePoint::Kind::Tower;
+        }
+        else if (source == "wind" || method == "wind_turbine" || type == 0 || type == 3)
+        {
+            point.kind = ObstaclePoint::Kind::Wind;
+        }
+        else if (type == 2)
+        {
+            point.kind = ObstaclePoint::Kind::Building;
+        }
+        mObstacles.push_back(point);
     }
 }

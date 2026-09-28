@@ -1,5 +1,5 @@
 /// \file nav_db.h
-/// Airport and enroute waypoint database used by the flight planner.
+/// Airport, enroute waypoint, airspace, and obstacle databases used by the flight planner.
 
 #ifndef NAV_DB_H
 #define NAV_DB_H
@@ -28,6 +28,25 @@ struct Waypoint
     float elevationFt = -1.0f; ///< Field elevation in feet. Negative for unknown.
     std::string country;    ///< Two-letter country code, optional.
     std::string frequency;  ///< Formatted frequency string, optional.
+};
+
+/// One OpenAIP obstacle point from the Czech / Polish GeoJSON catalogs.
+struct ObstaclePoint
+{
+    enum class Kind
+    {
+        Wind,
+        Chimney,
+        Tower,
+        Building,
+        Other,
+    };
+
+    double lat = 0.0;
+    double lon = 0.0;
+    float heightM = 0.0f;
+    std::string name;
+    Kind kind = Kind::Other;
 };
 
 /// One row of the airspaces.csv file, keyed by bounding box for cheap culling.
@@ -71,6 +90,9 @@ public:
     /// All airspace rings.
     const std::vector<AirspaceRing> &airspaces();
 
+    /// Obstacle points from `resources/obstacles/*.geojson`.
+    const std::vector<ObstaclePoint> &obstacles();
+
     /// Forces a reload of the airspace file. Used by the planner "Load AIP" button.
     void reloadAirspaces();
 
@@ -79,9 +101,11 @@ private:
 
     void ensureWaypointsLoaded();
     void ensureAirspacesLoaded();
+    void ensureObstaclesLoaded();
     void loadAirportsCsv(const std::string &path);
     void loadEnrouteCsv(const std::string &path);
     void loadAirspacesCsv(const std::string &path);
+    void loadObstacleGeoJson(const std::string &path);
     void indexWaypoint(const Waypoint &wpt);
 
     static std::string upper(std::string s);
@@ -89,9 +113,11 @@ private:
 
     bool mWaypointsLoaded = false;
     bool mAirspacesLoaded = false;
+    bool mObstaclesLoaded = false;
     std::vector<Waypoint> mWaypoints;
     std::unordered_map<std::string, size_t> mIndex;
     std::vector<AirspaceRing> mAirspaces;
+    std::vector<ObstaclePoint> mObstacles;
 };
 
 #endif

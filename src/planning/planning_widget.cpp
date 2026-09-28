@@ -1163,17 +1163,17 @@ void PlanningWidget::drawMapTab()
     Render2D &cbg = nextDraw();
     cbg.drawRectangle(pad, mScreenH - controlsY - controlsH, contentW, controlsH, kCard);
     int cx = pad + 12;
-    drawButton("plan-map-zin", "ZOOM +", cx, controlsY + 10, 110, 48, kButtonBg, kInk, 16.0f,
-               [this] { mMap.zoom(+1); });
-    cx += 118;
-    drawButton("plan-map-zout", "ZOOM -", cx, controlsY + 10, 110, 48, kButtonBg, kInk, 16.0f,
-               [this] { mMap.zoom(-1); });
-    cx += 118;
     drawButton("plan-map-fit", "FIT", cx, controlsY + 10, 96, 48, kButtonBg, kInk, 16.0f, [this] { mMap.fitRoute(); });
     cx += 104;
     drawButton("plan-map-as", mMap.airspaceVisible() ? "AS ON" : "AS OFF", cx, controlsY + 10, 110, 48,
                mMap.airspaceVisible() ? kButtonBgHi : kButtonBg, kInk, 16.0f,
                [this] { mMap.setAirspaceVisible(!mMap.airspaceVisible()); });
+    cx += 118;
+    drawButton("plan-map-ifr", mMap.ifrVisible() ? "IFR ON" : "IFR OFF", cx, controlsY + 10, 110, 48,
+               mMap.ifrVisible() ? kButtonBgHi : kButtonBg, kInk, 16.0f, [this] {
+                   mMap.setIfrVisible(!mMap.ifrVisible());
+                   showToast(mMap.ifrVisible() ? "IFR POINTS ON" : "IFR POINTS OFF");
+               });
     cx += 118;
     drawButton("plan-map-bg", mMap.backgroundLabel(), cx, controlsY + 10, 130, 48, kButtonBg, kInk, 16.0f, [this] {
         mMap.toggleBackground();

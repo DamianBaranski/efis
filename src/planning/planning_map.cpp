@@ -1,6 +1,6 @@
 /// \file planning_map.cpp
 /// Rasterizes the planner chart to one texture: night vector or Esri satellite
-/// tiles, then airspaces, navaids, and the route. Drawn with Render2D.
+/// tiles, then airspaces, navaids, obstacles, and the route. Drawn with Render2D.
 #include "planning_map.h"
 
 #include "asset_path.h"
@@ -16,17 +16,27 @@
 #include <cctype>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
 namespace
 {
 constexpr float kPi = 3.14159265358979323846f;
-constexpr int kZoomMin = 5;
 constexpr int kZoomMax = 14;
-constexpr int kMaxFixesDrawn = 200;
+constexpr float kCloseZoom = 8.0f; ///< Same threshold as non-ICAO airport names.
 constexpr int kMaxAirspaceFills = 48;
+constexpr int kOwnshipPx = 28;
+constexpr float kPingPeriodS = 3.0f;
+constexpr float kPingR0 = 16.0f;
+constexpr float kPingR1 = 92.0f;
+constexpr float kPingStroke = 1.0f;
+constexpr int kPingSegs = 72;
+constexpr int kMaxObstacleLabels = 48;
 const char *kAtlasName = "planmap-atlas";
+const char *kOwnshipTex = "plan-ownship";
 
 struct TexPt
 {
@@ -105,6 +115,46 @@ void fillRing(SDL_Surface *surface, const TexPt *pts, int count, Uint32 pixel)
     }
 }
 
+void fillTriangle(SDL_Surface *surface, int x0, int y0, int x1, int y1, int x2, int y2, Uint32 pixel)
+{
+    const int minX = std::max(0, std::min({x0, x1, x2}));
+    const int maxX = std::min(surface != nullptr ? surface->w - 1 : 0, std::max({x0, x1, x2}));
+    const int minY = std::max(0, std::min({y0, y1, y2}));
+    const int maxY = std::min(surface != nullptr ? surface->h - 1 : 0, std::max({y0, y1, y2}));
+    if (surface == nullptr || minX > maxX || minY > maxY)
+    {
+        return;
+    }
+    const auto edge = [](int ax, int ay, int bx, int by, int cx, int cy) {
+        return static_cast<long>(bx - ax) * static_cast<long>(cy - ay) -
+               static_cast<long>(by - ay) * static_cast<long>(cx - ax);
+    };
+    const long area = edge(x0, y0, x1, y1, x2, y2);
+    if (area == 0)
+    {
+        return;
+    }
+    for (int y = minY; y <= maxY; ++y)
+    {
+        for (int x = minX; x <= maxX; ++x)
+        {
+            const long w0 = edge(x1, y1, x2, y2, x, y);
+            const long w1 = edge(x2, y2, x0, y0, x, y);
+            const long w2 = edge(x0, y0, x1, y1, x, y);
+            if ((w0 >= 0 && w1 >= 0 && w2 >= 0) || (w0 <= 0 && w1 <= 0 && w2 <= 0))
+            {
+                putPixel(surface, x, y, pixel);
+            }
+        }
+    }
+}
+
+void paintIfrTriangle(SDL_Surface *surface, int cx, int cy, int size, Uint32 pixel)
+{
+    const int s = std::max(3, size);
+    fillTriangle(surface, cx, cy - s, cx - s, cy + s, cx + s, cy + s, pixel);
+}
+
 void paintDisk(SDL_Surface *surface, int cx, int cy, int radius, Uint32 pixel)
 {
     const int r2 = radius * radius;
@@ -127,6 +177,24 @@ bool isPublishedIcao(const std::string &ident)
         return false;
     }
     if (ident.rfind("AF", 0) == 0)
+    {
+        return false;
+    }
+    for (char c : ident)
+    {
+        if (c < 'A' || c > 'Z')
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+/// Five-letter ICAO RNAV enroute intersections (ANAKO, GUBKO). Drops SID/STAR
+/// numbered procedure waypoints such as PR530.
+bool isEnrouteIfrFix(const std::string &ident)
+{
+    if (ident.size() != 5)
     {
         return false;
     }
@@ -208,6 +276,53 @@ void paintMapLabel(SDL_Surface *surface, int cx, int cy, const std::string &text
     dst.h = label->h;
     SDL_BlitSurface(label, nullptr, surface, &dst);
     SDL_FreeSurface(label);
+}
+
+void paintHaloLabel(SDL_Surface *surface, int cx, int cy, const std::string &text, int fontPx, SDL_Color color)
+{
+    const SDL_Color ink{8, 10, 14, 255};
+    paintMapLabel(surface, cx - 1, cy, text, fontPx, ink);
+    paintMapLabel(surface, cx + 1, cy, text, fontPx, ink);
+    paintMapLabel(surface, cx, cy - 1, text, fontPx, ink);
+    paintMapLabel(surface, cx, cy + 1, text, fontPx, ink);
+    paintMapLabel(surface, cx, cy, text, fontPx, color);
+}
+
+const char *obstacleKindWord(ObstaclePoint::Kind kind)
+{
+    switch (kind)
+    {
+    case ObstaclePoint::Kind::Wind:
+        return "WIND";
+    case ObstaclePoint::Kind::Chimney:
+        return "CHIMNEY";
+    case ObstaclePoint::Kind::Tower:
+        return "TOWER";
+    case ObstaclePoint::Kind::Building:
+        return "BLDG";
+    default:
+        return "OBST";
+    }
+}
+
+std::string obstacleLabel(const ObstaclePoint &obs)
+{
+    std::string text = obs.name;
+    if (text.empty())
+    {
+        text = obstacleKindWord(obs.kind);
+    }
+    else
+    {
+        text = shortenUtf8(text, 16);
+    }
+    if (obs.heightM > 1.0f)
+    {
+        char buf[24];
+        std::snprintf(buf, sizeof(buf), " %.0fm", static_cast<double>(obs.heightM));
+        text += buf;
+    }
+    return text;
 }
 
 void paintLine(SDL_Surface *surface, float x0, float y0, float x1, float y1, float width, Uint32 pixel)
@@ -379,6 +494,41 @@ double tileNorthLat(int zoom, int y)
     const double yNorm = static_cast<double>(y) / n;
     return std::atan(std::sinh(kPi * (1.0 - 2.0 * yNorm))) * 180.0 / static_cast<double>(kPi);
 }
+
+void appendAnnulus(Triangles &mesh, float cx, float cy, float rInner, float rOuter, int segs)
+{
+    if (rOuter <= rInner || segs < 8)
+    {
+        return;
+    }
+    const GLuint base = static_cast<GLuint>(mesh.vertex.size());
+    for (int i = 0; i <= segs; ++i)
+    {
+        const float a = static_cast<float>(i) / static_cast<float>(segs) * 2.0f * kPi;
+        const float c = std::cos(a);
+        const float s = std::sin(a);
+        VertexTexture outer{};
+        outer.vertex.x = cx + c * rOuter;
+        outer.vertex.y = cy + s * rOuter;
+        VertexTexture inner{};
+        inner.vertex.x = cx + c * rInner;
+        inner.vertex.y = cy + s * rInner;
+        inner.textureCoord.x = 1.0f;
+        inner.textureCoord.y = 1.0f;
+        mesh.vertex.push_back(outer);
+        mesh.vertex.push_back(inner);
+    }
+    for (int i = 0; i < segs; ++i)
+    {
+        const GLuint i0 = base + static_cast<GLuint>(i * 2);
+        mesh.indices.push_back(i0);
+        mesh.indices.push_back(i0 + 1);
+        mesh.indices.push_back(i0 + 2);
+        mesh.indices.push_back(i0 + 1);
+        mesh.indices.push_back(i0 + 3);
+        mesh.indices.push_back(i0 + 2);
+    }
+}
 } // namespace
 
 PlanningMap::PlanningMap(Screen &screen, IDataManager &data, FlightPlan &plan)
@@ -429,34 +579,31 @@ void PlanningMap::fitRoute()
         mCenterLat = 50.6;
         mCenterLon = 18.3;
         mZoom = 7.0f;
+        mCentered = true;
+        markDirty();
+        return;
     }
-    else
-    {
-        mCenterLat = (minLat + maxLat) / 2.0;
-        mCenterLon = (minLon + maxLon) / 2.0;
-        const double latSpan = std::max(0.05, maxLat - minLat);
-        const double lonSpan = std::max(0.05, maxLon - minLon);
-        const double span = std::max(latSpan, lonSpan);
-        const double target = static_cast<double>(std::min(mW, mH)) * 0.35;
-        double bestZoom = 5.0;
-        for (int z = kZoomMin; z <= 11; ++z)
-        {
-            const double s = std::pow(1.8, static_cast<double>(z)) * 22.0;
-            if (span * s <= target)
-            {
-                bestZoom = static_cast<double>(z);
-            }
-        }
-        mZoom = static_cast<float>(bestZoom);
-    }
+
+    mCenterLat = (minLat + maxLat) / 2.0;
+    mCenterLon = (minLon + maxLon) / 2.0;
+    const double latSpan = std::max(0.02, maxLat - minLat);
+    const double lonSpan = std::max(0.02, maxLon - minLon);
+    const double cosLat = std::max(0.15, std::cos(mCenterLat * kPi / 180.0));
+    const double mapW = static_cast<double>(std::max(1, mW));
+    const double mapH = static_cast<double>(std::max(1, mH));
+    constexpr double kFill = 0.82;
+    const double scaleLat = (mapH * kFill) / latSpan;
+    const double scaleLon = (mapW * kFill) / (lonSpan * cosLat);
+    const double scale = std::min(scaleLat, scaleLon);
+    const double z = std::log(std::max(1.0e-6, scale / 22.0)) / std::log(1.8);
+    mZoom = std::min(static_cast<float>(z), static_cast<float>(kZoomMax));
     mCentered = true;
     markDirty();
 }
 
 void PlanningMap::zoom(int delta)
 {
-    const float next = std::clamp(mZoom + static_cast<float>(delta), static_cast<float>(kZoomMin),
-                                  static_cast<float>(kZoomMax));
+    const float next = std::min(mZoom + static_cast<float>(delta), static_cast<float>(kZoomMax));
     if (next != mZoom)
     {
         mZoom = next;
@@ -471,7 +618,7 @@ void PlanningMap::zoomFine(float delta)
 
 void PlanningMap::zoomAt(float delta, int x, int y)
 {
-    const float next = std::clamp(mZoom + delta, static_cast<float>(kZoomMin), static_cast<float>(kZoomMax));
+    const float next = std::min(mZoom + delta, static_cast<float>(kZoomMax));
     if (next == mZoom || mW <= 0 || mH <= 0)
     {
         return;
@@ -858,9 +1005,18 @@ void PlanningMap::rasterize()
         const Uint32 airportPx = SDL_MapRGBA(surface->format, 0, 229, 255, 230);
         const Uint32 stripPx = SDL_MapRGBA(surface->format, 120, 210, 255, 210);
         const Uint32 fixPx = SDL_MapRGBA(surface->format, 153, 177, 192, 200);
+        std::unordered_set<std::string> routeIdents;
+        for (const std::string &ident : mPlan.route())
+        {
+            std::string key = ident;
+            toUpperInPlace(key);
+            if (!key.empty())
+            {
+                routeIdents.insert(std::move(key));
+            }
+        }
         const std::vector<Waypoint> &wpts = NavDb::instance().waypoints();
-        int fixDrawn = 0;
-        const int airportR = mZoom >= 8.0f ? 3 : (mZoom >= 6.0f ? 2 : 1);
+        const int airportR = mZoom >= kCloseZoom ? 3 : (mZoom >= 6.0f ? 2 : 1);
         for (const Waypoint &wpt : wpts)
         {
             if (!inBox(wpt.lat, wpt.lat, wpt.lon, wpt.lon))
@@ -879,16 +1035,101 @@ void PlanningMap::rasterize()
                 {
                     paintMapLabel(surface, ax, ay, wpt.ident, 12, SDL_Color{0, 229, 255, 255});
                 }
-                else if (mZoom >= 8.0f && !wpt.name.empty())
+                else if (mZoom >= kCloseZoom && !wpt.name.empty())
                 {
                     paintMapLabel(surface, ax, ay, shortenUtf8(wpt.name, 18), 10, SDL_Color{160, 220, 240, 230});
                 }
             }
-            else if (mZoom >= 8.0f && fixDrawn < kMaxFixesDrawn)
+            else if (mShowIfr)
             {
-                paintDisk(surface, static_cast<int>(std::lround(p.x)), static_cast<int>(std::lround(p.y)), 1, fixPx);
-                ++fixDrawn;
+                const bool navaid = wpt.kind == Waypoint::Kind::Vor || wpt.kind == Waypoint::Kind::Ndb;
+                const bool rnavFix = isEnrouteIfrFix(wpt.ident);
+                if (!navaid && !rnavFix)
+                {
+                    continue;
+                }
+                if (isEnrouteIfrFix(wpt.ident) && routeIdents.count(wpt.ident) != 0)
+                {
+                    continue;
+                }
+                const int fx = static_cast<int>(std::lround(p.x));
+                const int fy = static_cast<int>(std::lround(p.y));
+                Uint32 px = fixPx;
+                int tri = 4;
+                SDL_Color labelCol{180, 196, 210, 230};
+                if (wpt.kind == Waypoint::Kind::Vor)
+                {
+                    px = SDL_MapRGBA(surface->format, 255, 80, 200, 230);
+                    tri = 6;
+                    labelCol = SDL_Color{255, 140, 220, 255};
+                }
+                else if (wpt.kind == Waypoint::Kind::Ndb)
+                {
+                    px = SDL_MapRGBA(surface->format, 255, 183, 0, 230);
+                    tri = 5;
+                    labelCol = SDL_Color{255, 200, 80, 255};
+                }
+                paintIfrTriangle(surface, fx, fy, tri, px);
+                const std::string &label = !wpt.ident.empty() ? wpt.ident : wpt.name;
+                if (!label.empty())
+                {
+                    paintMapLabel(surface, fx, fy, label, 10, labelCol);
+                }
             }
+        }
+    }
+
+    if (mZoom >= kCloseZoom)
+    {
+        const Uint32 windPx = SDL_MapRGBA(surface->format, 244, 244, 244, 230);
+        const Uint32 chimneyPx = SDL_MapRGBA(surface->format, 226, 90, 40, 240);
+        const Uint32 towerPx = SDL_MapRGBA(surface->format, 240, 192, 48, 240);
+        const Uint32 buildingPx = SDL_MapRGBA(surface->format, 138, 160, 192, 230);
+        const Uint32 otherPx = SDL_MapRGBA(surface->format, 200, 200, 200, 220);
+        auto obstColor = [&](ObstaclePoint::Kind kind) {
+            switch (kind)
+            {
+            case ObstaclePoint::Kind::Wind:
+                return windPx;
+            case ObstaclePoint::Kind::Chimney:
+                return chimneyPx;
+            case ObstaclePoint::Kind::Tower:
+                return towerPx;
+            case ObstaclePoint::Kind::Building:
+                return buildingPx;
+            default:
+                return otherPx;
+            }
+        };
+        struct ObstLabel
+        {
+            int x = 0;
+            int y = 0;
+            float heightM = 0.0f;
+            const ObstaclePoint *obs = nullptr;
+        };
+        std::vector<ObstLabel> labels;
+        labels.reserve(64);
+        for (const ObstaclePoint &obs : NavDb::instance().obstacles())
+        {
+            if (!inBox(obs.lat, obs.lat, obs.lon, obs.lon))
+            {
+                continue;
+            }
+            const Point p = toSurf(obs.lat, obs.lon, texW, texH, minLat, maxLat, minLon, maxLon);
+            const int ox = static_cast<int>(std::lround(p.x));
+            const int oy = static_cast<int>(std::lround(p.y));
+            const int radius = obs.heightM >= 100.0f ? 3 : 2;
+            paintDisk(surface, ox, oy, radius, obstColor(obs.kind));
+            labels.push_back({ox, oy, obs.heightM, &obs});
+        }
+        std::sort(labels.begin(), labels.end(),
+                  [](const ObstLabel &a, const ObstLabel &b) { return a.heightM > b.heightM; });
+        const size_t labelLimit = std::min(labels.size(), static_cast<size_t>(kMaxObstacleLabels));
+        for (size_t i = 0; i < labelLimit; ++i)
+        {
+            const ObstLabel &row = labels[i];
+            paintMapLabel(surface, row.x, row.y, obstacleLabel(*row.obs), 10, SDL_Color{240, 220, 160, 240});
         }
     }
 
@@ -921,9 +1162,37 @@ void PlanningMap::rasterize()
         {
             continue;
         }
-        const int radius = (i == 0 || i + 1 == route.size()) ? 5 : 3;
-        paintDisk(surface, static_cast<int>(std::lround(routePts[i].x)), static_cast<int>(std::lround(routePts[i].y)),
-                  radius, routePx);
+        const int rx = static_cast<int>(std::lround(routePts[i].x));
+        const int ry = static_cast<int>(std::lround(routePts[i].y));
+        std::string ident = route[i];
+        toUpperInPlace(ident);
+        if (isEnrouteIfrFix(ident))
+        {
+            const Uint32 outline = SDL_MapRGBA(surface->format, 8, 10, 14, 255);
+            paintIfrTriangle(surface, rx, ry, 9, outline);
+            paintIfrTriangle(surface, rx, ry, 7, routePx);
+        }
+        else
+        {
+            const int radius = (i == 0 || i + 1 == route.size()) ? 5 : 3;
+            paintDisk(surface, rx, ry, radius, routePx);
+        }
+    }
+    for (size_t i = 0; i < route.size(); ++i)
+    {
+        if (!routeOk[i])
+        {
+            continue;
+        }
+        std::string ident = route[i];
+        toUpperInPlace(ident);
+        if (!isEnrouteIfrFix(ident))
+        {
+            continue;
+        }
+        const int rx = static_cast<int>(std::lround(routePts[i].x));
+        const int ry = static_cast<int>(std::lround(routePts[i].y));
+        paintHaloLabel(surface, rx, ry, ident, 14, SDL_Color{255, 80, 220, 255});
     }
 
     // Cyan frame so a failed overlay still shows a chart boundary.
@@ -986,13 +1255,87 @@ void PlanningMap::render()
         inBox(loc.latitude, loc.latitude, loc.longitude, loc.longitude))
     {
         const Point p = project(loc.latitude, loc.longitude);
-        const int size = 8;
-        const int mx = static_cast<int>(std::lround(p.x)) - size / 2;
-        const int my = scrH - static_cast<int>(std::lround(p.y)) - size / 2;
-        mMarker.drawRectangle(mx, my, size, size, 0x39FF6AFFu);
-        mMarker.setTransformationMatrix(identity);
-        mMarker.render();
+        drawOwnship(p.x, static_cast<float>(scrH) - p.y);
     }
 
     glDisable(GL_SCISSOR_TEST);
+}
+
+void PlanningMap::ensureOwnshipArt()
+{
+    static bool ready = false;
+    if (ready)
+    {
+        return;
+    }
+    ready = true;
+    SDL_Surface *art = SDL_CreateRGBSurfaceWithFormat(0, 64, 64, 32, SDL_PIXELFORMAT_RGBA32);
+    if (art == nullptr)
+    {
+        return;
+    }
+    SDL_FillRect(art, nullptr, SDL_MapRGBA(art->format, 0, 0, 0, 0));
+    const Uint32 outline = SDL_MapRGBA(art->format, 10, 32, 16, 255);
+    const Uint32 fill = SDL_MapRGBA(art->format, 57, 255, 106, 255);
+    const Uint32 core = SDL_MapRGBA(art->format, 240, 255, 246, 255);
+    fillTriangle(art, 32, 2, 6, 60, 58, 60, outline);
+    fillTriangle(art, 32, 10, 14, 54, 50, 54, fill);
+    paintDisk(art, 32, 40, 4, core);
+    mUpload.setTexture(kOwnshipTex, art);
+}
+
+void PlanningMap::drawOwnship(float glX, float glY)
+{
+    ensureOwnshipArt();
+
+    const int scrW = mScreen.getWidth();
+    const int scrH = mScreen.getHeight();
+    glm::mat4 mvp(1.0f);
+    mvp[0][0] = 2.0f / static_cast<float>(scrW);
+    mvp[1][1] = 2.0f / static_cast<float>(scrH);
+    mvp[3][0] = -1.0f;
+    mvp[3][1] = -1.0f;
+    mvp[3][2] = -0.02f;
+    mPing.setMvpMatrix(mvp);
+
+    const float t = static_cast<float>(SDL_GetTicks64()) / 1000.0f;
+    std::vector<Triangles> rings;
+    rings.reserve(2);
+    for (int i = 0; i < 2; ++i)
+    {
+        float phase = std::fmod(t / kPingPeriodS + static_cast<float>(i) * 0.5f, 1.0f);
+        if (phase < 0.0f)
+        {
+            phase += 1.0f;
+        }
+        const float radius = kPingR0 + (kPingR1 - kPingR0) * phase;
+        const float inner = std::max(0.25f, radius - kPingStroke * 0.5f);
+        const float outer = inner + kPingStroke;
+        const float fade = (1.0f - phase) * (1.0f - phase);
+        const uint8_t alpha = static_cast<uint8_t>(std::lround(fade * 220.0f));
+        if (alpha < 10)
+        {
+            continue;
+        }
+        const uint32_t rgba = 0x39FF6A00u | static_cast<uint32_t>(alpha);
+        const std::string name = std::string("plan-ownship-ping-") + std::to_string(i);
+        mPing.setColor(name, rgba);
+        Triangles mesh;
+        mesh.material = name;
+        appendAnnulus(mesh, glX, glY, inner, outer, kPingSegs);
+        rings.push_back(std::move(mesh));
+    }
+    mPing.clearGeometry();
+    if (!rings.empty())
+    {
+        mPing.setTriangles(rings);
+        mPing.render();
+    }
+
+    const int size = kOwnshipPx;
+    const int mx = static_cast<int>(std::lround(glX)) - size / 2;
+    const int my = static_cast<int>(std::lround(glY)) - size / 2;
+    mMarker.drawTexture(kOwnshipTex, mx, my, size, size);
+    mMarker.setTransformationMatrix(glm::mat4(1.0f));
+    mMarker.render();
 }
