@@ -2,6 +2,7 @@
 /// Draws the bottom-right HSI from heading, position, and a fixed waypoint.
 #include "hsi_widget.h"
 #include "data_manager_sim.h"
+#include "flight_plan.h"
 #include "geo_coord_utils.h"
 #include <GLES3/gl3.h>
 #include <algorithm>
@@ -296,15 +297,29 @@ void HsiWidget::render()
     const LocationData &place = mData.getLocationData();
     const float headingDeg = wrap360(attitude.heading * 180.0f / kPi);
 
-    const double dNorth = (kWptLat - place.latitude) * 111320.0;
-    const double dEast = (kWptLon - place.longitude) * 111320.0 * std::cos(place.latitude * kPi / 180.0);
+    // Resolve which waypoint the HSI should point at. Default is the classic
+    // EPWR-from-EPMR picture; when the planner arms a leg those overrides win.
+    double wptLat = kWptLat;
+    double wptLon = kWptLon;
+    std::string wptId = kWptId;
+    double homeLat = DataManagerSim::kEpmrLatitude;
+    double homeLon = DataManagerSim::kEpmrLongitude;
+    if (mPlan != nullptr && mPlan->armed())
+    {
+        wptLat = mPlan->armedToLat();
+        wptLon = mPlan->armedToLon();
+        wptId = mPlan->armedToIdent();
+        homeLat = mPlan->armedFromLat();
+        homeLon = mPlan->armedFromLon();
+    }
+
+    const double dNorth = (wptLat - place.latitude) * 111320.0;
+    const double dEast = (wptLon - place.longitude) * 111320.0 * std::cos(place.latitude * kPi / 180.0);
     const double distM = std::hypot(dNorth, dEast);
     const float bearingDeg = wrap360(static_cast<float>(std::atan2(dEast, dNorth) * 180.0 / kPi));
 
-    const double homeLat = DataManagerSim::kEpmrLatitude;
-    const double homeLon = DataManagerSim::kEpmrLongitude;
-    const double courseEast = (kWptLon - homeLon) * 111320.0 * std::cos(homeLat * kPi / 180.0);
-    const double courseNorth = (kWptLat - homeLat) * 111320.0;
+    const double courseEast = (wptLon - homeLon) * 111320.0 * std::cos(homeLat * kPi / 180.0);
+    const double courseNorth = (wptLat - homeLat) * 111320.0;
     const double course = std::atan2(courseEast, courseNorth);
     const double relNorth = (place.latitude - homeLat) * 111320.0;
     const double relEast = (place.longitude - homeLon) * 111320.0 * std::cos(homeLat * kPi / 180.0);
@@ -352,7 +367,7 @@ void HsiWidget::render()
     const auto xte = at(358.0f, 384.0f);
     const auto xteV = at(358.0f, 412.0f);
     paintGlyph(mWptLbl, "hsi-wpt-lbl", "WPT", labelPx, kMuted, wpt.first, wpt.second, 0.0f);
-    paintGlyph(mWptVal, "hsi-wpt-val", kWptId, valuePx, kGreenText, wptV.first, wptV.second, 0.0f);
+    paintGlyph(mWptVal, std::string("hsi-wpt-val-") + wptId, wptId, valuePx, kGreenText, wptV.first, wptV.second, 0.0f);
     paintGlyph(mBrgLbl, "hsi-brg-lbl", "BRG", labelPx, kMuted, brg.first, brg.second, 0.0f);
     paintGlyph(mBrgVal, "hsi-brg-val", brgBuf, valuePx, kGreenText, brgV.first, brgV.second, 0.0f);
     paintGlyph(mDistLbl, "hsi-dist-lbl", "DIST", labelPx, kMuted, dist.first, dist.second, 0.0f);

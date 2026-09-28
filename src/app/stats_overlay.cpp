@@ -577,6 +577,10 @@ void StatsOverlay::drawPreload()
 void StatsOverlay::render()
 {
     tickFps();
+    if (mController.view() == ViewMode::Planning)
+    {
+        return;
+    }
     if (mController.statsVisible())
     {
         drawStats();

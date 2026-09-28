@@ -11,6 +11,8 @@
 #include <memory>
 #include <string>
 
+class FlightPlan;
+
 /// FROM, TO, and the distance / ETE / ETA columns centered under the AHRS.
 class RouteStrip : public IWidget
 {
@@ -18,6 +20,11 @@ public:
     /// \param frame Loop that draws this widget. Must outlive it.
     /// \param data Situation source. Must outlive this object.
     RouteStrip(Frame &frame, IDataManager &data);
+
+    /// Uses the shared plan's armed leg for FROM / TO. Null returns the strip to
+    /// the built-in EPMR -> EPWR default.
+    /// \param plan Optional plan. Must outlive this object.
+    void setFlightPlan(const FlightPlan *plan) { mPlan = plan; }
 
     /// Draws the plate, the leg, and the three readouts.
     void render() override;
@@ -38,6 +45,7 @@ private:
                     float x, float y);
 
     IDataManager &mData;
+    const FlightPlan *mPlan = nullptr;
     Shader mShader;
     bool mColorsReady = false;
 

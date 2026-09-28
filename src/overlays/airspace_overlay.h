@@ -94,6 +94,7 @@ private:
     void loadAirportElev();
     void loadCatalog();
     void loadGeoJson(const std::string &path);
+    void loadCsv(const std::string &path);
     void dropDuplicateRmz();
     void rebuild(double latitude, double longitude);
     void refreshLabels();

@@ -24,6 +24,10 @@ public:
     /// \param session Situation feed the SOURCES tab switches.
     Hud(Frame &frame, AppController &controller, IWorldRead &world, ISession &session);
 
+    /// Menu widget owned by this HUD. Exposed so overlays can gate their input
+    /// dispatch on whether the menu is currently open.
+    MenuWidget &menu() { return mMenu; }
+
 private:
     SettingsPopup mSettings;
     StatsOverlay mStats;

@@ -619,15 +619,170 @@ void AirspaceOverlay::loadCatalog()
         std::cerr << "Airspace overlay: missing " << dir << std::endl;
         return;
     }
-    for (const auto &entry : fs::directory_iterator(dir))
+
+    // Check if airspaces.csv exists; if so, load from CSV directly
+    const fs::path csvPath = dir / "airspaces.csv";
+    if (fs::exists(csvPath))
     {
-        if (entry.path().extension() == ".geojson")
+        loadCsv(csvPath.string());
+    }
+
+    // If no CSV or catalog still empty, fallback to reading individual GeoJSON files
+    if (mCatalog.empty())
+    {
+        for (const auto &entry : fs::directory_iterator(dir))
         {
-            loadGeoJson(entry.path().string());
+            if (entry.path().extension() == ".geojson")
+            {
+                loadGeoJson(entry.path().string());
+            }
+        }
+        dropDuplicateRmz();
+    }
+    std::cout << "Airspace overlay loaded " << mCatalog.size() << " volumes from " << dir << std::endl;
+}
+
+void AirspaceOverlay::loadCsv(const std::string &path)
+{
+    std::ifstream in(path);
+    if (!in)
+    {
+        std::cerr << "Airspace overlay: cannot read " << path << std::endl;
+        return;
+    }
+
+    std::string line;
+    if (!std::getline(in, line))
+    {
+        return;
+    }
+
+    // Parse header to find column indices
+    std::vector<std::string> headers;
+    {
+        std::stringstream ss(line);
+        std::string col;
+        while (std::getline(ss, col, ','))
+        {
+            headers.push_back(col);
         }
     }
-    dropDuplicateRmz();
-    std::cout << "Airspace overlay loaded " << mCatalog.size() << " volumes from " << dir << std::endl;
+
+    auto findCol = [&](const std::string &colName) -> int {
+        for (size_t i = 0; i < headers.size(); ++i)
+        {
+            if (headers[i] == colName)
+                return static_cast<int>(i);
+        }
+        return -1;
+    };
+
+    const int nameIdx = findCol("name");
+    const int typeIdIdx = findCol("type_id");
+    const int floorIdx = findCol("floor");
+    const int ceilIdx = findCol("ceiling");
+    const int lowerMIdx = findCol("lower_m");
+    const int upperMIdx = findCol("upper_m");
+    const int polyIdx = findCol("polygon");
+
+    if (nameIdx == -1 || polyIdx == -1)
+    {
+        std::cerr << "Airspace overlay: invalid CSV format in " << path << std::endl;
+        return;
+    }
+
+    while (std::getline(in, line))
+    {
+        if (line.empty()) continue;
+
+        // Fast CSV line splitting respecting quotes
+        std::vector<std::string> row;
+        std::string current;
+        bool inQuotes = false;
+        for (size_t i = 0; i < line.length(); ++i)
+        {
+            char ch = line[i];
+            if (ch == '"')
+            {
+                if (inQuotes && i + 1 < line.length() && line[i + 1] == '"')
+                {
+                    current += '"';
+                    ++i;
+                }
+                else
+                {
+                    inQuotes = !inQuotes;
+                }
+            }
+            else if (ch == ',' && !inQuotes)
+            {
+                row.push_back(current);
+                current.clear();
+            }
+            else
+            {
+                current += ch;
+            }
+        }
+        row.push_back(current);
+
+        if (row.size() <= static_cast<size_t>(polyIdx))
+        {
+            continue;
+        }
+
+        const int typeId = (typeIdIdx != -1 && !row[typeIdIdx].empty()) ? std::stoi(row[typeIdIdx]) : 4;
+        if (!kDrawTypes.count(typeId))
+        {
+            continue;
+        }
+
+        // Parse lat,lon;lat,lon;...
+        const std::string &polyStr = row[polyIdx];
+        std::vector<Point> ring;
+        std::stringstream ssPoly(polyStr);
+        std::string ptStr;
+        while (std::getline(ssPoly, ptStr, ';'))
+        {
+            if (ptStr.empty()) continue;
+            auto comma = ptStr.find(',');
+            if (comma == std::string::npos) continue;
+            try
+            {
+                Point pt;
+                pt.lat = std::stod(ptStr.substr(0, comma));
+                pt.lon = std::stod(ptStr.substr(comma + 1));
+                ring.push_back(pt);
+            }
+            catch (...)
+            {
+            }
+        }
+
+        if (ring.size() < 3)
+        {
+            continue;
+        }
+
+        Volume volume;
+        volume.name = row[nameIdx];
+        volume.type = typeId;
+        volume.ring = openRing(std::move(ring));
+        fillCentroid(volume);
+
+        const float ground = nearestGroundM(volume.centLat, volume.centLon);
+        volume.lowerM = (lowerMIdx != -1 && !row[lowerMIdx].empty()) ? std::stof(row[lowerMIdx]) : ground;
+        volume.upperM = (upperMIdx != -1 && !row[upperMIdx].empty()) ? std::stof(row[upperMIdx]) : ground + 1000.0f;
+        volume.lowerLabel = (floorIdx != -1) ? row[floorIdx] : "GND";
+        volume.upperLabel = (ceilIdx != -1) ? row[ceilIdx] : "FL095";
+
+        if (volume.upperM <= volume.lowerM + kMinThicknessM || volume.upperM > kMaxCeilingM)
+        {
+            continue;
+        }
+
+        mCatalog.push_back(std::move(volume));
+    }
 }
 
 void AirspaceOverlay::loadGeoJson(const std::string &path)

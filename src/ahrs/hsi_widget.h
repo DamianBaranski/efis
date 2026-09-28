@@ -11,6 +11,8 @@
 #include <memory>
 #include <string>
 
+class FlightPlan;
+
 /// AV-30 style HSI. A fit test draws four copies, two along each side.
 /// The bezel and the black disc outside the rose are omitted. A dim plate
 /// inside the rose keeps the readouts legible over the terrain.
@@ -31,6 +33,11 @@ public:
     /// \param data Situation source. Must outlive this object.
     /// \param slot Test placement. Four copies cover both sides.
     HsiWidget(Frame &frame, IDataManager &data, Slot slot);
+
+    /// Points this HSI at the shared flight plan's armed leg. When the plan is
+    /// not armed the fallback EPWR waypoint is used.
+    /// \param plan Optional plan. May be null to detach. Must outlive this object.
+    void setFlightPlan(const FlightPlan *plan) { mPlan = plan; }
 
     /// Draws the rose, deviation bars, and the four readouts.
     void render() override;
@@ -53,6 +60,7 @@ private:
                     float x, float y, float rotRad);
 
     IDataManager &mData;
+    const FlightPlan *mPlan = nullptr;
     Slot mSlot;
     Shader mShader;
     bool mColorsReady = false;

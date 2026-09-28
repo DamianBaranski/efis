@@ -21,6 +21,7 @@ set(EFIS_INCLUDE_DIRS
     src/terrain
     src/map
     src/overlays
+    src/planning
     src/voice
     src/ui
     src/platform
@@ -57,6 +58,10 @@ set(SRC
     src/overlays/airspace_overlay.cpp
     src/overlays/vrp_overlay.cpp
     src/overlays/obstacle_overlay.cpp
+    src/planning/flight_plan.cpp
+    src/planning/nav_db.cpp
+    src/planning/planning_map.cpp
+    src/planning/planning_widget.cpp
     src/voice/voice_announcer.cpp
     src/voice/nav_voice.cpp
     src/ui/shader.cpp
@@ -108,6 +113,10 @@ set(INC
     src/overlays/airspace_overlay.h
     src/overlays/vrp_overlay.h
     src/overlays/obstacle_overlay.h
+    src/planning/flight_plan.h
+    src/planning/nav_db.h
+    src/planning/planning_map.h
+    src/planning/planning_widget.h
     src/voice/voice_announcer.h
     src/voice/nav_voice.h
     src/ui/shader.h

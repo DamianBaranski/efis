@@ -6,10 +6,12 @@
 
 #include "screen.h"
 #include <cstdint>
+#include <vector>
 
 class AhrsWidget;
 class TerrainWidget;
 class Frame;
+class IWidget;
 
 /// Which picture the MODE column is showing.
 enum class ViewMode
@@ -17,7 +19,7 @@ enum class ViewMode
     Ahrs,     ///< Instrument only. Terrain is not drawn.
     ThreeD,   ///< Terrain, map, and the instrument layer without the sky tape.
     TwoD,     ///< Placeholder. Highlights the row and does not change layers.
-    Planning, ///< Placeholder. Highlights the row and does not change layers.
+    Planning, ///< Full-screen four-tab flight planner. Hides the cockpit layer.
 };
 
 /// Ground imagery selected from the MAP column.
@@ -82,8 +84,18 @@ public:
     /// Increases when a menu highlight changes.
     uint64_t revision() const { return mRevision; }
 
-    /// Selects a MODE row. 2D and PLANNING highlight without changing layers.
+    /// Adds a widget to the cockpit layer. AHRS and 3D enable it; PLANNING hides it.
+    /// \param widget Not owned. Must outlive this controller.
+    void addCockpitLayer(IWidget *widget);
+
+    /// Adds the full-screen planner widget. Enabled only in PLANNING.
+    /// \param widget Not owned. Must outlive this controller.
+    void setPlanningWidget(IWidget *widget);
+
+    /// Selects a MODE row. 2D highlights only. PLANNING, AHRS, and 3D apply layers.
     void setView(ViewMode mode);
+    /// Leaves PLANNING and restores the EFIS picture that was showing before it.
+    void leavePlanning();
     /// Selects a MAP row. Leaves AHRS-only and returns to 3D.
     void setMap(MapMode mode);
     /// Toggles one AIP row. Row 1 is walls, 2 is text, 3 is reporting points, 4 is obstacles.
@@ -107,7 +119,10 @@ private:
 
     AhrsWidget &mAhrs;       ///< Attitude instrument. enable() and the sky tape are switched from here.
     TerrainWidget &mTerrain; ///< 3D world. Layer flags and imagery zoom are pushed here.
-    ViewMode mView = ViewMode::ThreeD; ///< MODE row. 2D and PLANNING do not change layers.
+    std::vector<IWidget *> mCockpitLayers; ///< HSI, route strip, traffic, tapes. Hidden in PLANNING.
+    IWidget *mPlanning = nullptr;          ///< Full-screen planner. Enabled only in PLANNING.
+    ViewMode mView = ViewMode::ThreeD; ///< MODE row. 2D highlights only. PLANNING swaps layers.
+    ViewMode mLastEfisView = ViewMode::ThreeD; ///< Picture restored when leaving PLANNING.
     MapMode mMapMode = MapMode::Simple; ///< MAP row. Satellite drapes imagery. Simple is shaded terrain.
 
     bool mAipWalls = false;  ///< AIP 3D. Vertical airspace walls.

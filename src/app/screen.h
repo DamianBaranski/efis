@@ -33,6 +33,56 @@ public:
         (void)key;
         return false;
     }
+
+    /// Handles a text input character (typed via keyboard).
+    /// \param text UTF-8 text, typically one glyph.
+    /// \return True when this object consumed the input.
+    virtual bool textInput(const char *text)
+    {
+        (void)text;
+        return false;
+    }
+
+    /// Handles pointer motion. Only fired when a button is down (or a finger is
+    /// on the surface). `dx`/`dy` are in layout pixels.
+    /// \return True when this object consumed the motion.
+    virtual bool mouseMove(int x, int y, int dx, int dy)
+    {
+        (void)x;
+        (void)y;
+        (void)dx;
+        (void)dy;
+        return false;
+    }
+
+    /// Handles pointer release. Called when the mouse button lifts or the finger
+    /// leaves the surface.
+    virtual bool mouseUp(int x, int y)
+    {
+        (void)x;
+        (void)y;
+        return false;
+    }
+
+    /// Handles a mouse wheel tick. `dy` is positive when scrolling up.
+    virtual bool mouseWheel(int x, int y, int dy)
+    {
+        (void)x;
+        (void)y;
+        (void)dy;
+        return false;
+    }
+
+    /// Handles a two-finger pinch. `dz` is the change in planner zoom units
+    /// (same scale as `zoomFine`). `(x, y)` is the pinch midpoint in layout pixels.
+    /// \return True when this object consumed the pinch.
+    virtual bool pinch(int x, int y, float dz)
+    {
+        (void)x;
+        (void)y;
+        (void)dz;
+        return false;
+    }
 };
 
 /// Opens the GLES window. Frame pumps events and presents through this window.

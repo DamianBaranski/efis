@@ -6,8 +6,10 @@
 #include "tape_widget.h"
 #include "route_strip.h"
 #include "app_controller.h"
+#include "flight_plan.h"
 #include "frame.h"
 #include "hud.h"
+#include "planning_widget.h"
 #include "screen.h"
 #include "session.h"
 #include "terrain_widget.h"
@@ -19,17 +21,25 @@ namespace
 {
 void printUsage(const char *argv0)
 {
-    std::cout << "Usage: " << argv0 << " [--sim|--stratux]\n"
+    std::cout << "Usage: " << argv0 << " [--sim|--stratux] [--planning] [--screenshot=PATH]\n"
               << "  --sim       in-process Stratux simulator (default)\n"
               << "  --stratux   live Stratux at http://127.0.0.1:5000/getSituation\n"
+              << "  --planning  open MODE -> PLANNING at startup\n"
+              << "  --planning-sat  planning Map tab with Esri satellite tiles\n"
+              << "  --screenshot[=PATH]  write a PNG after ~1.5s and quit\n"
               << "Keys: Tab/1/2/3/4 views, Esc quit\n"
               << "Sim keys: arrows pitch/roll, Q/E heading, W/S speed, +/- alt, R reset\n";
 }
 
 /// \return nullopt to run. Otherwise the process exit code.
-std::optional<int> parseArgs(int argc, char **argv, bool &liveStratux)
+std::optional<int> parseArgs(int argc, char **argv, bool &liveStratux, bool &startPlanning, int &planningTab,
+                             bool &planningSat, std::string &screenshotPath)
 {
     liveStratux = false;
+    startPlanning = false;
+    planningTab = -1;
+    planningSat = false;
+    screenshotPath.clear();
     for (int i = 1; i < argc; ++i)
     {
         const std::string arg = argv[i];
@@ -40,6 +50,29 @@ std::optional<int> parseArgs(int argc, char **argv, bool &liveStratux)
         else if (arg == "--stratux")
         {
             liveStratux = true;
+        }
+        else if (arg == "--planning")
+        {
+            startPlanning = true;
+        }
+        else if (arg == "--planning-sat")
+        {
+            startPlanning = true;
+            planningTab = 3;
+            planningSat = true;
+        }
+        else if (arg.rfind("--planning-tab=", 0) == 0)
+        {
+            startPlanning = true;
+            planningTab = std::stoi(arg.substr(15));
+        }
+        else if (arg == "--screenshot")
+        {
+            screenshotPath = "poc/.tmp/snap-native-map.png";
+        }
+        else if (arg.rfind("--screenshot=", 0) == 0)
+        {
+            screenshotPath = arg.substr(13);
         }
         else if (arg == "--help" || arg == "-h")
         {
@@ -61,7 +94,12 @@ int main(int argc, char **argv)
 {
     // --sim is the default. --stratux asks for the live receiver. Help and bad args exit here.
     bool liveStratux = false;
-    if (const std::optional<int> stop = parseArgs(argc, argv, liveStratux))
+    bool startPlanning = false;
+    int planningTab = -1;
+    bool planningSat = false;
+    std::string screenshotPath;
+    if (const std::optional<int> stop = parseArgs(argc, argv, liveStratux, startPlanning, planningTab, planningSat,
+                                                    screenshotPath))
     {
         return *stop;
     }
@@ -75,6 +113,9 @@ int main(int argc, char **argv)
     // The simulator also registers its flight keys on the frame.
     const std::unique_ptr<ISession> session = openSession(frame, liveStratux);
 
+    // Shared flight plan. Consumed by the HSI, the route strip, and the planner.
+    FlightPlan flightPlan;
+
     // Instruments read the situation feed. They are not on the draw list yet.
     TerrainWidget terrain(frame, session->data());
     AhrsWidget ahrs(frame, session->data());
@@ -83,10 +124,14 @@ int main(int argc, char **argv)
     frame.add(&terrain);
     frame.add(&ahrs);
     RouteStrip route(frame, session->data());
+    route.setFlightPlan(&flightPlan);
     frame.add(&route);
     HsiWidget hsiLeftBottom(frame, session->data(), HsiWidget::Slot::LeftBottom);
     HsiWidget hsiLeftTop(frame, session->data(), HsiWidget::Slot::LeftTop);
     HsiWidget hsiRightBottom(frame, session->data(), HsiWidget::Slot::RightBottom);
+    hsiLeftBottom.setFlightPlan(&flightPlan);
+    hsiLeftTop.setFlightPlan(&flightPlan);
+    hsiRightBottom.setFlightPlan(&flightPlan);
     TrafficWidget trafficRightTop(frame, session->data(), TrafficWidget::Slot::RightTop);
     frame.add(&hsiLeftBottom);
     frame.add(&hsiLeftTop);
@@ -98,10 +143,37 @@ int main(int argc, char **argv)
     // Mode keys and layer switches. Holds the real widgets because the frame list is only IRenderer.
     // Registers for keys ahead of the widgets. Does not draw.
     AppController controller(frame, ahrs, terrain);
-    
-    // Menu, stats, and GENERAL. Added above the instruments, settings window last.
+    controller.addCockpitLayer(&route);
+    controller.addCockpitLayer(&hsiLeftBottom);
+    controller.addCockpitLayer(&hsiLeftTop);
+    controller.addCockpitLayer(&hsiRightBottom);
+    controller.addCockpitLayer(&trafficRightTop);
+    controller.addCockpitLayer(&tapes);
+
+    // Full-screen flight planner. Added before the HUD. The top menu is hidden
+    // in PLANNING; the header chip is the only way back to the EFIS.
+    PlanningWidget planner(frame, controller, session->data(), flightPlan);
+    frame.add(&planner);
+    controller.setPlanningWidget(&planner);
+
+    // Menu, stats, and GENERAL. Added above the instruments and the planner.
     // SOURCES on GENERAL switches the feed the instruments already read.
     Hud hud(frame, controller, terrain, *session);
+    planner.bindMenu(hud.menu());
+    frame.addInputFront(&planner);
+    if (startPlanning)
+    {
+        planner.setInitialTab(planningTab);
+        if (planningSat)
+        {
+            planner.setInitialMapSatellite(true);
+        }
+        controller.setView(ViewMode::Planning);
+    }
+    if (!screenshotPath.empty())
+    {
+        frame.setScreenshot(screenshotPath, planningSat ? 5000u : 1500u);
+    }
 
     // Each frame, before drawing: step the simulator. Stratux does nothing here.
     frame.setTick([&] { session->tick(); });

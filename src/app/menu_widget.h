@@ -16,6 +16,7 @@ class AppController;
 class SettingsPopup;
 
 /// Column menu. A tap shows it for three seconds. A double tap keeps it until a choice.
+/// Hidden in PLANNING; the planner header chip is the only way back to the EFIS.
 class MenuWidget : public IWidget
 {
 public:
@@ -28,11 +29,14 @@ public:
     /// Expires the timeout and draws the cells while the menu is open.
     void render() override;
 
-    /// Opens the menu, or applies the cell under the tap.
+    /// Opens the menu, or applies the cell under the tap. No-op in PLANNING.
     bool mouseClick(int x, int y) override;
 
     /// Unused. The cells span the top of the window.
     void setPos(int, int) override {}
+
+    /// True while the menu is visible on screen (auto-hide or held open).
+    bool isOpen() const { return mVisible; }
 
 private:
     /// One cell. execute is the command run on a tap. active paints the highlight.

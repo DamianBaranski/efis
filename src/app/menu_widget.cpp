@@ -49,8 +49,12 @@ void MenuWidget::buildCells()
     add("ENR", 3, 0, true, nullptr, off);
     add("CHRTS", 3, 1, false, [this] { mController.setEnrPage(EnrPage::Charts); },
         [this] { return mController.enrPage() == EnrPage::Charts; });
-    add("FLP", 3, 2, false, [this] { mController.setEnrPage(EnrPage::FlightPlan); },
-        [this] { return mController.enrPage() == EnrPage::FlightPlan; });
+    add("FLP", 3, 2, false,
+        [this] {
+            mController.setEnrPage(EnrPage::FlightPlan);
+            mController.setView(ViewMode::Planning);
+        },
+        [this] { return mController.view() == ViewMode::Planning; });
     add("NRST", 3, 3, false, [this] { mController.setEnrPage(EnrPage::Nearest); },
         [this] { return mController.enrPage() == EnrPage::Nearest; });
     add("WTHR", 3, 4, false, [this] { mController.setEnrPage(EnrPage::Weather); },
@@ -179,6 +183,12 @@ bool MenuWidget::menuContains(int x, int y) const
 
 void MenuWidget::render()
 {
+    if (mController.view() == ViewMode::Planning)
+    {
+        mVisible = false;
+        mLocked = false;
+        return;
+    }
     expireMenu();
     if (!mVisible)
     {
@@ -207,6 +217,10 @@ void MenuWidget::render()
 
 bool MenuWidget::mouseClick(int x, int y)
 {
+    if (mController.view() == ViewMode::Planning)
+    {
+        return false;
+    }
     const uint64_t now = SDL_GetTicks64();
     const bool doubleTap = mLastTapMs != 0 && now - mLastTapMs <= kDoubleTapMs;
     mLastTapMs = now;

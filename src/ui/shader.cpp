@@ -261,7 +261,7 @@ void Shader::setTriangles(const std::vector<Triangles> &triangles)
             texture = texLoad(AssetPath::resolve("resources/textures/unknown.png"));
             if (!texture)
             {
-                return;
+                continue;
             }
         }
 

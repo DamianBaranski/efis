@@ -377,6 +377,7 @@
     return {
       heading: 0,
       track: 0,
+      course: 16,
       bearing: 16,
       distanceNm: 15.7,
       xteNm: 0.5,
@@ -385,22 +386,30 @@
       mode: "VFR",
       page: "2:3",
       batteryPct: 100,
-      scaleNm: 1
+      scaleNm: 1,
+      fixNorth: false,
+      deviation: 5,
+      to: 1
     };
   }
 
   var data = photoData();
-  var shown = { rose: 0, course: 16, track: 0 };
+  var shown = { rose: 0, course: 16, track: 0, aircraft: 0, lubber: 0 };
   var simTimer = null;
   var lastTs = null;
   var syncing = false;
   var windPhase = 0;
   var gsBase = 155;
+  var isUpdating = false;
+  var debugMode = false;
 
+  var dg = document.getElementById("dg");
   var roseEl = document.getElementById("rose");
   var courseEl = document.getElementById("course");
   var needleEl = document.getElementById("needle");
   var trackEl = document.getElementById("track-bug");
+  var lubberEl = document.getElementById("lubber");
+  var aircraftEl = document.getElementById("aircraft");
   var playBtn = document.getElementById("btn-play");
   var modeEl = document.getElementById("sim-mode");
   var wptEdit = document.getElementById("wpt-edit");
@@ -409,10 +418,20 @@
     return Math.min(hi, Math.max(lo, v));
   }
 
-  function norm360(d) {
-    var x = d % 360;
-    if (x < 0) x += 360;
-    return x;
+  function _limitDeg(deg, min, max) {
+    if (min === undefined) min = 0;
+    if (max === undefined) max = 360;
+    while (deg >= max) {
+      deg -= 360;
+    }
+    while (deg < min) {
+      deg += 360;
+    }
+    return deg;
+  }
+
+  function _degToRad(deg) {
+    return deg * (Math.PI / 180);
   }
 
   function wrap180(d) {
@@ -422,7 +441,7 @@
   }
 
   function formatHdg(deg) {
-    var d = Math.round(norm360(deg)) % 360;
+    var d = Math.round(_limitDeg(deg)) % 360;
     var s = String(d);
     while (s.length < 3) s = "0" + s;
     return s;
@@ -437,21 +456,85 @@
     return v.toFixed(1);
   }
 
-  function updateInstrument(next) {
-    data = next;
-    shown.rose += wrap180(data.heading - shown.rose);
-    var relCourse = norm360(data.bearing - data.heading);
-    if (relCourse > 180) relCourse -= 360;
-    shown.course += wrap180(relCourse - shown.course);
-    var relTrack = norm360(data.track - data.heading);
-    if (relTrack > 180) relTrack -= 360;
-    shown.track += wrap180(relTrack - shown.track);
+  function _rotateSvgElement(element, degrees) {
+    if (!element) return;
+    element.style.transform = 'rotate(' + degrees + 'deg)';
+  }
 
-    roseEl.style.transform = "rotate(" + (-shown.rose) + "deg)";
-    courseEl.style.transform = "rotate(" + shown.course + "deg)";
-    var defl = clamp(data.xteNm / data.scaleNm, -1, 1) * -FULL_PX;
+  function _setTitle(node, title) {
+    if (!node) return;
+    var elTitle = node.querySelector('title');
+    if (elTitle) {
+      elTitle.textContent = title;
+    }
+  }
+
+  function _log() {
+    if (debugMode) {
+      console.log.apply(console, arguments);
+    }
+  }
+
+  function _calculateTranslation(deviation) {
+    var translate = deviation;
+    if (translate < -90) { translate += 180; translate *= -1; }
+    else if (translate > +90) { translate -= 180; translate *= -1; }
+    translate = Math.max(-10, Math.min(10, translate));
+    return translate;
+  }
+
+  function _calculateDeviation(source) {
+    var crs = dg[source + '-course'];
+    var brg = dg[source + '-bearing'];
+    if (crs === null || brg === null || crs === undefined || brg === undefined) {
+      return;
+    }
+    var deviation = _limitDeg(crs - brg, -180, 180);
+    dg[source + '-deviation'] = deviation;
+    dg[source + '-to'] = (deviation >= -90 && deviation <= 90) ? 1 : -1;
+    _log('Setting derived values', {
+      deviation: dg[source + '-deviation'],
+      to: dg[source + '-to']
+    });
+  }
+
+  function updateInstrument(next) {
+    if (next) data = next;
+
+    if (data.fixNorth) {
+      shown.rose += wrap180(0 - shown.rose);
+      shown.aircraft += wrap180(data.heading - shown.aircraft);
+      shown.lubber += wrap180(data.heading - shown.lubber);
+      shown.course += wrap180(data.course - shown.course);
+      shown.track += wrap180(data.track - shown.track);
+
+      _rotateSvgElement(roseEl, -shown.rose);
+      aircraftEl.setAttribute("transform", "translate(" + CX + "," + CY + ") rotate(" + shown.aircraft + ")");
+      lubberEl.setAttribute("transform", "rotate(" + shown.lubber + " " + CX + " " + CY + ")");
+      _rotateSvgElement(courseEl, shown.course);
+      _rotateSvgElement(trackEl, shown.track);
+    } else {
+      shown.rose += wrap180(data.heading - shown.rose);
+      shown.aircraft = 0;
+      shown.lubber = 0;
+      var relCourse = _limitDeg(data.course - data.heading, -180, 180);
+      shown.course += wrap180(relCourse - shown.course);
+      var relTrack = _limitDeg(data.track - data.heading, -180, 180);
+      shown.track += wrap180(relTrack - shown.track);
+
+      _rotateSvgElement(roseEl, -shown.rose);
+      aircraftEl.setAttribute("transform", "translate(" + CX + "," + CY + ")");
+      lubberEl.removeAttribute("transform");
+      _rotateSvgElement(courseEl, shown.course);
+      _rotateSvgElement(trackEl, shown.track);
+    }
+
+    var devValue = (data.deviation !== undefined && data.deviation !== null)
+      ? data.deviation
+      : (data.xteNm / data.scaleNm * 10);
+    var translate = _calculateTranslation(devValue);
+    var defl = (translate / 10) * -FULL_PX;
     needleEl.setAttribute("transform", "translate(" + defl.toFixed(2) + " 0)");
-    trackEl.style.transform = "rotate(" + shown.track + "deg)";
 
     var distText = formatDist(data.distanceNm);
     var brgNum = formatHdg(data.bearing);
@@ -489,8 +572,8 @@
 
     var err = wrap180(data.bearing - data.heading);
     var step = 3 * dt;
-    if (Math.abs(err) <= step) data.heading = norm360(data.bearing);
-    else data.heading = norm360(data.heading + Math.sign(err) * step);
+    if (Math.abs(err) <= step) data.heading = _limitDeg(data.bearing);
+    else data.heading = _limitDeg(data.heading + Math.sign(err) * step);
 
     data.distanceNm -= (data.groundSpeedKt / 3600) * dt;
     if (data.distanceNm < 0.3) {
@@ -499,15 +582,19 @@
       data.heading = 0;
     }
 
-    data.xteNm += (0 - data.xteNm) * 0.08;
+    data.xteNm += (0 - data.xteNm) * (0.08 * (dt / 0.25));
     data.xteNm += (Math.random() - 0.5) * 0.02;
     data.xteNm = clamp(data.xteNm, -2, 2);
 
     var correction = Math.atan2(-data.xteNm, Math.max(data.distanceNm, 0.25)) * 180 / Math.PI;
-    data.bearing = norm360(16 + correction);
+    data.bearing = _limitDeg(data.course + correction);
+
+    var dev = _limitDeg(data.course - data.bearing, -180, 180);
+    data.deviation = dev;
+    data.to = (dev >= -90 && dev <= 90) ? 1 : -1;
 
     windPhase += dt * 0.7;
-    data.track = norm360(data.heading + 4 * Math.sin(windPhase));
+    data.track = _limitDeg(data.heading + 4 * Math.sin(windPhase));
     data.groundSpeedKt = gsBase + (Math.random() - 0.5) * 3;
 
     updateInstrument(data);
@@ -550,9 +637,9 @@
 
   function syncSliders() {
     syncing = true;
-    setNum("sl-heading", norm360(data.heading));
-    setNum("sl-track", norm360(data.track));
-    setNum("sl-brg", norm360(data.bearing));
+    setNum("sl-heading", _limitDeg(data.heading));
+    setNum("sl-track", _limitDeg(data.track));
+    setNum("sl-brg", _limitDeg(data.bearing));
     setNum("sl-dist", data.distanceNm);
     setNum("sl-xte", data.xteNm);
     setNum("sl-gs", Math.round(data.groundSpeedKt));
@@ -561,16 +648,49 @@
     syncing = false;
   }
 
-  function onManual() {
+  function onManual(e) {
     if (syncing) return;
     stopSim();
+
+    var target = e ? e.target : null;
+    var id = target ? target.id : "";
+
     data.heading = parseFloat(document.getElementById("sl-heading").value);
     data.track = parseFloat(document.getElementById("sl-track").value);
-    data.bearing = parseFloat(document.getElementById("sl-brg").value);
-    data.distanceNm = parseFloat(document.getElementById("sl-dist").value);
-    data.xteNm = parseFloat(document.getElementById("sl-xte").value);
     data.groundSpeedKt = parseFloat(document.getElementById("sl-gs").value);
     gsBase = data.groundSpeedKt;
+
+    if (id === "sl-brg") {
+      data.bearing = parseFloat(document.getElementById("sl-brg").value);
+      var dev = _limitDeg(data.course - data.bearing, -180, 180);
+      data.deviation = dev;
+      data.to = (dev >= -90 && dev <= 90) ? 1 : -1;
+      data.xteNm = clamp(-Math.sin(_degToRad(data.deviation)) * data.distanceNm, -2, 2);
+      document.getElementById("sl-xte").value = data.xteNm.toFixed(2);
+    } else if (id === "sl-xte") {
+      data.xteNm = parseFloat(document.getElementById("sl-xte").value);
+      var devAngle = -Math.asin(clamp(data.xteNm / Math.max(data.distanceNm, 0.1), -1, 1)) * 180 / Math.PI;
+      data.deviation = devAngle;
+      data.bearing = _limitDeg(data.course - data.deviation);
+      data.to = (data.deviation >= -90 && data.deviation <= 90) ? 1 : -1;
+      document.getElementById("sl-brg").value = _limitDeg(data.bearing).toFixed(1);
+    } else if (id === "sl-dist") {
+      data.distanceNm = parseFloat(document.getElementById("sl-dist").value);
+      var corr = Math.atan2(-data.xteNm, Math.max(data.distanceNm, 0.25)) * 180 / Math.PI;
+      data.bearing = _limitDeg(data.course + corr);
+      var d = _limitDeg(data.course - data.bearing, -180, 180);
+      data.deviation = d;
+      data.to = (d >= -90 && d <= 90) ? 1 : -1;
+      document.getElementById("sl-brg").value = _limitDeg(data.bearing).toFixed(1);
+    } else {
+      data.bearing = parseFloat(document.getElementById("sl-brg").value);
+      data.distanceNm = parseFloat(document.getElementById("sl-dist").value);
+      data.xteNm = parseFloat(document.getElementById("sl-xte").value);
+      var d2 = _limitDeg(data.course - data.bearing, -180, 180);
+      data.deviation = d2;
+      data.to = (d2 >= -90 && d2 <= 90) ? 1 : -1;
+    }
+
     updateInstrument(data);
     paintSliderLabels();
   }
@@ -595,6 +715,278 @@
     syncSliders();
   }
 
+  // --- webcomponent-hsi API binding for #dg ---
+  var observedAttrs = [
+    'debug',
+    'fix-north',
+    'heading',
+    'heading-select',
+    'nav1-label',
+    'nav1-course',
+    'nav1-deviation',
+    'nav1-bearing',
+    'nav1-to',
+    'nav2-label',
+    'nav2-course',
+    'nav2-deviation',
+    'nav2-bearing',
+    'nav2-to'
+  ];
+  var degreeAttributes = [
+    'heading',
+    'heading-select',
+    'nav1-course',
+    'nav1-bearing',
+    'nav2-course',
+    'nav2-bearing'
+  ];
+
+  function getStructuredAttributeName(attrName) {
+    return attrName.match(/^(nav\d)-(\S+)/) || [attrName, '', attrName];
+  }
+
+  function handleAttributeChange(attrName, oldValue, newValue) {
+    if (oldValue === newValue) return;
+    if (isUpdating) return;
+    isUpdating = true;
+    try {
+      var matches = getStructuredAttributeName(attrName);
+      var elMap = {
+        'heading': roseEl,
+        'heading-select': trackEl,
+        'nav1-course': courseEl,
+        'nav1-deviation': needleEl,
+        'nav1-label': document.getElementById('wpt-readout')
+      };
+
+      if (attrName === 'fix-north') {
+        var fn = Boolean(newValue !== null && newValue !== undefined && newValue !== '0' && newValue !== false);
+        if (data.fixNorth !== fn) {
+          data.fixNorth = fn;
+          updateInstrument(data);
+        }
+        return;
+      }
+      if (attrName === 'debug') {
+        debugMode = Boolean(newValue !== null && newValue !== '0');
+        return;
+      }
+
+      var targetEl = elMap[attrName];
+      if (targetEl) {
+        if (oldValue === null && newValue !== null) {
+          targetEl.removeAttribute('display');
+        }
+        if (newValue === null) {
+          targetEl.setAttribute('display', 'none');
+          return;
+        }
+      }
+
+      var numVal = newValue !== null ? Number(newValue) : null;
+      var strVal = newValue !== null ? String(newValue) : null;
+
+      switch (attrName) {
+        case 'heading':
+          if (numVal !== null && data.heading !== numVal) data.heading = numVal;
+          break;
+        case 'heading-select':
+          if (numVal !== null && data.track !== numVal) data.track = numVal;
+          break;
+        case 'nav1-course':
+          if (numVal !== null && data.course !== numVal) {
+            data.course = numVal;
+            _calculateDeviation('nav1');
+          }
+          break;
+        case 'nav1-bearing':
+          if (numVal !== null && data.bearing !== numVal) {
+            data.bearing = numVal;
+            _calculateDeviation('nav1');
+          }
+          break;
+        case 'nav1-deviation':
+          if (numVal !== null && data.deviation !== numVal) {
+            data.deviation = numVal;
+            var tr = _calculateTranslation(data.deviation);
+            data.xteNm = (tr / 10) * data.scaleNm;
+          }
+          break;
+        case 'nav1-to':
+          if (numVal !== null) data.to = numVal > 0 ? 1 : -1;
+          break;
+        case 'nav1-label':
+          if (strVal !== null && data.waypointId !== strVal) data.waypointId = strVal;
+          break;
+        case 'nav2-course':
+        case 'nav2-bearing':
+          _calculateDeviation(matches[1]);
+          break;
+      }
+
+      updateInstrument(data);
+      if (!syncing) syncSliders();
+    } finally {
+      isUpdating = false;
+    }
+  }
+
+  observedAttrs.forEach(function (attrName) {
+    var matches = getStructuredAttributeName(attrName);
+    Object.defineProperty(dg, attrName, {
+      configurable: true,
+      get: function () {
+        switch (attrName) {
+          case 'heading': return data.heading;
+          case 'heading-select': return data.track;
+          case 'nav1-course': return data.course;
+          case 'nav1-bearing': return data.bearing;
+          case 'nav1-deviation': return data.deviation !== undefined ? data.deviation : (data.xteNm / data.scaleNm * 10);
+          case 'nav1-to': return data.to !== undefined ? data.to : 1;
+          case 'nav1-label': return data.waypointId;
+          case 'fix-north': return data.fixNorth ? 1 : null;
+          case 'debug': return debugMode ? 1 : null;
+          default:
+            if (!dg.hasAttribute(attrName)) return null;
+            return (matches[2] !== 'label') ? Number(dg.getAttribute(attrName)) : dg.getAttribute(attrName);
+        }
+      },
+      set: function (attrValue) {
+        var oldVal = dg.getAttribute(attrName);
+        if (attrValue !== null && attrValue !== undefined) {
+          if (matches[2] !== 'label') {
+            attrValue = Number(attrValue);
+            if (degreeAttributes.indexOf(attrName) > -1) {
+              attrValue = _limitDeg(attrValue);
+            }
+          }
+          isUpdating = true;
+          try {
+            dg.setAttribute(attrName, String(attrValue));
+          } finally {
+            isUpdating = false;
+          }
+          handleAttributeChange(attrName, oldVal, String(attrValue));
+        } else {
+          isUpdating = true;
+          try {
+            dg.removeAttribute(attrName);
+          } finally {
+            isUpdating = false;
+          }
+          handleAttributeChange(attrName, oldVal, null);
+        }
+      }
+    });
+  });
+
+  // Convenience aliases matching webcomponent-hsi properties
+  Object.defineProperty(dg, 'headingSelect', {
+    configurable: true,
+    get: function () { return dg['heading-select']; },
+    set: function (v) { dg['heading-select'] = v; }
+  });
+  Object.defineProperty(dg, 'course', {
+    configurable: true,
+    get: function () { return dg['nav1-course']; },
+    set: function (v) { dg['nav1-course'] = v; }
+  });
+  Object.defineProperty(dg, 'bearing', {
+    configurable: true,
+    get: function () { return dg['nav1-bearing']; },
+    set: function (v) { dg['nav1-bearing'] = v; }
+  });
+  Object.defineProperty(dg, 'deviation', {
+    configurable: true,
+    get: function () { return dg['nav1-deviation']; },
+    set: function (v) { dg['nav1-deviation'] = v; }
+  });
+  Object.defineProperty(dg, 'to', {
+    configurable: true,
+    get: function () { return dg['nav1-to']; },
+    set: function (v) { dg['nav1-to'] = v; }
+  });
+  Object.defineProperty(dg, 'label', {
+    configurable: true,
+    get: function () { return dg['nav1-label']; },
+    set: function (v) { dg['nav1-label'] = v; }
+  });
+  Object.defineProperty(dg, 'fixNorth', {
+    configurable: true,
+    get: function () { return dg['fix-north']; },
+    set: function (v) { dg['fix-north'] = v; }
+  });
+
+  dg._limitDeg = _limitDeg;
+  dg._degToRad = _degToRad;
+  dg._calculateDeviation = _calculateDeviation;
+  dg._rotateSvgElement = _rotateSvgElement;
+  dg._setTitle = _setTitle;
+  dg._log = _log;
+  dg.attributeChangedCallback = handleAttributeChange;
+
+  if (window.MutationObserver) {
+    var observer = new MutationObserver(function (mutations) {
+      mutations.forEach(function (mutation) {
+        if (mutation.type === "attributes") {
+          var attr = mutation.attributeName;
+          if (observedAttrs.indexOf(attr) > -1) {
+            handleAttributeChange(attr, mutation.oldValue, dg.getAttribute(attr));
+          }
+        }
+      });
+    });
+    observer.observe(dg, { attributes: true, attributeOldValue: true });
+  }
+
+  // Define custom element HorizontalSituationIndicator from webcomponent-hsi
+  if (window.customElements && !customElements.get('horizontal-situation-indicator')) {
+    class HorizontalSituationIndicator extends HTMLElement {
+      static get observedAttributes() {
+        return observedAttrs;
+      }
+      constructor() {
+        super();
+        var self = this;
+        observedAttrs.forEach(function (attrName) {
+          var matches = getStructuredAttributeName(attrName);
+          Object.defineProperty(self, attrName, {
+            configurable: true,
+            get: function () {
+              if (!self.hasAttribute(attrName)) return null;
+              return (matches[2] !== 'label') ? Number(self.getAttribute(attrName)) : self.getAttribute(attrName);
+            },
+            set: function (val) {
+              if (val !== null && val !== undefined) {
+                if (matches[2] !== 'label') {
+                  val = Number(val);
+                  if (degreeAttributes.indexOf(attrName) > -1) val = _limitDeg(val);
+                }
+                self.setAttribute(attrName, String(val));
+                if (matches[2] === 'course' || matches[2] === 'bearing') {
+                  self._calculateDeviation(matches[1]);
+                }
+              } else {
+                self.removeAttribute(attrName);
+              }
+            }
+          });
+        });
+      }
+      _limitDeg(d, min, max) { return _limitDeg(d, min, max); }
+      _degToRad(d) { return _degToRad(d); }
+      _calculateDeviation(source) {
+        if (this[source + '-course'] === null || this[source + '-bearing'] === null) return;
+        var dev = _limitDeg(this[source + '-course'] - this[source + '-bearing'], -180, 180);
+        this[source + '-deviation'] = dev;
+        this[source + '-to'] = (dev >= -90 && dev <= 90) ? 1 : -1;
+      }
+      _rotateSvgElement(el, deg) { _rotateSvgElement(el, deg); }
+    }
+    customElements.define('horizontal-situation-indicator', HorizontalSituationIndicator);
+    window.HorizontalSituationIndicator = HorizontalSituationIndicator;
+  }
+
   playBtn.addEventListener("click", function () {
     if (simTimer) stopSim();
     else startSim();
@@ -616,6 +1008,7 @@
 
   window.instrumentData = data;
   window.updateInstrument = updateInstrument;
+  window.dg = dg;
 })();
 </script>
 </body>

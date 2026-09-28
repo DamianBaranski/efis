@@ -3,6 +3,7 @@
 #include "app_controller.h"
 #include "ahrs_widget.h"
 #include "frame.h"
+#include "iwidget.h"
 #include "nav_voice.h"
 #include "terrain_download.h"
 #include "terrain_widget.h"
@@ -22,6 +23,10 @@ AppController::AppController(Frame &frame, AhrsWidget &ahrs, TerrainWidget &terr
 
 bool AppController::keyDown(SDL_Keycode key)
 {
+    if (mView == ViewMode::Planning)
+    {
+        return false;
+    }
     switch (key)
     {
     case SDLK_TAB:
@@ -82,14 +87,43 @@ void AppController::toggleAip(int row)
     touch();
 }
 
+void AppController::addCockpitLayer(IWidget *widget)
+{
+    if (widget != nullptr)
+    {
+        mCockpitLayers.push_back(widget);
+        applyLayers();
+    }
+}
+
+void AppController::setPlanningWidget(IWidget *widget)
+{
+    mPlanning = widget;
+    applyLayers();
+}
+
 void AppController::setView(ViewMode mode)
 {
+    if (mode == ViewMode::Planning && mView != ViewMode::Planning)
+    {
+        mLastEfisView = (mView == ViewMode::Ahrs) ? ViewMode::Ahrs : ViewMode::ThreeD;
+        mGeneralOpen = false;
+    }
     mView = mode;
-    if (mode == ViewMode::Ahrs || mode == ViewMode::ThreeD)
+    if (mode == ViewMode::Ahrs || mode == ViewMode::ThreeD || mode == ViewMode::Planning)
     {
         applyLayers();
     }
     touch();
+}
+
+void AppController::leavePlanning()
+{
+    if (mView != ViewMode::Planning)
+    {
+        return;
+    }
+    setView(mLastEfisView);
 }
 
 void AppController::setMap(MapMode mode)
@@ -145,6 +179,7 @@ void AppController::applyLayers()
 {
     const bool threeD = mView == ViewMode::ThreeD;
     const bool ahrsOnly = mView == ViewMode::Ahrs;
+    const bool planning = mView == ViewMode::Planning;
     mTerrain.enable(threeD);
     mTerrain.setSatelliteGround(threeD && mMapMode == MapMode::Satellite);
     mTerrain.setChartOverlay(false);
@@ -153,8 +188,19 @@ void AppController::applyLayers()
     mTerrain.setAirspacesEnabled(threeD && (mAipWalls || mAipText));
     mTerrain.setVrpsEnabled(mVrpOn);
     mTerrain.setObstaclesEnabled(mObstacles);
-    mAhrs.enable(threeD || ahrsOnly);
+    mAhrs.enable((threeD || ahrsOnly) && !planning);
     mAhrs.setDrawSkyGround(ahrsOnly);
+    for (IWidget *layer : mCockpitLayers)
+    {
+        if (layer != nullptr)
+        {
+            layer->enable(!planning);
+        }
+    }
+    if (mPlanning != nullptr)
+    {
+        mPlanning->enable(planning);
+    }
 }
 
 void AppController::touch()

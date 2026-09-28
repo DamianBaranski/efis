@@ -2,10 +2,12 @@
 /// Draws the route strip under the attitude display.
 #include "route_strip.h"
 #include "data_manager_sim.h"
+#include "flight_plan.h"
 #include <GLES3/gl3.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <ctime>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -149,8 +151,22 @@ void RouteStrip::render()
 
     const LocationData &place = mData.getLocationData();
     const DynamicsData &motion = mData.getDynamicsData();
-    const double dNorth = (kWptLat - place.latitude) * 111320.0;
-    const double dEast = (kWptLon - place.longitude) * 111320.0 * std::cos(place.latitude * kPi / 180.0);
+
+    // The armed plan leg wins over the built-in EPMR -> EPWR default.
+    double wptLat = kWptLat;
+    double wptLon = kWptLon;
+    std::string fromId = kFromId;
+    std::string toId = kToId;
+    if (mPlan != nullptr && mPlan->armed())
+    {
+        wptLat = mPlan->armedToLat();
+        wptLon = mPlan->armedToLon();
+        fromId = mPlan->armedFromIdent();
+        toId = mPlan->armedToIdent();
+    }
+
+    const double dNorth = (wptLat - place.latitude) * 111320.0;
+    const double dEast = (wptLon - place.longitude) * 111320.0 * std::cos(place.latitude * kPi / 180.0);
     const float distNm = static_cast<float>(std::hypot(dNorth, dEast) * kNmPerMeter);
     const float gsKt = motion.airspeed * kKtPerMps;
 
@@ -169,8 +185,8 @@ void RouteStrip::render()
         eta = clockHm(nowSec + static_cast<int>(std::lround(eteSec))) + "utc";
     }
 
-    const float fromW = textWidth(identPx, static_cast<int>(std::char_traits<char>::length(kFromId)));
-    const float toW = textWidth(identPx, static_cast<int>(std::char_traits<char>::length(kToId)));
+    const float fromW = textWidth(identPx, static_cast<int>(fromId.size()));
+    const float toW = textWidth(identPx, static_cast<int>(toId.size()));
     const float legW = fromW + identGap + arrowW + identGap + toW;
 
     const float distW = std::max(textWidth(valuePx, static_cast<int>(std::strlen(distBuf))), textWidth(labelPx, 4));
@@ -220,8 +236,8 @@ void RouteStrip::render()
     mShader.clearGeometry();
     mShader.setTriangles({plate, arrow});
 
-    paintGlyph(mFrom, "route-from", kFromId, identPx, kMagentaText, fromX, identY);
-    paintGlyph(mTo, "route-to", kToId, identPx, kMagentaText, toX, identY);
+    paintGlyph(mFrom, std::string("route-from-") + fromId, fromId, identPx, kMagentaText, fromX, identY);
+    paintGlyph(mTo, std::string("route-to-") + toId, toId, identPx, kMagentaText, toX, identY);
     paintGlyph(mDistVal, "route-dist-val", distBuf, valuePx, kGreenText, distX, valueY);
     paintGlyph(mEteVal, "route-ete-val", ete, valuePx, kGreenText, eteX, valueY);
     paintGlyph(mEtaVal, "route-eta-val", eta, valuePx, kGreenText, etaX, valueY);
