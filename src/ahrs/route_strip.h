@@ -32,6 +32,9 @@ public:
     /// Unused. The strip stays centered under the attitude display.
     void setPos(int x, int y) override;
 
+    /// Anchors the strip to the bottom of the left column in MODE -> SPLIT.
+    void setSplit(bool split) override { mSplit = split; }
+
 private:
     struct Glyph
     {
@@ -48,6 +51,7 @@ private:
     const FlightPlan *mPlan = nullptr;
     Shader mShader;
     bool mColorsReady = false;
+    bool mSplit = false;
 
     Glyph mFrom;
     Glyph mTo;

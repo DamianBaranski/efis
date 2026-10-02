@@ -1,6 +1,7 @@
 /// \file route_strip.cpp
 /// Draws the route strip under the attitude display.
 #include "route_strip.h"
+#include "split_layout.h"
 #include "data_manager_sim.h"
 #include "flight_plan.h"
 #include <GLES3/gl3.h>
@@ -135,9 +136,18 @@ void RouteStrip::render()
     }
     prepareColors();
 
-    const int w = std::max(1, mScreen.getWidth());
-    const int h = std::max(1, mScreen.getHeight());
-    const float s = static_cast<float>(h) / 600.0f;
+    const int screenW = std::max(1, mScreen.getWidth());
+    const int screenH = std::max(1, mScreen.getHeight());
+    const SplitLayout layout = mSplit ? makeSplitLayout(screenW, screenH) : SplitLayout{};
+    const int areaX = mSplit ? layout.route.x : 0;
+    const int areaY = mSplit ? layout.route.y : 0;
+    const int areaW = mSplit ? std::max(1, layout.route.w) : screenW;
+    const int areaH = mSplit ? std::max(1, layout.route.h) : screenH;
+    float s = static_cast<float>(screenH) / 600.0f;
+    if (mSplit)
+    {
+        s = std::min(s, static_cast<float>(areaH) / 90.0f);
+    }
     const float identPx = 22.0f * s;
     const float valuePx = 17.0f * s;
     const float labelPx = 12.0f * s;
@@ -196,8 +206,10 @@ void RouteStrip::render()
     const float plateW = std::max(legW, statsW) + padX * 2.0f;
     const float plateH = padY + identPx + rowGap + valuePx + labelGap + labelPx + padY;
 
-    const float cx = static_cast<float>(w) * 0.5f;
-    const float plateBottom = std::max(6.0f, static_cast<float>(h) * 0.012f);
+    const float cx = static_cast<float>(areaX) + static_cast<float>(areaW) * 0.5f;
+    const float glBottom = static_cast<float>(screenH - (areaY + areaH));
+    const float plateBottom = mSplit ? glBottom + std::max(4.0f, (static_cast<float>(areaH) - plateH) * 0.5f)
+                                     : glBottom + std::max(6.0f, static_cast<float>(screenH) * 0.012f);
     const float plateTop = plateBottom + plateH;
     const float plateLeft = cx - plateW * 0.5f;
     const float plateRight = cx + plateW * 0.5f;
@@ -246,8 +258,8 @@ void RouteStrip::render()
     paintGlyph(mEtaLbl, "route-eta-lbl", "ETA", labelPx, kMuted, etaX, labelY);
 
     glm::mat4 mvp(1.0f);
-    mvp[0][0] = 2.0f / static_cast<float>(w);
-    mvp[1][1] = 2.0f / static_cast<float>(h);
+    mvp[0][0] = 2.0f / static_cast<float>(screenW);
+    mvp[1][1] = 2.0f / static_cast<float>(screenH);
     mvp[3][0] = -1.0f;
     mvp[3][1] = -1.0f;
     mvp[3][2] = -0.2f;
@@ -258,6 +270,11 @@ void RouteStrip::render()
     glDisable(GL_CULL_FACE);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    if (mSplit)
+    {
+        glEnable(GL_SCISSOR_TEST);
+        glScissor(layout.route.x, screenH - (layout.route.y + layout.route.h), layout.route.w, layout.route.h);
+    }
     mShader.render();
     Glyph *glyphs[] = {&mFrom, &mTo, &mDistVal, &mEteVal, &mEtaVal, &mDistLbl, &mEteLbl, &mEtaLbl};
     for (Glyph *glyph : glyphs)
@@ -266,6 +283,10 @@ void RouteStrip::render()
         {
             glyph->draw->render();
         }
+    }
+    if (mSplit)
+    {
+        glDisable(GL_SCISSOR_TEST);
     }
     glDepthMask(GL_TRUE);
     glEnable(GL_DEPTH_TEST);

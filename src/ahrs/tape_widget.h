@@ -27,6 +27,9 @@ public:
     /// Unused. The tapes stay locked to the aircraft symbol.
     void setPos(int x, int y) override;
 
+    /// Draws beside the aircraft symbol in the split attitude pane.
+    void setSplit(bool split) override { mSplit = split; }
+
 private:
     struct Glyph
     {
@@ -44,6 +47,7 @@ private:
     IDataManager &mData;
     Shader mShader;
     bool mColorsReady = false;
+    bool mSplit = false;
 
     Glyph mIas;
     Glyph mSpdTop;

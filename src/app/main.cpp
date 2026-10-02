@@ -22,10 +22,11 @@ namespace
 {
 void printUsage(const char *argv0)
 {
-    std::cout << "Usage: " << argv0 << " [--sim|--stratux] [--planning] [--screenshot=PATH]\n"
+    std::cout << "Usage: " << argv0 << " [--sim|--stratux] [--planning] [--split] [--screenshot=PATH]\n"
               << "  --sim       in-process Stratux simulator (default)\n"
               << "  --stratux   live Stratux at http://127.0.0.1:5000/getSituation\n"
               << "  --planning  open MODE -> PLANNING at startup\n"
+              << "  --split     open MODE -> SPLIT at startup\n"
               << "  --planning-sat  planning Map tab with Esri satellite tiles\n"
               << "  --screenshot[=PATH]  write a PNG after ~1.5s and quit\n"
               << "Keys: Tab/1/2/3/4 views, Esc quit\n"
@@ -33,11 +34,12 @@ void printUsage(const char *argv0)
 }
 
 /// \return nullopt to run. Otherwise the process exit code.
-std::optional<int> parseArgs(int argc, char **argv, bool &liveStratux, bool &startPlanning, int &planningTab,
-                             bool &planningSat, std::string &screenshotPath)
+std::optional<int> parseArgs(int argc, char **argv, bool &liveStratux, bool &startPlanning, bool &startSplit,
+                             int &planningTab, bool &planningSat, std::string &screenshotPath)
 {
     liveStratux = false;
     startPlanning = false;
+    startSplit = false;
     planningTab = -1;
     planningSat = false;
     screenshotPath.clear();
@@ -55,6 +57,10 @@ std::optional<int> parseArgs(int argc, char **argv, bool &liveStratux, bool &sta
         else if (arg == "--planning")
         {
             startPlanning = true;
+        }
+        else if (arg == "--split")
+        {
+            startSplit = true;
         }
         else if (arg == "--planning-sat")
         {
@@ -96,11 +102,12 @@ int main(int argc, char **argv)
     // --sim is the default. --stratux asks for the live receiver. Help and bad args exit here.
     bool liveStratux = false;
     bool startPlanning = false;
+    bool startSplit = false;
     int planningTab = -1;
     bool planningSat = false;
     std::string screenshotPath;
-    if (const std::optional<int> stop = parseArgs(argc, argv, liveStratux, startPlanning, planningTab, planningSat,
-                                                    screenshotPath))
+    if (const std::optional<int> stop = parseArgs(argc, argv, liveStratux, startPlanning, startSplit, planningTab,
+                                                    planningSat, screenshotPath))
     {
         return *stop;
     }
@@ -144,12 +151,12 @@ int main(int argc, char **argv)
     // Mode keys and layer switches. Holds the real widgets because the frame list is only IRenderer.
     // Registers for keys ahead of the widgets. Does not draw.
     AppController controller(frame, ahrs, terrain);
-    controller.addCockpitLayer(&route);
-    controller.addCockpitLayer(&hsiLeftBottom);
-    controller.addCockpitLayer(&dgLeftTop);
-    controller.addCockpitLayer(&hsiRightBottom);
-    controller.addCockpitLayer(&trafficRightTop);
-    controller.addCockpitLayer(&tapes);
+    controller.addCockpitLayer(&route, CockpitRole::Pfd);
+    controller.addCockpitLayer(&hsiLeftBottom, CockpitRole::Dial);
+    controller.addCockpitLayer(&dgLeftTop, CockpitRole::Dial);
+    controller.addCockpitLayer(&hsiRightBottom, CockpitRole::Dial);
+    controller.addCockpitLayer(&trafficRightTop, CockpitRole::Dial);
+    controller.addCockpitLayer(&tapes, CockpitRole::Pfd);
 
     // Full-screen flight planner. Added before the HUD. The top menu is hidden
     // in PLANNING; the header chip is the only way back to the EFIS.
@@ -170,6 +177,10 @@ int main(int argc, char **argv)
             planner.setInitialMapSatellite(true);
         }
         controller.setView(ViewMode::Planning);
+    }
+    else if (startSplit)
+    {
+        controller.setView(ViewMode::Split);
     }
     if (!screenshotPath.empty())
     {

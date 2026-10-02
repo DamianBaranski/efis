@@ -26,6 +26,10 @@ public:
     /// \param y Top edge.
     virtual void setPos(int x, int y) = 0;
 
+    /// Uses the split rectangles when true. Full-screen layout when false.
+    /// Widgets that are not part of the split picture ignore this.
+    virtual void setSplit(bool) {}
+
 protected:
     Screen &mScreen; ///< Window this widget measures against.
     bool mEnabled;   ///< False skips the draw. The widget stays registered.

@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Split — AHRS / route | map</title>
+<style>
+  :root {
+    --magenta: #ff2fd0;
+    --green: #39ff6a;
+    --ink: #f2f2f2;
+    --muted: #d5d5d5;
+    --plate: rgba(6, 8, 10, 0.78);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #000;
+    color: var(--ink);
+    font-family: "DejaVu Sans Mono", "Liberation Mono", ui-monospace, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    overflow: hidden;
+  }
+  .screen {
+    display: grid;
+    grid-template-columns: minmax(280px, 44%) minmax(0, 1fr);
+    height: 100%;
+    gap: 3px;
+    background: #000;
+  }
+  .left {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
+    min-width: 0;
+    min-height: 0;
+    background: #1a1208;
+  }
+  #ahrs, #map {
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+  }
+  .route-bay {
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    padding: 0 8px 8px;
+    background: linear-gradient(#6a4a18 0%, #3d2a10 100%);
+  }
+  .route {
+    width: max-content;
+    max-width: 100%;
+    background: var(--plate);
+    padding: 0.45em 0.85em 0.5em;
+    line-height: 1.15;
+    text-align: center;
+    user-select: none;
+  }
+  .leg, .stats {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 0.55em;
+  }
+  .stats {
+    align-items: flex-start;
+    margin-top: 0.28em;
+    gap: 1.35em;
+  }
+  .stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.08em;
+  }
+  .ident {
+    color: var(--magenta);
+    font-size: clamp(0.95rem, 2.1vh, 1.35rem);
+    font-weight: 800;
+    letter-spacing: 0.04em;
+  }
+  .arrow {
+    width: 1.35em;
+    height: 0.72em;
+    align-self: center;
+    overflow: visible;
+  }
+  .lbl {
+    color: var(--muted);
+    font-size: clamp(0.62rem, 1.35vh, 0.78rem);
+    font-weight: 700;
+    letter-spacing: 0.12em;
+  }
+  .val {
+    color: var(--green);
+    font-size: clamp(0.82rem, 1.8vh, 1.05rem);
+    font-weight: 800;
+  }
+  .unit {
+    color: var(--green);
+    font-size: 0.68em;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    margin-left: 0.12em;
+  }
+</style>
+</head>
+<body>
+<div class="screen">
+  <div class="left">
+    <canvas id="ahrs" aria-label="Attitude, airspeed, and altitude"></canvas>
+    <div class="route-bay">
+      <div class="route">
+        <div class="leg">
+          <span class="ident" id="from-id">EPWR</span>
+          <svg class="arrow" viewBox="0 0 36 18" aria-hidden="true">
+            <path d="M1 9 H26" fill="none" stroke="#ff2fd0" stroke-width="2.4" stroke-linecap="round"/>
+            <path d="M20 2.5 L32 9 L20 15.5 Z" fill="#ff2fd0"/>
+          </svg>
+          <span class="ident" id="to-id">KUKUS</span>
+        </div>
+        <div class="stats">
+          <span class="stat"><span class="val"><span id="dis-val">29.0</span><span class="unit">nm</span></span><span class="lbl">DIST</span></span>
+          <span class="stat"><span class="val" id="ete-val">14:21</span><span class="lbl">ETE</span></span>
+          <span class="stat"><span class="val"><span id="eta-val">14:56</span><span class="unit">utc</span></span><span class="lbl">ETA</span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <canvas id="map" aria-label="Moving map with the armed route"></canvas>
+</div>
+<script>
+(function () {
+  var NM = 1852;
+  var GS_KT = 121;
+  var IAS_KT = 120;
+  var ALT_FT = 2440;
+  var BUG_KT = 120;
+  var SEL_ALT = 2000;
+  var VS_FPM = -180;
+  var BARO = 29.92;
+
+  var WPT = [
+    { id: "EPWR", lat: 51.1027, lon: 16.8858 },
+    { id: "KUKUS", lat: 50.8030, lon: 17.4940 },
+    { id: "DODUS", lat: 50.4700, lon: 18.5200 },
+    { id: "EPKK", lat: 50.0777, lon: 19.7848 }
+  ];
+
+  var AIR = [
+    { kind: "ring", lat: 51.10, lon: 16.95, r: 0.13, stroke: "#39ff6a", label: "" },
+    { kind: "ring", lat: 51.22, lon: 17.35, r: 0.16, stroke: "#39ff6a", label: "EPOP" },
+    { kind: "ring", lat: 50.95, lon: 17.15, r: 0.10, stroke: "#7dffb0", label: "" },
+    { kind: "ring", lat: 50.62, lon: 18.15, r: 0.34, stroke: "#f0c020", label: "" },
+    { kind: "ring", lat: 50.88, lon: 18.72, r: 0.26, stroke: "#f0c020", label: "EPKT" },
+    { kind: "ring", lat: 50.28, lon: 19.35, r: 0.18, stroke: "#3ee0e0", label: "EPNI" },
+    { kind: "ring", lat: 50.55, lon: 19.05, r: 0.08, stroke: "#ff4040", label: "" },
+    { kind: "poly", stroke: "#f0c020", pts: [[51.28, 16.55], [51.34, 17.05], [51.12, 17.18], [51.05, 16.62]] },
+    { kind: "poly", stroke: "#9aa4b0", pts: [[50.15, 16.55], [50.42, 16.70], [50.38, 17.15], [50.08, 17.05]] },
+    { kind: "poly", stroke: "#3ee0e0", pts: [[50.22, 18.85], [50.38, 19.15], [50.30, 19.55], [50.10, 19.42], [50.08, 18.95]] },
+    { kind: "poly", stroke: "#39ff6a", pts: [[50.18, 18.20], [50.32, 18.35], [50.28, 18.62], [50.12, 18.55]] },
+    { kind: "poly", stroke: "#ff4040", pts: [[50.72, 19.20], [50.78, 19.48], [50.62, 19.42]] }
+  ];
+
+  var VIEW = { minLat: 49.82, maxLat: 51.48, minLon: 16.35, maxLon: 20.15 };
+
+  var legT = 0.18;
+  var utcSec = 14 * 3600 + 41 * 60;
+  var simT0 = null;
+
+  var ahrs = document.getElementById("ahrs");
+  var map = document.getElementById("map");
+  var actx = ahrs.getContext("2d");
+  var mctx = map.getContext("2d");
+
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  function rad(d) { return d * Math.PI / 180; }
+  function deg(r) { return r * 180 / Math.PI; }
+
+  function pad2(n) { return (n < 10 ? "0" : "") + n; }
+
+  function clock(total) {
+    var sec = ((total % 86400) + 86400) % 86400;
+    return pad2(Math.floor(sec / 3600)) + ":" + pad2(Math.floor((sec % 3600) / 60));
+  }
+
+  function formatEte(sec) {
+    sec = Math.max(0, Math.round(sec));
+    var h = Math.floor(sec / 3600);
+    var m = Math.floor((sec % 3600) / 60);
+    var s = sec % 60;
+    if (h > 0) return h + ":" + pad2(m);
+    return pad2(m) + ":" + pad2(s);
+  }
+
+  function move(lat, lon, northM, eastM) {
+    return {
+      lat: lat + northM / 111320,
+      lon: lon + eastM / (111320 * Math.cos(rad(lat)))
+    };
+  }
+
+  function offset(a, b) {
+    var north = (b.lat - a.lat) * 111320;
+    var east = (b.lon - a.lon) * 111320 * Math.cos(rad((a.lat + b.lat) * 0.5));
+    return { north: north, east: east, dist: Math.hypot(north, east) };
+  }
+
+  function along(a, b, t) {
+    return { lat: a.lat + (b.lat - a.lat) * t, lon: a.lon + (b.lon - a.lon) * t, id: a.id };
+  }
+
+  function headingOf(a, b) {
+    var o = offset(a, b);
+    var h = deg(Math.atan2(o.east, o.north));
+    if (h < 0) h += 360;
+    return h;
+  }
+
+  function ownship() {
+    return along(WPT[0], WPT[1], legT);
+  }
+
+  function fitCanvas(canvas) {
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w = canvas.clientWidth;
+    var h = canvas.clientHeight;
+    var pw = Math.max(1, Math.round(w * dpr));
+    var ph = Math.max(1, Math.round(h * dpr));
+    if (canvas.width !== pw || canvas.height !== ph) {
+      canvas.width = pw;
+      canvas.height = ph;
+    }
+    var ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { ctx: ctx, w: w, h: h };
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    var rr = Math.min(r, w * 0.5, h * 0.5);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
+    ctx.closePath();
+  }
+
+  function drawAhrs(pitchDeg, rollDeg) {
+    var box = fitCanvas(ahrs);
+    var ctx = box.ctx;
+    var w = box.w;
+    var h = box.h;
+    var s = Math.min(h / 500, w / 520);
+    var cx = w * 0.50;
+    var cy = h * 0.50;
+    var ppd = 6.4 * s;
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, w, h);
+    ctx.clip();
+
+    ctx.save();
+    ctx.translate(cx, cy + pitchDeg * ppd);
+    ctx.rotate(rad(rollDeg));
+
+    var sky = ctx.createLinearGradient(0, -h * 2, 0, 0);
+    sky.addColorStop(0, "#0039b8");
+    sky.addColorStop(1, "#758bff");
+    ctx.fillStyle = sky;
+    ctx.fillRect(-w * 3, -h * 3, w * 6, h * 3);
+
+    var gnd = ctx.createLinearGradient(0, 0, 0, h * 2);
+    gnd.addColorStop(0, "#e5c900");
+    gnd.addColorStop(0.18, "#c47a22");
+    gnd.addColorStop(1, "#5b4121");
+    ctx.fillStyle = gnd;
+    ctx.fillRect(-w * 3, 0, w * 6, h * 3);
+
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = Math.max(1.5, 2 * s);
+    ctx.beginPath();
+    ctx.moveTo(-w * 2, 0);
+    ctx.lineTo(w * 2, 0);
+    ctx.stroke();
+
+    ctx.font = "700 " + Math.round(13 * s) + "px ui-monospace, monospace";
+    ctx.fillStyle = "#ffffff";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    var d;
+    for (d = -30; d <= 30; d += 5) {
+      if (d === 0) continue;
+      var y = -d * ppd;
+      var major = d % 10 === 0;
+      var half = (major ? 42 : 18) * s;
+      ctx.lineWidth = major ? 1.6 * s : 1.1 * s;
+      ctx.beginPath();
+      ctx.moveTo(-half, y);
+      ctx.lineTo(half, y);
+      if (major && d > 0) {
+        ctx.lineTo(half - 8 * s, y + 7 * s);
+        ctx.moveTo(-half, y);
+        ctx.lineTo(-half + 8 * s, y + 7 * s);
+      }
+      if (major && d < 0) {
+        ctx.lineTo(half - 8 * s, y - 7 * s);
+        ctx.moveTo(-half, y);
+        ctx.lineTo(-half + 8 * s, y - 7 * s);
+      }
+      ctx.stroke();
+      if (major) {
+        var label = String(Math.abs(d));
+        ctx.fillText(label, -half - 16 * s, y);
+        ctx.fillText(label, half + 16 * s, y);
+      }
+    }
+
+    ctx.restore();
+
+    var arcR = Math.min(118 * s, h * 0.34);
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(rad(rollDeg));
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 1.5 * s;
+    ctx.beginPath();
+    ctx.arc(0, 0, arcR, rad(-60) - Math.PI / 2, rad(60) - Math.PI / 2);
+    ctx.stroke();
+    var marks = [-60, -45, -30, -20, -10, 0, 10, 20, 30, 45, 60];
+    var mi;
+    for (mi = 0; mi < marks.length; mi++) {
+      var a = rad(marks[mi]) - Math.PI / 2;
+      var inner = arcR - (marks[mi] % 30 === 0 ? 12 : 7) * s;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * inner, Math.sin(a) * inner);
+      ctx.lineTo(Math.cos(a) * arcR, Math.sin(a) * arcR);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - arcR);
+    ctx.lineTo(cx - 7 * s, cy - arcR - 12 * s);
+    ctx.lineTo(cx + 7 * s, cy - arcR - 12 * s);
+    ctx.closePath();
+    ctx.fill();
+
+    var slip = 10 * s;
+    ctx.strokeStyle = "rgba(255,255,255,0.85)";
+    ctx.lineWidth = 1.2 * s;
+    ctx.strokeRect(cx - 22 * s, cy - arcR * 0.72, 44 * s, 8 * s);
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.arc(cx + slip, cy - arcR * 0.72 + 4 * s, 3.2 * s, 0, Math.PI * 2);
+    ctx.fill();
+
+    drawAircraft(ctx, cx, cy, s);
+    drawTapes(ctx, w, h, s);
+    ctx.restore();
+  }
+
+  function drawAircraft(ctx, cx, cy, s) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.lineJoin = "round";
+    ctx.lineWidth = 1.4 * s;
+    ctx.strokeStyle = "#111";
+    ctx.fillStyle = "#e5c200";
+    function wing(sign) {
+      ctx.beginPath();
+      ctx.moveTo(sign * 10 * s, 1 * s);
+      ctx.lineTo(sign * 78 * s, 12 * s);
+      ctx.lineTo(sign * 78 * s, 20 * s);
+      ctx.lineTo(sign * 10 * s, 9 * s);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+    wing(-1);
+    wing(1);
+    ctx.fillStyle = "#f2d84a";
+    ctx.beginPath();
+    ctx.moveTo(0, -6 * s);
+    ctx.lineTo(7 * s, 8 * s);
+    ctx.lineTo(-7 * s, 8 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawTapes(ctx, w, h, s) {
+    var tapeTop = 36 * s;
+    var tapeH = h - 118 * s;
+    var mid = tapeTop + tapeH * 0.5;
+    var spdX = 8 * s;
+    var spdW = 78 * s;
+    var altW = 86 * s;
+    var altX = w - 8 * s - altW - 52 * s;
+    var plate = "rgba(6, 8, 10, 0.62)";
+
+    function plateRect(x, y, rw, rh) {
+      ctx.fillStyle = plate;
+      roundRect(ctx, x, y, rw, rh, 3 * s);
+      ctx.fill();
+    }
+
+    plateRect(spdX, 6 * s, spdW, 26 * s);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "800 " + Math.round(12 * s) + "px ui-monospace, monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(BUG_KT + "KT", spdX + spdW * 0.5, 19 * s);
+
+    plateRect(spdX, tapeTop, spdW, tapeH);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(spdX, tapeTop, spdW, tapeH);
+    ctx.clip();
+    ctx.fillStyle = "#1f8c46";
+    ctx.fillRect(spdX + 6 * s, mid - (129 - IAS_KT) * 2.1 * s, 5 * s, (129 - 48) * 2.1 * s);
+    ctx.fillStyle = "#e07a22";
+    ctx.fillRect(spdX + 6 * s, mid - (163 - IAS_KT) * 2.1 * s, 5 * s, (163 - 129) * 2.1 * s);
+    ctx.strokeStyle = "#f4f4f4";
+    ctx.fillStyle = "#f4f4f4";
+    ctx.font = "700 " + Math.round(13 * s) + "px ui-monospace, monospace";
+    ctx.textAlign = "right";
+    var kt;
+    for (kt = 40; kt <= 200; kt += 10) {
+      var y = mid - (kt - IAS_KT) * 2.1 * s;
+      ctx.lineWidth = 1.3 * s;
+      ctx.beginPath();
+      ctx.moveTo(spdX + spdW - 8 * s, y);
+      ctx.lineTo(spdX + spdW - 22 * s, y);
+      ctx.stroke();
+      ctx.fillText(String(kt), spdX + spdW - 26 * s, y);
+    }
+    var bugY = mid - (BUG_KT - IAS_KT) * 2.1 * s;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.moveTo(spdX + spdW, bugY);
+    ctx.lineTo(spdX + spdW - 10 * s, bugY - 6 * s);
+    ctx.lineTo(spdX + spdW - 10 * s, bugY + 6 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    ctx.fillStyle = "#07090c";
+    ctx.beginPath();
+    ctx.moveTo(spdX + 6 * s, mid - 16 * s);
+    ctx.lineTo(spdX + spdW - 4 * s, mid - 16 * s);
+    ctx.lineTo(spdX + spdW + 8 * s, mid);
+    ctx.lineTo(spdX + spdW - 4 * s, mid + 16 * s);
+    ctx.lineTo(spdX + 6 * s, mid + 16 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "800 " + Math.round(20 * s) + "px ui-monospace, monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(String(IAS_KT), spdX + spdW * 0.46, mid + 1 * s);
+
+    plateRect(spdX, h - 78 * s, spdW, 70 * s);
+    ctx.font = "700 " + Math.round(11 * s) + "px ui-monospace, monospace";
+    ctx.fillStyle = "#c8c8c8";
+    ctx.textAlign = "left";
+    ctx.fillText("TAS", spdX + 8 * s, h - 58 * s);
+    ctx.fillText("GS", spdX + 8 * s, h - 30 * s);
+    ctx.fillStyle = "#f4f4f4";
+    ctx.textAlign = "right";
+    ctx.font = "800 " + Math.round(14 * s) + "px ui-monospace, monospace";
+    ctx.fillText("131", spdX + spdW - 8 * s, h - 58 * s);
+    ctx.fillText(String(GS_KT), spdX + spdW - 8 * s, h - 30 * s);
+
+    plateRect(altX, 6 * s, altW, 26 * s);
+    ctx.fillStyle = "#ff2fd0";
+    ctx.font = "800 " + Math.round(12 * s) + "px ui-monospace, monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(SEL_ALT + "FT", altX + altW * 0.5, 19 * s);
+
+    plateRect(altX, tapeTop, altW, tapeH);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(altX, tapeTop, altW, tapeH);
+    ctx.clip();
+    ctx.strokeStyle = "#f4f4f4";
+    ctx.fillStyle = "#f4f4f4";
+    ctx.font = "700 " + Math.round(13 * s) + "px ui-monospace, monospace";
+    ctx.textAlign = "left";
+    var ft;
+    for (ft = 0; ft <= 8000; ft += 100) {
+      var ay = mid - (ft - ALT_FT) * 0.16 * s;
+      if (ay < tapeTop - 20 || ay > tapeTop + tapeH + 20) continue;
+      var major = ft % 200 === 0;
+      ctx.lineWidth = major ? 1.4 * s : 1 * s;
+      ctx.beginPath();
+      ctx.moveTo(altX + 8 * s, ay);
+      ctx.lineTo(altX + (major ? 24 : 16) * s, ay);
+      ctx.stroke();
+      if (major) ctx.fillText(String(ft), altX + 28 * s, ay);
+    }
+    var abug = mid - (SEL_ALT - ALT_FT) * 0.16 * s;
+    ctx.fillStyle = "#ff2fd0";
+    ctx.beginPath();
+    ctx.moveTo(altX, abug);
+    ctx.lineTo(altX + 10 * s, abug - 6 * s);
+    ctx.lineTo(altX + 10 * s, abug + 6 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    ctx.fillStyle = "#07090c";
+    ctx.beginPath();
+    ctx.moveTo(altX + 4 * s, mid - 16 * s);
+    ctx.lineTo(altX + altW - 8 * s, mid - 16 * s);
+    ctx.lineTo(altX + altW - 8 * s, mid + 16 * s);
+    ctx.lineTo(altX + 4 * s, mid + 16 * s);
+    ctx.lineTo(altX - 8 * s, mid);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "800 " + Math.round(18 * s) + "px ui-monospace, monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(String(ALT_FT), altX + altW * 0.48, mid + 1 * s);
+
+    var vsiX = altX + altW + 6 * s;
+    var vsiW = w - 8 * s - vsiX;
+    var vsiTop = mid - 70 * s;
+    var vsiH = 140 * s;
+    plateRect(vsiX, vsiTop, vsiW, vsiH);
+    ctx.strokeStyle = "#d0d0d0";
+    ctx.lineWidth = 1 * s;
+    var marksF = [-1500, -1000, -500, 0, 500, 1000, 1500];
+    var fi;
+    for (fi = 0; fi < marksF.length; fi++) {
+      var vy = mid - marksF[fi] * (28 * s / 1000);
+      ctx.beginPath();
+      ctx.moveTo(vsiX + 4 * s, vy);
+      ctx.lineTo(vsiX + (marksF[fi] % 1000 === 0 ? 14 : 9) * s, vy);
+      ctx.stroke();
+    }
+    var bar = clamp(VS_FPM, -1500, 1500);
+    ctx.fillStyle = "#f4f4f4";
+    if (bar < 0) ctx.fillRect(vsiX + 4 * s, mid, 4 * s, -bar * (28 * s / 1000));
+    var vsLabel = String(VS_FPM);
+    ctx.font = "800 " + Math.round(13 * s) + "px ui-monospace, monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    var vsTextW = ctx.measureText(vsLabel).width + 10 * s;
+    var vsTextH = 18 * s;
+    var vsTextX = vsiX + Math.max(4 * s, (vsiW - vsTextW) * 0.5);
+    var vsTextY = vsiTop + vsiH - vsTextH - 6 * s;
+    ctx.fillStyle = "#07090c";
+    roundRect(ctx, vsTextX, vsTextY, Math.min(vsTextW, vsiW - 6 * s), vsTextH, 2 * s);
+    ctx.fill();
+    ctx.fillStyle = "#f4f4f4";
+    ctx.fillText(vsLabel, vsiX + vsiW * 0.5, vsTextY + vsTextH * 0.5);
+
+    plateRect(altX, h - 58 * s, altW, 48 * s);
+    ctx.fillStyle = "#c8c8c8";
+    ctx.font = "700 " + Math.round(11 * s) + "px ui-monospace, monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("BARO", altX + altW * 0.5, h - 42 * s);
+    ctx.fillStyle = "#f4f4f4";
+    ctx.font = "800 " + Math.round(13 * s) + "px ui-monospace, monospace";
+    ctx.fillText(BARO.toFixed(2), altX + altW * 0.5, h - 24 * s);
+  }
+
+  function project(lat, lon, w, h) {
+    var x = (lon - VIEW.minLon) / (VIEW.maxLon - VIEW.minLon) * w;
+    var y = (VIEW.maxLat - lat) / (VIEW.maxLat - VIEW.minLat) * h;
+    return { x: x, y: y };
+  }
+
+  function ringRadiusPx(lat, rDeg, h) {
+    return (rDeg / (VIEW.maxLat - VIEW.minLat)) * h;
+  }
+
+  function drawMap(now) {
+    var box = fitCanvas(map);
+    var ctx = box.ctx;
+    var w = box.w;
+    var h = box.h;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "#0d1218";
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.strokeStyle = "rgba(55, 72, 96, 0.9)";
+    ctx.lineWidth = 1;
+    var lat;
+    var lon;
+    for (lat = 50; lat <= 51.5; lat += 0.5) {
+      var a = project(lat, VIEW.minLon, w, h);
+      var b = project(lat, VIEW.maxLon, w, h);
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+    for (lon = 16.5; lon <= 20; lon += 0.5) {
+      var c = project(VIEW.minLat, lon, w, h);
+      var d = project(VIEW.maxLat, lon, w, h);
+      ctx.beginPath();
+      ctx.moveTo(c.x, c.y);
+      ctx.lineTo(d.x, d.y);
+      ctx.stroke();
+    }
+
+    var i;
+    ctx.lineWidth = 1.6;
+    for (i = 0; i < AIR.length; i++) {
+      var zone = AIR[i];
+      ctx.strokeStyle = zone.stroke;
+      ctx.beginPath();
+      if (zone.kind === "ring") {
+        var p = project(zone.lat, zone.lon, w, h);
+        ctx.arc(p.x, p.y, ringRadiusPx(zone.lat, zone.r, h), 0, Math.PI * 2);
+      } else {
+        var k;
+        for (k = 0; k < zone.pts.length; k++) {
+          var q = project(zone.pts[k][0], zone.pts[k][1], w, h);
+          if (k === 0) ctx.moveTo(q.x, q.y);
+          else ctx.lineTo(q.x, q.y);
+        }
+        ctx.closePath();
+      }
+      ctx.stroke();
+      if (zone.label) {
+        var lp = project(zone.lat, zone.lon, w, h);
+        ctx.fillStyle = zone.stroke;
+        ctx.font = "700 12px ui-monospace, monospace";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(zone.label, lp.x, lp.y - ringRadiusPx(zone.lat, zone.r, h) - 10);
+      }
+    }
+
+    ctx.strokeStyle = "#ff2fd0";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    for (i = 0; i < WPT.length; i++) {
+      var wp = project(WPT[i].lat, WPT[i].lon, w, h);
+      if (i === 0) ctx.moveTo(wp.x, wp.y);
+      else ctx.lineTo(wp.x, wp.y);
+    }
+    ctx.stroke();
+
+    ctx.fillStyle = "#ff2fd0";
+    ctx.font = "800 13px ui-monospace, monospace";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "bottom";
+    for (i = 0; i < WPT.length; i++) {
+      var pt = project(WPT[i].lat, WPT[i].lon, w, h);
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillText(WPT[i].id, pt.x + 8, pt.y - 6);
+    }
+
+    var leg = offset(WPT[0], WPT[1]);
+    var mid = along(WPT[0], WPT[1], 0.55);
+    var mp = project(mid.lat, mid.lon, w, h);
+    var hdg = Math.round(headingOf(WPT[0], WPT[1]));
+    ctx.fillStyle = "rgba(6, 8, 10, 0.72)";
+    var tag = Math.round(leg.dist / NM) + "NM  HDG " + hdg;
+    ctx.font = "700 12px ui-monospace, monospace";
+    var tw = ctx.measureText(tag).width + 12;
+    roundRect(ctx, mp.x - tw * 0.5, mp.y - 22, tw, 18, 3);
+    ctx.fill();
+    ctx.fillStyle = "#f2f2f2";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(tag, mp.x, mp.y - 13);
+
+    var ship = ownship();
+    var sp = project(ship.lat, ship.lon, w, h);
+    var track = rad(headingOf(WPT[0], WPT[1]) - 90);
+    var phase = ((now / 1000) % 2.4) / 2.4;
+    ctx.strokeStyle = "rgba(57, 255, 106, " + (1 - phase).toFixed(3) + ")";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(sp.x, sp.y, 10 + phase * 28, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.save();
+    ctx.translate(sp.x, sp.y);
+    ctx.rotate(track);
+    ctx.fillStyle = "#0a2010";
+    ctx.beginPath();
+    ctx.moveTo(16, 0);
+    ctx.lineTo(-10, 9);
+    ctx.lineTo(-10, -9);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#39ff6a";
+    ctx.beginPath();
+    ctx.moveTo(13, 0);
+    ctx.lineTo(-8, 7);
+    ctx.lineTo(-8, -7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#f0fff6";
+    ctx.beginPath();
+    ctx.arc(-1, 0, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    var read = "LAT " + ship.lat.toFixed(3) + "   LON " + ship.lon.toFixed(3);
+    ctx.font = "700 12px ui-monospace, monospace";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = "rgba(6, 8, 10, 0.72)";
+    var rw = ctx.measureText(read).width + 16;
+    roundRect(ctx, 10, h - 32, rw, 22, 3);
+    ctx.fill();
+    ctx.fillStyle = "#d5d5d5";
+    ctx.fillText(read, 18, h - 16);
+  }
+
+  function paintRoute() {
+    var ship = ownship();
+    var left = offset(ship, WPT[1]);
+    var distNm = left.dist / NM;
+    var ete = (distNm / GS_KT) * 3600;
+    document.getElementById("from-id").textContent = "EPWR";
+    document.getElementById("to-id").textContent = "KUKUS";
+    document.getElementById("dis-val").textContent = distNm.toFixed(1);
+    document.getElementById("ete-val").textContent = formatEte(ete);
+    document.getElementById("eta-val").textContent = clock(utcSec + ete);
+  }
+
+  function frame(now) {
+    if (simT0 === null) simT0 = now;
+    var t = (now - simT0) / 1000;
+    var pitch = 3.2 + Math.sin(t * 0.45) * 1.4;
+    var roll = -11 + Math.sin(t * 0.28) * 2.2;
+    var nmPerSec = GS_KT / 3600;
+    var legNm = offset(WPT[0], WPT[1]).dist / NM;
+    legT = Math.min(0.92, 0.18 + (nmPerSec * t) / legNm);
+    utcSec = 14 * 3600 + 41 * 60 + t;
+    drawAhrs(pitch, roll);
+    drawMap(now);
+    paintRoute();
+    requestAnimationFrame(frame);
+  }
+
+  window.addEventListener("resize", function () {
+    drawAhrs(3.2, -11);
+    drawMap(performance.now());
+    paintRoute();
+  });
+  drawAhrs(3.2, -11);
+  drawMap(performance.now());
+  paintRoute();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

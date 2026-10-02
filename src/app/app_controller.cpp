@@ -85,11 +85,11 @@ void AppController::toggleAip(int row)
     touch();
 }
 
-void AppController::addCockpitLayer(IWidget *widget)
+void AppController::addCockpitLayer(IWidget *widget, CockpitRole role)
 {
     if (widget != nullptr)
     {
-        mCockpitLayers.push_back(widget);
+        mCockpitLayers.push_back(CockpitEntry{widget, role});
         applyLayers();
     }
 }
@@ -104,14 +104,11 @@ void AppController::setView(ViewMode mode)
 {
     if (mode == ViewMode::Planning && mView != ViewMode::Planning)
     {
-        mLastEfisView = (mView == ViewMode::Ahrs) ? ViewMode::Ahrs : ViewMode::ThreeD;
+        mLastEfisView = (mView == ViewMode::ThreeD) ? ViewMode::ThreeD : mView;
         mGeneralOpen = false;
     }
     mView = mode;
-    if (mode == ViewMode::Ahrs || mode == ViewMode::ThreeD || mode == ViewMode::Planning)
-    {
-        applyLayers();
-    }
+    applyLayers();
     touch();
 }
 
@@ -177,7 +174,9 @@ void AppController::applyLayers()
 {
     const bool threeD = mView == ViewMode::ThreeD;
     const bool ahrsOnly = mView == ViewMode::Ahrs;
+    const bool split = mView == ViewMode::Split;
     const bool planning = mView == ViewMode::Planning;
+    const bool efis = (threeD || ahrsOnly) && !planning;
     mTerrain.enable(threeD);
     mTerrain.setSatelliteGround(threeD && mMapMode == MapMode::Satellite);
     mTerrain.setChartOverlay(false);
@@ -186,14 +185,18 @@ void AppController::applyLayers()
     mTerrain.setAirspacesEnabled(threeD && (mAipWalls || mAipText));
     mTerrain.setVrpsEnabled(mVrpOn);
     mTerrain.setObstaclesEnabled(mObstacles);
-    mAhrs.enable((threeD || ahrsOnly) && !planning);
-    mAhrs.setDrawSkyGround(ahrsOnly);
-    for (IWidget *layer : mCockpitLayers)
+    mAhrs.enable(efis || split);
+    mAhrs.setDrawSkyGround(ahrsOnly || split);
+    mAhrs.setSplit(split);
+    for (const CockpitEntry &layer : mCockpitLayers)
     {
-        if (layer != nullptr)
+        if (layer.widget == nullptr)
         {
-            layer->enable(!planning);
+            continue;
         }
+        const bool dial = layer.role == CockpitRole::Dial;
+        layer.widget->enable(dial ? efis : (efis || split));
+        layer.widget->setSplit(!dial && split);
     }
     if (mPlanning != nullptr)
     {

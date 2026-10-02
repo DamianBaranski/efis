@@ -8,6 +8,7 @@
 #include "frame.h"
 #include "menu_widget.h"
 #include "nav_db.h"
+#include "split_layout.h"
 
 #include <GLES3/gl3.h>
 #include <algorithm>
@@ -1392,8 +1393,37 @@ void PlanningWidget::drawMapOverlays()
     }
 }
 
+void PlanningWidget::renderSplitMap()
+{
+    const SplitLayout layout = makeSplitLayout(std::max(1, mScreen.getWidth()), std::max(1, mScreen.getHeight()));
+    mMap.place(layout.map.x, layout.map.y, layout.map.w, layout.map.h);
+
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_DEPTH_TEST);
+    glDepthMask(GL_FALSE);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    mMap.render();
+    glDepthMask(GL_TRUE);
+    glEnable(GL_DEPTH_TEST);
+}
+
+bool PlanningWidget::pointingAtSplitMap(int x, int y) const
+{
+    if (mController.view() != ViewMode::Split || (mMenu != nullptr && mMenu->isOpen()))
+    {
+        return false;
+    }
+    return mMap.contains(x, y);
+}
+
 void PlanningWidget::render()
 {
+    if (mController.view() == ViewMode::Split)
+    {
+        renderSplitMap();
+        return;
+    }
     if (!mEnabled)
     {
         return;
@@ -1531,6 +1561,15 @@ bool PlanningWidget::mouseClick(int x, int y)
 
 bool PlanningWidget::mouseMove(int x, int y, int dx, int dy)
 {
+    if (mController.view() == ViewMode::Split)
+    {
+        if (pointingAtSplitMap(x, y))
+        {
+            mMap.pan(dx, dy);
+            return true;
+        }
+        return false;
+    }
     if (!mEnabled || mTab != Tab::Map)
     {
         return false;
@@ -1578,6 +1617,15 @@ bool PlanningWidget::mouseUp(int, int)
 
 bool PlanningWidget::mouseWheel(int x, int y, int dy)
 {
+    if (mController.view() == ViewMode::Split)
+    {
+        if (pointingAtSplitMap(x, y))
+        {
+            mMap.zoomAt(static_cast<float>(dy) * 0.5f, x, y);
+            return true;
+        }
+        return false;
+    }
     if (!mEnabled || mTab != Tab::Map)
     {
         return false;
@@ -1592,6 +1640,16 @@ bool PlanningWidget::mouseWheel(int x, int y, int dy)
 
 bool PlanningWidget::pinch(int x, int y, float dz)
 {
+    if (mController.view() == ViewMode::Split)
+    {
+        if (!pointingAtSplitMap(x, y) && !mMapPinch)
+        {
+            return false;
+        }
+        mMapPinch = true;
+        mMap.zoomAt(dz, x, y);
+        return true;
+    }
     if (!mEnabled || mTab != Tab::Map)
     {
         return false;

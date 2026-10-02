@@ -32,8 +32,8 @@ void MenuWidget::buildCells()
         [this] { return mController.view() == ViewMode::Ahrs; });
     add("3D", 0, 2, false, [this] { mController.setView(ViewMode::ThreeD); },
         [this] { return mController.view() == ViewMode::ThreeD; });
-    add("2D", 0, 3, false, [this] { mController.setView(ViewMode::TwoD); },
-        [this] { return mController.view() == ViewMode::TwoD; });
+    add("SPLIT", 0, 3, false, [this] { mController.setView(ViewMode::Split); },
+        [this] { return mController.view() == ViewMode::Split; });
     add("PLANNING", 0, 4, false, [this] { mController.setView(ViewMode::Planning); },
         [this] { return mController.view() == ViewMode::Planning; });
     add("MAP", 1, 0, true, [this] { mController.setMap(mController.mapMode()); }, off);

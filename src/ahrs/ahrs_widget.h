@@ -35,6 +35,9 @@ public:
     /// Shows or hides the sky and ground tape. The aircraft symbol is unaffected.
     void setDrawSkyGround(bool draw) { mDrawSkyGround = draw; }
 
+    /// Draws inside the left column of MODE -> SPLIT. Full screen when false.
+    void setSplit(bool split) override;
+
 private:
     void rebuildSprites();
     float hudScale() const;
@@ -52,10 +55,16 @@ private:
     Render2D mAircraftSymbol;              ///< Representation of the aircraft symbol in the AHRS widget.
     AttitudeData mAttitudeData;    ///< Attitude data.
     bool mDrawSkyGround = true; ///< Land and horizon tape. False in 3D so terrain shows through.
+    bool mSplit = false;        ///< Left column of the split picture.
     int mAttitudeY;
     int mLayoutX = 0;
     int mLayoutW = 0;
     int mLayoutH = 0;
+    int mPaneX = -1;
+    int mClipX = 0;
+    int mClipY = 0;
+    int mClipW = 0;
+    int mClipH = 0;
     float mHudScale = 1.0f;
 
     static constexpr const char *cResourcesPath = "../resources/textures/ui/AHRS/"; ///< Path to the resources directory.

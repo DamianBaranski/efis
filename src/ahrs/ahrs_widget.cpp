@@ -2,6 +2,7 @@
 /// Draws the shared attitude tapes from the latest attitude sample.
 #include "ahrs_widget.h"
 #include "asset_path.h"
+#include "split_layout.h"
 #include <GLES3/gl3.h>
 #include <algorithm>
 #include <cmath>
@@ -22,9 +23,19 @@ AhrsWidget::AhrsWidget(Frame &frame, IDataManager &dataManager) : IWidget(frame)
     rebuildSprites();
 }
 
+void AhrsWidget::setSplit(bool split)
+{
+    if (mSplit == split)
+    {
+        return;
+    }
+    mSplit = split;
+    mLayoutW = -1;
+}
+
 float AhrsWidget::hudScale() const
 {
-    const int h = mScreen.getHeight();
+    const int h = mLayoutH > 0 ? mLayoutH : mScreen.getHeight();
     if (h <= 0)
     {
         return 1.0f;
@@ -34,16 +45,34 @@ float AhrsWidget::hudScale() const
 
 void AhrsWidget::rebuildSprites()
 {
-    const int w = mScreen.getWidth();
-    const int h = mScreen.getHeight();
-    const int cx = w / 2;
-    const int cy = h / 2;
+    const int screenW = std::max(1, mScreen.getWidth());
+    const int screenH = std::max(1, mScreen.getHeight());
+    const SplitLayout layout = mSplit ? makeSplitLayout(screenW, screenH) : SplitLayout{};
+    const int w = mSplit ? std::max(1, layout.ahrs.w) : screenW;
+    const int h = mSplit ? std::max(1, layout.ahrs.h) : screenH;
+    const int cx = mSplit ? layout.ahrs.x + w / 2 : w / 2;
+    const int cy = mSplit ? screenH - layout.ahrs.y - h / 2 : h / 2;
+    if (mSplit)
+    {
+        mClipX = layout.ahrsClip.x;
+        mClipY = layout.ahrsClip.y;
+        mClipW = layout.ahrsClip.w;
+        mClipH = layout.ahrsClip.h;
+    }
+    else
+    {
+        mClipX = 0;
+        mClipY = 0;
+        mClipW = 0;
+        mClipH = 0;
+    }
     // PC art is authored for a 600px-tall window. Grow the tape if the
     // 2048px-wide sky/ground would still leave the sides uncovered.
-    const float designScale = hudScale();
+    const float designScale = static_cast<float>(h) / cDesignHeight;
     const float scale = std::max(designScale, w > 0 ? static_cast<float>(w) / 2048.0f : designScale);
 
     mLayoutX = cx;
+    mPaneX = mSplit ? layout.ahrs.x : 0;
     mAttitudeY = cy;
     mLayoutW = w;
     mLayoutH = h;
@@ -65,7 +94,13 @@ void AhrsWidget::render()
     {
         return;
     }
-    if (mScreen.getWidth() != mLayoutW || mScreen.getHeight() != mLayoutH)
+    const int screenW = std::max(1, mScreen.getWidth());
+    const int screenH = std::max(1, mScreen.getHeight());
+    const SplitLayout layout = mSplit ? makeSplitLayout(screenW, screenH) : SplitLayout{};
+    const int wantW = mSplit ? layout.ahrs.w : screenW;
+    const int wantH = mSplit ? layout.ahrs.h : screenH;
+    const int wantX = mSplit ? layout.ahrs.x : 0;
+    if (wantW != mLayoutW || wantH != mLayoutH || wantX != mPaneX)
     {
         rebuildSprites();
     }
@@ -74,6 +109,11 @@ void AhrsWidget::render()
     glDisable(GL_DEPTH_TEST);
     glDepthMask(GL_FALSE);
     glEnable(GL_BLEND);
+    if (mSplit && mClipW > 0 && mClipH > 0)
+    {
+        glEnable(GL_SCISSOR_TEST);
+        glScissor(mClipX, screenH - (mClipY + mClipH), mClipW, mClipH);
+    }
 
     if (mDrawSkyGround)
     {
@@ -86,6 +126,10 @@ void AhrsWidget::render()
     mRollPointer.render();
     mAircraftSymbol.render();
 
+    if (mSplit)
+    {
+        glDisable(GL_SCISSOR_TEST);
+    }
     glDepthMask(GL_TRUE);
     glEnable(GL_DEPTH_TEST);
 }
@@ -153,7 +197,7 @@ void AhrsWidget::updateRenderers()
     float roll = 0.0f;
     tapeAngles(mAttitudeData, pitch, roll);
     float pitchPixels = -pitch * cPixelPerPitchRadians * mHudScale;
-    float rotationCenterX = mScreen.getWidth() / 2;
+    float rotationCenterX = static_cast<float>(mLayoutX);
     float rotationCenterY = static_cast<float>(mAttitudeY);
     glm::mat4 trans(1.0);
     trans = glm::translate(trans, glm::vec3(rotationCenterX, rotationCenterY, 0));

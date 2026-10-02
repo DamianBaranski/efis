@@ -112,6 +112,8 @@ private:
     void loadPreset(const std::vector<std::string> &route);
 
     void layout();
+    void renderSplitMap();
+    bool pointingAtSplitMap(int x, int y) const;
     void drawBackground();
     void drawHeader();
     void drawTabStrip();

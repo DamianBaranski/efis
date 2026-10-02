@@ -6,6 +6,7 @@
 #include "openaip_client.h"
 #include "session.h"
 #include "shader.h"
+#include "split_layout.h"
 #include "terrain_download.h"
 #include <GLES3/gl3.h>
 #include <algorithm>
@@ -509,11 +510,18 @@ void StatsOverlay::rebuildPreloadSprites(const std::string &l0, const std::strin
     const int w = std::max(1, mScreen.getWidth());
     const int h = std::max(1, mScreen.getHeight());
     const int pad = std::max(8, h / 80);
-    const int boxW = std::min(w - 2 * pad, std::max(460, w / 3));
+    int x = pad;
+    int limitW = w - 2 * pad;
+    if (mController.view() == ViewMode::Split)
+    {
+        const SplitLayout layout = makeSplitLayout(w, h);
+        x = layout.map.x + pad;
+        limitW = std::max(1, layout.map.w - 2 * pad);
+    }
+    const int boxW = std::min(limitW, std::max(std::min(460, limitW), w / 3));
     const int lineH = std::max(18, h / 36);
     const int boxH = lineH * 4 + pad;
     const int font = std::clamp(lineH - 4, 12, 20);
-    const int x = pad;
     const int glY = pad;
     mPreloadBox->drawRectangle(x, glY, boxW, boxH, 0x00000099u);
     const char *lines[4] = {l0.c_str(), l1.c_str(), l2.c_str(), l3.c_str()};

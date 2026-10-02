@@ -18,8 +18,15 @@ enum class ViewMode
 {
     Ahrs,     ///< Instrument only. Terrain is not drawn.
     ThreeD,   ///< Terrain, map, and the instrument layer without the sky tape.
-    TwoD,     ///< Placeholder. Highlights the row and does not change layers.
+    Split,    ///< Attitude and route strip on the left, moving map on the right.
     Planning, ///< Full-screen four-tab flight planner. Hides the cockpit layer.
+};
+
+/// Which cockpit widgets stay up in SPLIT.
+enum class CockpitRole
+{
+    Pfd,  ///< Attitude companions: route strip and the speed and altitude tapes.
+    Dial, ///< Corner instruments. Hidden in SPLIT.
 };
 
 /// Ground imagery selected from the MAP column.
@@ -85,14 +92,17 @@ public:
     uint64_t revision() const { return mRevision; }
 
     /// Adds a widget to the cockpit layer. AHRS and 3D enable it; PLANNING hides it.
+    /// Dial widgets are also hidden in SPLIT.
     /// \param widget Not owned. Must outlive this controller.
-    void addCockpitLayer(IWidget *widget);
+    /// \param role Pfd stays in SPLIT. Dial does not.
+    void addCockpitLayer(IWidget *widget, CockpitRole role = CockpitRole::Pfd);
 
     /// Adds the full-screen planner widget. Enabled only in PLANNING.
+    /// The same widget draws only its map while SPLIT is selected.
     /// \param widget Not owned. Must outlive this controller.
     void setPlanningWidget(IWidget *widget);
 
-    /// Selects a MODE row. 2D highlights only. PLANNING, AHRS, and 3D apply layers.
+    /// Selects a MODE row. PLANNING, AHRS, 3D, and SPLIT apply layers.
     void setView(ViewMode mode);
     /// Leaves PLANNING and restores the EFIS picture that was showing before it.
     void leavePlanning();
@@ -120,9 +130,15 @@ private:
 
     AhrsWidget &mAhrs;       ///< Attitude instrument. enable() and the sky tape are switched from here.
     TerrainWidget &mTerrain; ///< 3D world. Layer flags and imagery zoom are pushed here.
-    std::vector<IWidget *> mCockpitLayers; ///< HSI, route strip, traffic, tapes. Hidden in PLANNING.
-    IWidget *mPlanning = nullptr;          ///< Full-screen planner. Enabled only in PLANNING.
-    ViewMode mView = ViewMode::ThreeD; ///< MODE row. 2D highlights only. PLANNING swaps layers.
+    struct CockpitEntry
+    {
+        IWidget *widget = nullptr;
+        CockpitRole role = CockpitRole::Pfd;
+    };
+
+    std::vector<CockpitEntry> mCockpitLayers; ///< Route strip, tapes, and the corner dials.
+    IWidget *mPlanning = nullptr;             ///< Full planner, or its map alone in SPLIT.
+    ViewMode mView = ViewMode::ThreeD;        ///< MODE row. PLANNING swaps layers.
     ViewMode mLastEfisView = ViewMode::ThreeD; ///< Picture restored when leaving PLANNING.
     MapMode mMapMode = MapMode::Simple; ///< MAP row. Satellite drapes imagery. Simple is shaded terrain.
 

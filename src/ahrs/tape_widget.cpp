@@ -1,6 +1,7 @@
 /// \file tape_widget.cpp
 /// Airspeed and altitude tapes. Arrows share the aircraft-symbol center line.
 #include "tape_widget.h"
+#include "split_layout.h"
 #include <GLES3/gl3.h>
 #include <algorithm>
 #include <cmath>
@@ -159,22 +160,29 @@ void TapeWidget::render()
     }
     prepareColors();
 
-    const int w = std::max(1, mScreen.getWidth());
-    const int h = std::max(1, mScreen.getHeight());
-    const float wf = static_cast<float>(w);
-    const float hf = static_cast<float>(h);
-    const float design = hf / 600.0f;
-    const float symbolScale = std::max(design, wf / 2048.0f);
-    const float cx = wf * 0.5f;
-    const float cy = hf * 0.5f;
+    const int screenW = std::max(1, mScreen.getWidth());
+    const int screenH = std::max(1, mScreen.getHeight());
+    const SplitLayout layout = mSplit ? makeSplitLayout(screenW, screenH) : SplitLayout{};
+    const int areaW = mSplit ? std::max(1, layout.ahrs.w) : screenW;
+    const int areaH = mSplit ? std::max(1, layout.ahrs.h) : screenH;
+    const float wf = static_cast<float>(screenW);
+    const float hf = static_cast<float>(screenH);
+    const float areaWf = static_cast<float>(areaW);
+    const float areaHf = static_cast<float>(areaH);
+    const float design = areaHf / 600.0f;
+    const float symbolScale = std::max(design, areaWf / 2048.0f);
+    const float leftEdge = mSplit ? static_cast<float>(layout.ahrs.x) : 0.0f;
+    const float cx = leftEdge + areaWf * 0.5f;
+    const float cy = mSplit ? static_cast<float>(screenH - layout.ahrs.y) - areaHf * 0.5f : hf * 0.5f;
     const float symbolHalf = kSymbolHalf * symbolScale;
 
-    const float column = std::min(hf / 3.0f, wf * 0.28f);
+    const float column = std::min(areaHf / 3.0f, areaWf * 0.28f);
     const float inset = std::max(4.0f, column * 0.04f);
     const float outer = std::max(36.0f, column * 0.5f - inset);
-    const float dialInner = outer + inset + outer;
-    const float haveL = (cx - symbolHalf) - dialInner;
-    const float haveR = (wf - dialInner) - (cx + symbolHalf);
+    // Corner dials are hidden in SPLIT, so the tapes can sit against the pane edge.
+    const float dialInner = mSplit ? inset : outer + inset + outer;
+    const float haveL = (cx - symbolHalf) - (leftEdge + dialInner);
+    const float haveR = (leftEdge + areaWf - dialInner) - (cx + symbolHalf);
 
     const float wantL = 138.0f * symbolScale;
     const float wantR = 148.0f * symbolScale;
@@ -195,7 +203,7 @@ void TapeWidget::render()
     const float altTrap = 18.0f * s;
     const float altTapeW = 64.0f * s;
     const float boxH = 44.0f * s;
-    const float tapeH = std::min(360.0f * s, hf * 0.62f);
+    const float tapeH = std::min(360.0f * s, areaHf * 0.62f);
     const float tapeTop = cy + tapeH * 0.5f;
     const float tapeBot = cy - tapeH * 0.5f;
     const float longExtra = 20.0f * s;
@@ -434,6 +442,11 @@ void TapeWidget::render()
     glDisable(GL_CULL_FACE);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    if (mSplit)
+    {
+        glEnable(GL_SCISSOR_TEST);
+        glScissor(layout.ahrs.x, screenH - (layout.ahrs.y + layout.ahrs.h), layout.ahrs.w, layout.ahrs.h);
+    }
     mShader.render();
 
     Glyph *fixed[] = {&mSpdTop, &mAltTop, &mIas, &mAlt, &mVs, &mTasLbl, &mTasVal, &mGsLbl, &mGsVal, &mBaroLbl, &mBaroVal};
@@ -454,6 +467,10 @@ void TapeWidget::render()
         {
             mAltNum[i].draw->render();
         }
+    }
+    if (mSplit)
+    {
+        glDisable(GL_SCISSOR_TEST);
     }
     glDepthMask(GL_TRUE);
     glEnable(GL_DEPTH_TEST);
