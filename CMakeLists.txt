@@ -42,6 +42,7 @@ set(SRC
     src/flight/data_manager_internal.cpp
     src/ahrs/ahrs_widget.cpp
     src/ahrs/hsi_widget.cpp
+    src/ahrs/dg_gps_widget.cpp
     src/ahrs/traffic_widget.cpp
     src/ahrs/tape_widget.cpp
     src/ahrs/route_strip.cpp
@@ -93,6 +94,7 @@ set(INC
     src/flight/subject.h
     src/ahrs/ahrs_widget.h
     src/ahrs/hsi_widget.h
+    src/ahrs/dg_gps_widget.h
     src/ahrs/traffic_widget.h
     src/ahrs/tape_widget.h
     src/ahrs/route_strip.h

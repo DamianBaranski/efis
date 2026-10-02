@@ -74,6 +74,18 @@ public:
     /// True when VOR / NDB / intersection points are drawn.
     bool ifrVisible() const { return mShowIfr; }
 
+    /// Turns FIS / MIL_EXERCISE sector polygons on or off.
+    void setFisVisible(bool visible)
+    {
+        if (mShowFis != visible)
+        {
+            mShowFis = visible;
+            markDirty();
+        }
+    }
+    /// True when FIS sectors are being drawn.
+    bool fisVisible() const { return mShowFis; }
+
     /// Sets the airspace category filter.
     void setFilter(AirspaceFilter f)
     {
@@ -98,6 +110,16 @@ public:
 
     /// True when the point lies inside the map viewport.
     bool contains(int x, int y) const;
+
+    /// Converts geographic coordinates to SDL pixel coordinates.
+    void latLonToScreen(double lat, double lon, int &x, int &y) const;
+
+    /// Index of the nearest route vertex within `maxPx` of `(x, y)`, or -1.
+    int hitRoutePoint(int x, int y, float maxPx) const;
+
+    /// Nearest airport / IFR navaid / five-letter fix currently drawn on the
+    /// chart. Returns false when nothing is inside `maxPx`.
+    bool nearestMarked(int x, int y, float maxPx, std::string &ident, double &lat, double &lon) const;
 
     /// Applies a pan drag. `dx`/`dy` are layout pixels.
     void pan(int dx, int dy);
@@ -158,6 +180,7 @@ private:
     float mZoom = 7.0f;
     bool mShowAirspace = true;
     bool mShowIfr = false;
+    bool mShowFis = false;
     bool mBackgroundVector = true;
     AirspaceFilter mFilter = AirspaceFilter::All;
     bool mCentered = false;

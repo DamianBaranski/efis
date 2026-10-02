@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weather radar</title>
+<style>
+  :root {
+    --bg: #0c0c0c;
+    --magenta: #ff2fd0;
+    --green: #39ff6a;
+    --ink: #f2f2f2;
+    --muted: #c8c8c8;
+    --wx: #3dff22;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "DejaVu Sans Mono", "Liberation Mono", ui-monospace, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  .page {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 2%;
+    width: 100%;
+    padding: 2%;
+  }
+  .instrument {
+    flex: 1 1 60%;
+    width: 60%;
+    max-width: 96vh;
+  }
+  .face { position: relative; width: 100%; }
+  .face svg.bezel {
+    display: block;
+    width: 100%;
+    height: auto;
+    user-select: none;
+  }
+  .face canvas,
+  .face svg.sym {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    user-select: none;
+  }
+  .panel {
+    flex: 1 1 34%;
+    width: 34%;
+    padding: 1.2% 1.4%;
+    background: #141414;
+    border: 1px solid #2a2a2a;
+    border-radius: 12px;
+  }
+  @media (max-width: 52rem) {
+    .instrument, .panel { flex-basis: 100%; width: 100%; max-width: 100%; }
+  }
+  .panel h1 {
+    margin: 0 0 0.6em;
+    font-size: 1rem;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+  }
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5em;
+    align-items: center;
+    margin-bottom: 0.9em;
+  }
+  button, .wpt-field {
+    font: inherit;
+    font-weight: 700;
+    color: var(--ink);
+    background: #1c1c1c;
+    border: 1px solid #4a4a4a;
+    border-radius: 6px;
+    padding: 0.35em 0.85em;
+  }
+  button { cursor: pointer; }
+  button:hover, .wpt-field:focus { border-color: var(--magenta); outline: none; }
+  button.active { border-color: var(--green); color: var(--green); }
+  .wpt-field {
+    width: 6.2em;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  #sim-mode {
+    margin-left: auto;
+    font-size: 0.78rem;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+  }
+  #sim-mode.sim { color: var(--green); }
+  label.slider {
+    display: block;
+    margin: 0.55em 0;
+    font-size: 0.82rem;
+    color: var(--muted);
+  }
+  label.slider span {
+    float: right;
+    color: var(--ink);
+    font-weight: 700;
+  }
+  label.slider input {
+    display: block;
+    width: 100%;
+    margin-top: 0.25em;
+    accent-color: var(--magenta);
+  }
+  .range-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4em;
+    margin: 0.7em 0 0.2em;
+  }
+  .range-row span {
+    width: 100%;
+    font-size: 0.82rem;
+    color: var(--muted);
+  }
+  .key {
+    display: flex;
+    gap: 0.7em;
+    margin-top: 0.8em;
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+  .key i {
+    display: inline-block;
+    width: 0.75em;
+    height: 0.75em;
+    margin-right: 0.3em;
+    border-radius: 2px;
+    vertical-align: -1px;
+  }
+  .hint {
+    margin: 0.8em 0 0;
+    color: #8d8d8d;
+    font-size: 0.75rem;
+    line-height: 1.4;
+  }
+  svg text {
+    font-family: "DejaVu Sans", "Liberation Sans", sans-serif;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+  }
+  .grn { fill: var(--wx); font-size: 20px; }
+  .arc-num { fill: #f2f2f2; font-size: 18px; }
+  .rng { fill: #c8c8bc; font-size: 15px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="instrument">
+    <div class="face">
+      <svg class="bezel" viewBox="0 0 600 560" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="wx-title wx-desc">
+        <title id="wx-title">Weather radar</title>
+        <desc id="wx-desc">Heading-up weather radar, storm ahead to the right.</desc>
+        <defs>
+          <linearGradient id="bezelGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#61748a"/>
+            <stop offset="42%" stop-color="#4a596c"/>
+            <stop offset="100%" stop-color="#3c4b5c"/>
+          </linearGradient>
+          <radialGradient id="screwGrad" cx="35%" cy="32%" r="70%">
+            <stop offset="0%" stop-color="#f4f4f0"/>
+            <stop offset="42%" stop-color="#b4b4ac"/>
+            <stop offset="100%" stop-color="#6a6a64"/>
+          </radialGradient>
+        </defs>
+        <rect x="6" y="6" width="588" height="548" rx="8" fill="url(#bezelGrad)" stroke="#2e3c4c" stroke-width="2"/>
+        <rect x="22" y="20" width="556" height="520" fill="#000"/>
+        <g fill="url(#screwGrad)" stroke="#2a2a28" stroke-width="1">
+          <g transform="translate(42,40)">
+            <circle r="7.5"/>
+            <line x1="-4.2" y1="0" x2="4.2" y2="0" stroke="#3a3a36" stroke-width="1.3"/>
+          </g>
+          <g transform="translate(558,40)">
+            <circle r="7.5"/>
+            <line x1="-4.2" y1="0" x2="4.2" y2="0" stroke="#3a3a36" stroke-width="1.3"/>
+          </g>
+          <g transform="translate(42,520)">
+            <circle r="7.5"/>
+            <line x1="-4.2" y1="0" x2="4.2" y2="0" stroke="#3a3a36" stroke-width="1.3"/>
+          </g>
+          <g transform="translate(558,520)">
+            <circle r="7.5"/>
+            <line x1="-4.2" y1="0" x2="4.2" y2="0" stroke="#3a3a36" stroke-width="1.3"/>
+          </g>
+        </g>
+      </svg>
+      <canvas id="wx"></canvas>
+      <svg class="sym" viewBox="0 0 600 560" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <clipPath id="glass">
+            <rect x="22" y="20" width="556" height="520"/>
+          </clipPath>
+        </defs>
+        <g clip-path="url(#glass)">
+          <g id="rings"></g>
+          <g id="arc"></g>
+          <line id="nose" stroke="#2dff18" stroke-width="2.2" stroke-linecap="butt">
+            <title>Aircraft heading</title>
+          </line>
+          <g id="ownship">
+            <title>Ownship</title>
+            <path fill="#e4f02c" d="M0,-15 L1.6,-2 L16,1.4 L16,3.8 L1.8,2.2 L1.2,8 L5.4,11 L5.4,13.2 L0,11.6 L-5.4,13.2 L-5.4,11 L-1.2,8 L-1.8,2.2 L-16,3.8 L-16,1.4 L-1.6,-2 Z"/>
+          </g>
+          <g id="readouts">
+            <text class="grn" x="36" y="54">
+              <tspan>GS </tspan><tspan id="gs-val">445</tspan>
+              <tspan dx="14">TAS </tspan><tspan id="tas-val">465</tspan>
+            </text>
+            <g id="wind" transform="translate(46,86)">
+              <g id="wind-arrow">
+                <title>Wind direction</title>
+                <line x1="0" y1="8" x2="0" y2="-7" stroke="#3dff22" stroke-width="2.2" stroke-linecap="round"/>
+                <polygon points="0,-11 4.2,-3.2 -4.2,-3.2" fill="#3dff22"/>
+              </g>
+              <text class="grn" id="wind-val" x="16" y="6">120 / 35</text>
+            </g>
+            <text class="grn" id="wpt-val" x="564" y="54" text-anchor="end">FJR  179°</text>
+            <text class="grn" id="dist-val" x="564" y="82" text-anchor="end">201 NM</text>
+            <text class="grn" id="eta-val" x="564" y="110" text-anchor="end">8:50</text>
+          </g>
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <aside class="panel">
+    <h1>WEATHER RADAR</h1>
+    <div class="controls">
+      <button type="button" id="btn-play">Play</button>
+      <button type="button" id="btn-reset">Reset</button>
+      <input id="wpt-edit" class="wpt-field" type="text" maxlength="5" value="FJR" aria-label="Waypoint identifier" spellcheck="false">
+      <span id="sim-mode">HOLD</span>
+    </div>
+    <label class="slider">Heading <span id="out-heading">180°</span>
+      <input id="sl-heading" type="range" min="0" max="360" step="1" value="180" aria-label="Heading degrees">
+    </label>
+    <label class="slider">Bearing to waypoint <span id="out-brg">179°</span>
+      <input id="sl-brg" type="range" min="0" max="360" step="1" value="179" aria-label="Bearing to waypoint degrees">
+    </label>
+    <label class="slider">Distance <span id="out-dist">201 nm</span>
+      <input id="sl-dist" type="range" min="0" max="500" step="1" value="201" aria-label="Distance nautical miles">
+    </label>
+    <label class="slider">Groundspeed <span id="out-gs">445 kt</span>
+      <input id="sl-gs" type="range" min="0" max="600" step="1" value="445" aria-label="Groundspeed knots">
+    </label>
+    <label class="slider">True airspeed <span id="out-tas">465 kt</span>
+      <input id="sl-tas" type="range" min="0" max="600" step="1" value="465" aria-label="True airspeed knots">
+    </label>
+    <label class="slider">Wind from <span id="out-wind-dir">120°</span>
+      <input id="sl-wind-dir" type="range" min="0" max="360" step="1" value="120" aria-label="Wind from degrees">
+    </label>
+    <label class="slider">Wind speed <span id="out-wind-kt">35 kt</span>
+      <input id="sl-wind-kt" type="range" min="0" max="80" step="1" value="35" aria-label="Wind speed knots">
+    </label>
+    <label class="slider">Storm bearing <span id="out-cell-brg">214°</span>
+      <input id="sl-cell-brg" type="range" min="0" max="360" step="1" value="214" aria-label="Storm true bearing degrees">
+    </label>
+    <label class="slider">Storm range <span id="out-cell-nm">46 nm</span>
+      <input id="sl-cell-nm" type="range" min="5" max="120" step="1" value="46" aria-label="Storm range nautical miles">
+    </label>
+    <label class="slider">Storm intensity <span id="out-gain">92%</span>
+      <input id="sl-gain" type="range" min="10" max="100" step="1" value="92" aria-label="Storm intensity percent">
+    </label>
+    <div class="range-row">
+      <span>Radar range</span>
+      <button type="button" data-range="20">20</button>
+      <button type="button" data-range="40">40</button>
+      <button type="button" class="active" data-range="60">60</button>
+      <button type="button" data-range="120">120</button>
+    </div>
+    <div class="key">
+      <span><i style="background:#18c818"></i>light</span>
+      <span><i style="background:#ffe400"></i>moderate</span>
+      <span><i style="background:#ff2410"></i>heavy</span>
+    </div>
+    <p class="hint">Heading-up arc. Dashed rings are one-third, two-thirds, and full radar range. The storm stays fixed in the world: heading swings it across the nose, and Play flies toward the waypoint at twenty times real time so the cell drifts down the right side. The lower-right time is ETA.</p>
+  </aside>
+</div>
+
+<script>
+(function () {
+  var W = 600;
+  var H = 560;
+  var CX = 300;
+  var CY = 474;
+  var ARC_R = 352;
+  var LABEL_R = 322;
+  var RANGE_R = 292;
+  var ARC_HALF = 44;
+  var SIM_RATE = 20;
+  var NS = "http://www.w3.org/2000/svg";
+
+  /* Lobes of one cell, nautical miles from its center.
+     dx > 0 is right of the radial, dy > 0 is farther from the aircraft. */
+  var SHAPE = [
+    { dx: 1.2, dy: -3.2, r: 11.0, rgb: [6, 118, 14], a: 0.7 },
+    { dx: 4.0, dy: -0.6, r: 12.2, rgb: [18, 176, 18], a: 0.88 },
+    { dx: 7.4, dy: 1.4, r: 8.6, rgb: [52, 214, 24], a: 0.9 },
+    { dx: 3.2, dy: 3.6, r: 7.4, rgb: [176, 226, 16], a: 0.95 },
+    { dx: 6.2, dy: 4.8, r: 5.4, rgb: [255, 224, 0], a: 1 },
+    { dx: 8.0, dy: 6.2, r: 3.7, rgb: [255, 36, 10], a: 1 },
+    { dx: 8.4, dy: 6.8, r: 2.1, rgb: [255, 10, 4], a: 1 },
+    { dx: 9.6, dy: -2.4, r: 6.2, rgb: [28, 196, 22], a: 0.72 }
+  ];
+
+  function el(name, attrs) {
+    var node = document.createElementNS(NS, name);
+    var key;
+    for (key in attrs) node.setAttribute(key, attrs[key]);
+    return node;
+  }
+
+  function clear(node) {
+    while (node.firstChild) node.removeChild(node.firstChild);
+  }
+
+  function polar(deg, r) {
+    var a = deg * Math.PI / 180;
+    return [CX + r * Math.sin(a), CY - r * Math.cos(a)];
+  }
+
+  function toXY(brg, nm) {
+    var a = brg * Math.PI / 180;
+    return { x: nm * Math.sin(a), y: nm * Math.cos(a) };
+  }
+
+  function fromXY(p) {
+    var nm = Math.hypot(p.x, p.y);
+    var brg = Math.atan2(p.x, p.y) * 180 / Math.PI;
+    if (brg < 0) brg += 360;
+    return { nm: nm, brg: brg };
+  }
+
+  function wrap360(d) {
+    d = d % 360;
+    if (d < 0) d += 360;
+    return d;
+  }
+
+  function wrap180(d) {
+    return wrap360(d + 180) - 180;
+  }
+
+  function pad3(n) {
+    var s = String(Math.round(wrap360(n)));
+    while (s.length < 3) s = "0" + s;
+    return s;
+  }
+
+  function formatEta(min) {
+    if (!isFinite(min)) return "--:--";
+    var t = Math.round(min);
+    t = ((t % 1440) + 1440) % 1440;
+    var h = Math.floor(t / 60);
+    var m = t % 60;
+    return h + ":" + (m < 10 ? "0" : "") + m;
+  }
+
+  function arcLabel(deg) {
+    var d = Math.round(wrap360(deg));
+    var n = Math.round(d / 10) % 36;
+    if (n <= 0) n = 36;
+    return String(n);
+  }
+
+  function photo() {
+    return {
+      heading: 180,
+      tas: 465,
+      gs: 445,
+      windFrom: 120,
+      windKt: 35,
+      wptId: "FJR",
+      wpt: toXY(179, 201),
+      cell: toXY(214, 46),
+      gain: 92,
+      rangeNm: 60,
+      zuluMin: 8 * 60 + 23
+    };
+  }
+
+  var data = photo();
+  var playing = false;
+  var syncing = false;
+  var lastTs = null;
+  var raf = 0;
+
+  var canvas = document.getElementById("wx");
+  var ctx = canvas.getContext("2d");
+  var ringsEl = document.getElementById("rings");
+  var arcEl = document.getElementById("arc");
+  var noseEl = document.getElementById("nose");
+  var ownEl = document.getElementById("ownship");
+  var windArrow = document.getElementById("wind-arrow");
+  var playBtn = document.getElementById("btn-play");
+  var modeEl = document.getElementById("sim-mode");
+  var wptEdit = document.getElementById("wpt-edit");
+  var descEl = document.getElementById("wx-desc");
+
+  function resizeCanvas() {
+    var rect = canvas.getBoundingClientRect();
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var pw = Math.max(1, Math.round(rect.width * dpr));
+    var ph = Math.max(1, Math.round(rect.height * dpr));
+    if (canvas.width !== pw || canvas.height !== ph) {
+      canvas.width = pw;
+      canvas.height = ph;
+    }
+    ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
+  }
+
+  function drawWeather(ts) {
+    resizeCanvas();
+    ctx.clearRect(0, 0, W, H);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(22, 20, 556, 520);
+    ctx.clip();
+    ctx.beginPath();
+    ctx.moveTo(CX, CY);
+    ctx.arc(CX, CY, RANGE_R + 6, (-78 - 90) * Math.PI / 180, (78 - 90) * Math.PI / 180, false);
+    ctx.closePath();
+    ctx.clip();
+
+    var cell = fromXY(data.cell);
+    var wobble = playing ? Math.sin((ts || 0) / 900) * 0.7 : 0;
+    var gain = data.gain / 100;
+    var i;
+    for (i = 0; i < SHAPE.length; i++) {
+      var part = SHAPE[i];
+      if (i >= 5 && gain < 0.62) continue;
+      if (i === 4 && gain < 0.38) continue;
+      var dx = part.dx + wobble;
+      var dy = part.dy + wobble * 0.35;
+      var along = cell.nm + dy;
+      var cross = dx;
+      var dist = Math.hypot(along, cross);
+      if (dist < 0.5) continue;
+      var rel = wrap180(cell.brg + Math.atan2(cross, along) * 180 / Math.PI - data.heading);
+      var px = dist / data.rangeNm * RANGE_R;
+      var at = polar(rel, px);
+      var scale = 0.72 + 0.38 * gain;
+      var rad = part.r * scale / data.rangeNm * RANGE_R;
+      var alpha = part.a * (i >= 4 ? Math.min(1, gain + 0.15) : 1);
+      var alongPx = rad * 1.12;
+      var crossPx = rad * 0.86;
+      ctx.save();
+      ctx.translate(at[0], at[1]);
+      ctx.rotate(-rel * Math.PI / 180);
+      ctx.scale(crossPx, alongPx);
+      var g = ctx.createRadialGradient(0, 0, 0.12, 0, 0, 1);
+      var c = "rgba(" + part.rgb[0] + "," + part.rgb[1] + "," + part.rgb[2] + ",";
+      g.addColorStop(0, c + alpha + ")");
+      g.addColorStop(0.58, c + (alpha * 0.92) + ")");
+      g.addColorStop(1, c + "0)");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(0, 0, 1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  function drawArc() {
+    clear(arcEl);
+    var deg;
+    for (deg = 0; deg < 360; deg += 5) {
+      var rel = wrap180(deg - data.heading);
+      if (Math.abs(rel) > ARC_HALF) continue;
+      var major = deg % 10 === 0;
+      var outer = polar(rel, ARC_R);
+      var inner = polar(rel, major ? ARC_R - 22 : ARC_R - 12);
+      arcEl.appendChild(el("line", {
+        x1: inner[0].toFixed(1),
+        y1: inner[1].toFixed(1),
+        x2: outer[0].toFixed(1),
+        y2: outer[1].toFixed(1),
+        stroke: major ? "#f4f4f4" : "#9a9a9a",
+        "stroke-width": major ? "2" : "1.2",
+        "stroke-linecap": "butt"
+      }));
+      if (!major) continue;
+      var p = polar(rel, LABEL_R);
+      var text = el("text", {
+        x: p[0].toFixed(1),
+        y: p[1].toFixed(1),
+        "text-anchor": "middle",
+        "dominant-baseline": "middle",
+        "class": "arc-num"
+      });
+      text.textContent = arcLabel(deg);
+      arcEl.appendChild(text);
+    }
+  }
+
+  function drawRings() {
+    clear(ringsEl);
+    var steps = [1 / 3, 2 / 3, 1];
+    var s;
+    for (s = 0; s < steps.length; s++) {
+      var r = RANGE_R * steps[s];
+      var a0 = -68;
+      var a1 = 68;
+      var p0 = polar(a0, r);
+      var p1 = polar(a1, r);
+      ringsEl.appendChild(el("path", {
+        d: "M" + p0[0].toFixed(1) + "," + p0[1].toFixed(1) +
+          " A" + r.toFixed(1) + "," + r.toFixed(1) + " 0 0 1 " +
+          p1[0].toFixed(1) + "," + p1[1].toFixed(1),
+        fill: "none",
+        stroke: "#e4e4e4",
+        "stroke-width": "1.7",
+        "stroke-dasharray": "8 7",
+        "stroke-linecap": "butt"
+      }));
+      var lp = polar(-52, r);
+      var label = el("text", {
+        x: lp[0].toFixed(1),
+        y: lp[1].toFixed(1),
+        "text-anchor": "middle",
+        "dominant-baseline": "middle",
+        "class": "rng"
+      });
+      label.textContent = String(Math.round(data.rangeNm * steps[s]));
+      ringsEl.appendChild(label);
+    }
+  }
+
+  function paint(ts) {
+    var wpt = fromXY(data.wpt);
+    var cell = fromXY(data.cell);
+    drawWeather(ts || 0);
+    drawRings();
+    drawArc();
+
+    var noseTop = CY - LABEL_R + 16;
+    noseEl.setAttribute("x1", CX);
+    noseEl.setAttribute("y1", String(noseTop));
+    noseEl.setAttribute("x2", CX);
+    noseEl.setAttribute("y2", String(CY - 16));
+    ownEl.setAttribute("transform", "translate(" + CX + "," + CY + ")");
+
+    var downwind = wrap180(data.windFrom + 180 - data.heading);
+    windArrow.setAttribute("transform", "rotate(" + downwind.toFixed(1) + ")");
+
+    document.getElementById("gs-val").textContent = String(Math.round(data.gs));
+    document.getElementById("tas-val").textContent = String(Math.round(data.tas));
+    document.getElementById("wind-val").textContent = pad3(data.windFrom) + " / " + Math.round(data.windKt);
+    document.getElementById("wpt-val").textContent = data.wptId + "  " + Math.round(wpt.brg) + "°";
+    document.getElementById("dist-val").textContent = Math.round(wpt.nm) + " NM";
+    var eta = data.gs < 1 ? NaN : data.zuluMin + (wpt.nm / data.gs) * 60;
+    document.getElementById("eta-val").textContent = formatEta(eta);
+
+    descEl.textContent =
+      "Heading " + Math.round(data.heading) +
+      " degrees, waypoint " + data.wptId +
+      " bearing " + Math.round(wpt.brg) +
+      ", " + Math.round(wpt.nm) + " nautical miles. Storm bearing " +
+      Math.round(cell.brg) + " at " + Math.round(cell.nm) + " nautical miles.";
+  }
+
+  function paintLabels() {
+    document.getElementById("out-heading").textContent = Math.round(data.heading) + "°";
+    var wpt = fromXY(data.wpt);
+    var cell = fromXY(data.cell);
+    document.getElementById("out-brg").textContent = Math.round(wpt.brg) + "°";
+    document.getElementById("out-dist").textContent = Math.round(wpt.nm) + " nm";
+    document.getElementById("out-gs").textContent = Math.round(data.gs) + " kt";
+    document.getElementById("out-tas").textContent = Math.round(data.tas) + " kt";
+    document.getElementById("out-wind-dir").textContent = pad3(data.windFrom) + "°";
+    document.getElementById("out-wind-kt").textContent = Math.round(data.windKt) + " kt";
+    document.getElementById("out-cell-brg").textContent = Math.round(cell.brg) + "°";
+    document.getElementById("out-cell-nm").textContent = Math.round(cell.nm) + " nm";
+    document.getElementById("out-gain").textContent = Math.round(data.gain) + "%";
+  }
+
+  function setSlider(id, value) {
+    var node = document.getElementById(id);
+    var v = Math.min(parseFloat(node.max), Math.max(parseFloat(node.min), value));
+    node.value = String(v);
+  }
+
+  function syncSliders() {
+    syncing = true;
+    var wpt = fromXY(data.wpt);
+    var cell = fromXY(data.cell);
+    setSlider("sl-heading", Math.round(data.heading));
+    setSlider("sl-brg", Math.round(wpt.brg));
+    setSlider("sl-dist", Math.round(wpt.nm));
+    setSlider("sl-gs", Math.round(data.gs));
+    setSlider("sl-tas", Math.round(data.tas));
+    setSlider("sl-wind-dir", Math.round(data.windFrom));
+    setSlider("sl-wind-kt", Math.round(data.windKt));
+    setSlider("sl-cell-brg", Math.round(cell.brg));
+    setSlider("sl-cell-nm", Math.round(cell.nm));
+    setSlider("sl-gain", Math.round(data.gain));
+    wptEdit.value = data.wptId;
+    var buttons = document.querySelectorAll("[data-range]");
+    var b;
+    for (b = 0; b < buttons.length; b++) {
+      buttons[b].classList.toggle("active", Number(buttons[b].getAttribute("data-range")) === data.rangeNm);
+    }
+    paintLabels();
+    syncing = false;
+  }
+
+  function simStep(ts) {
+    var dt = lastTs == null ? 0.016 : Math.min(0.05, (ts - lastTs) / 1000);
+    lastTs = ts;
+    var wpt = fromXY(data.wpt);
+    var err = wrap180(wpt.brg - data.heading);
+    var step = 12 * dt;
+    if (Math.abs(err) <= step) data.heading = wpt.brg;
+    else data.heading = wrap360(data.heading + Math.sign(err) * step);
+
+    var a = data.heading * Math.PI / 180;
+    var move = (data.gs / 3600) * dt * SIM_RATE;
+    var dx = move * Math.sin(a);
+    var dy = move * Math.cos(a);
+    data.wpt.x -= dx;
+    data.wpt.y -= dy;
+    data.cell.x -= dx;
+    data.cell.y -= dy;
+    data.zuluMin += (dt * SIM_RATE) / 60;
+
+    if (fromXY(data.wpt).nm < 1) {
+      var fresh = photo();
+      data.wpt = fresh.wpt;
+      data.cell = fresh.cell;
+      data.heading = fresh.heading;
+      data.zuluMin = fresh.zuluMin;
+    }
+    syncSliders();
+  }
+
+  function frame(ts) {
+    if (playing) simStep(ts);
+    paint(ts);
+    if (playing) raf = requestAnimationFrame(frame);
+  }
+
+  function startSim() {
+    if (playing) return;
+    playing = true;
+    lastTs = null;
+    playBtn.textContent = "Pause";
+    modeEl.textContent = "SIM";
+    modeEl.classList.add("sim");
+    raf = requestAnimationFrame(frame);
+  }
+
+  function stopSim() {
+    playing = false;
+    if (raf) cancelAnimationFrame(raf);
+    raf = 0;
+    lastTs = null;
+    playBtn.textContent = "Play";
+    modeEl.textContent = "HOLD";
+    modeEl.classList.remove("sim");
+  }
+
+  function onManual() {
+    if (syncing) return;
+    stopSim();
+    data.heading = parseFloat(document.getElementById("sl-heading").value);
+    data.gs = parseFloat(document.getElementById("sl-gs").value);
+    data.tas = parseFloat(document.getElementById("sl-tas").value);
+    data.windFrom = parseFloat(document.getElementById("sl-wind-dir").value);
+    data.windKt = parseFloat(document.getElementById("sl-wind-kt").value);
+    data.gain = parseFloat(document.getElementById("sl-gain").value);
+    data.wpt = toXY(
+      parseFloat(document.getElementById("sl-brg").value),
+      parseFloat(document.getElementById("sl-dist").value)
+    );
+    data.cell = toXY(
+      parseFloat(document.getElementById("sl-cell-brg").value),
+      parseFloat(document.getElementById("sl-cell-nm").value)
+    );
+    paintLabels();
+    paint(0);
+  }
+
+  function onWaypoint() {
+    var name = wptEdit.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
+    if (name !== wptEdit.value) wptEdit.value = name;
+    if (!name) return;
+    if (!syncing) stopSim();
+    data.wptId = name;
+    paint(0);
+  }
+
+  function onRange(ev) {
+    var nm = Number(ev.currentTarget.getAttribute("data-range"));
+    if (!nm) return;
+    stopSim();
+    data.rangeNm = nm;
+    syncSliders();
+    paint(0);
+  }
+
+  function resetInstrument() {
+    stopSim();
+    data = photo();
+    syncSliders();
+    paint(0);
+  }
+
+  var sliders = document.querySelectorAll("input[type=range]");
+  var i;
+  for (i = 0; i < sliders.length; i++) sliders[i].addEventListener("input", onManual);
+  wptEdit.addEventListener("input", onWaypoint);
+  playBtn.addEventListener("click", function () {
+    if (playing) stopSim();
+    else startSim();
+  });
+  document.getElementById("btn-reset").addEventListener("click", resetInstrument);
+  var ranges = document.querySelectorAll("[data-range]");
+  for (i = 0; i < ranges.length; i++) ranges[i].addEventListener("click", onRange);
+  window.addEventListener("resize", function () { paint(0); });
+
+  syncSliders();
+  paint(0);
+})();
+</script>
+</body>
+</html>

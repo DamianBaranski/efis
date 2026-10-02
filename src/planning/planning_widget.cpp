@@ -198,6 +198,8 @@ void PlanningWidget::enable(bool enable)
     {
         mFocus = Focus::None;
         mModalOpen = false;
+        cancelRouteDrag();
+        mEditMode = false;
     }
     updateTextInput();
 }
@@ -1163,23 +1165,43 @@ void PlanningWidget::drawMapTab()
     Render2D &cbg = nextDraw();
     cbg.drawRectangle(pad, mScreenH - controlsY - controlsH, contentW, controlsH, kCard);
     int cx = pad + 12;
-    drawButton("plan-map-fit", "FIT", cx, controlsY + 10, 96, 48, kButtonBg, kInk, 16.0f, [this] { mMap.fitRoute(); });
-    cx += 104;
-    drawButton("plan-map-as", mMap.airspaceVisible() ? "AS ON" : "AS OFF", cx, controlsY + 10, 110, 48,
+    drawButton("plan-map-edit", "EDIT MODE", cx, controlsY + 10, 148, 48,
+               mEditMode ? kButtonBgHi : kButtonBg, mEditMode ? kCyan : kInk, 15.0f, [this] {
+                   mEditMode = !mEditMode;
+                   if (!mEditMode)
+                   {
+                       cancelRouteDrag();
+                       showToast("EDIT MODE OFF");
+                   }
+                   else
+                   {
+                       showToast("EDIT MODE: DRAG POINTS TO SNAP");
+                   }
+               });
+    cx += 156;
+    drawButton("plan-map-fit", "FIT", cx, controlsY + 10, 80, 48, kButtonBg, kInk, 16.0f, [this] { mMap.fitRoute(); });
+    cx += 88;
+    drawButton("plan-map-as", mMap.airspaceVisible() ? "AS ON" : "AS OFF", cx, controlsY + 10, 88, 48,
                mMap.airspaceVisible() ? kButtonBgHi : kButtonBg, kInk, 16.0f,
                [this] { mMap.setAirspaceVisible(!mMap.airspaceVisible()); });
-    cx += 118;
-    drawButton("plan-map-ifr", mMap.ifrVisible() ? "IFR ON" : "IFR OFF", cx, controlsY + 10, 110, 48,
+    cx += 96;
+    drawButton("plan-map-fis", mMap.fisVisible() ? "FIS ON" : "FIS OFF", cx, controlsY + 10, 88, 48,
+               mMap.fisVisible() ? kButtonBgHi : kButtonBg, mMap.fisVisible() ? kAmber : kInk, 16.0f, [this] {
+                   mMap.setFisVisible(!mMap.fisVisible());
+                   showToast(mMap.fisVisible() ? "FIS SECTORS ON" : "FIS SECTORS OFF");
+               });
+    cx += 96;
+    drawButton("plan-map-ifr", mMap.ifrVisible() ? "IFR ON" : "IFR OFF", cx, controlsY + 10, 88, 48,
                mMap.ifrVisible() ? kButtonBgHi : kButtonBg, kInk, 16.0f, [this] {
                    mMap.setIfrVisible(!mMap.ifrVisible());
                    showToast(mMap.ifrVisible() ? "IFR POINTS ON" : "IFR POINTS OFF");
                });
-    cx += 118;
-    drawButton("plan-map-bg", mMap.backgroundLabel(), cx, controlsY + 10, 130, 48, kButtonBg, kInk, 16.0f, [this] {
+    cx += 96;
+    drawButton("plan-map-bg", mMap.backgroundLabel(), cx, controlsY + 10, 110, 48, kButtonBg, kInk, 16.0f, [this] {
         mMap.toggleBackground();
         showToast(std::string("BASEMAP: ") + mMap.backgroundLabel());
     });
-    cx += 138;
+    cx += 118;
 
     // Filters
     struct FilterOpt
@@ -1194,13 +1216,13 @@ void PlanningWidget::drawMapTab()
     for (const FilterOpt &opt : opts)
     {
         const bool active = mMap.filter() == opt.val;
-        drawButton(std::string("plan-map-f-") + opt.label, opt.label, cx, controlsY + 10, 96, 48,
+        drawButton(std::string("plan-map-f-") + opt.label, opt.label, cx, controlsY + 10, 88, 48,
                    active ? kButtonBgHi : kButtonBg, active ? kCyan : kInk, 14.0f,
                    [this, val = opt.val, name = std::string(opt.label)] {
                        mMap.setFilter(val);
                        showToast(std::string("FILTER: ") + name);
                    });
-        cx += 100;
+        cx += 92;
     }
 
     // Map viewport
@@ -1264,6 +1286,104 @@ void PlanningWidget::drawMapOverlays()
     co.drawText(coord, 12.0f, static_cast<float>(pad + 12),
                 static_cast<float>(mScreenH - mapY - mMap.h() + 12), kMuted,
                 ("plan-map-coord-" + std::string(coord)).c_str());
+
+    if (mEditMode)
+    {
+        const char *hint = mDragRouteIndex >= 0
+                               ? (mSnapValid ? mSnapIdent.c_str() : "DRAG TO A MARKED POINT")
+                               : "EDIT MODE: DRAG ROUTE POINTS";
+        Render2D &hintTxt = nextDraw();
+        hintTxt.drawText(hint, 14.0f, static_cast<float>(pad + 12),
+                         static_cast<float>(mScreenH - mapY - mMap.h() + 32),
+                         mDragRouteIndex >= 0 && mSnapValid ? kCyan : kAmber, "plan-map-edit-hint");
+    }
+
+    auto markerAt = [this](int sx, int sy, int size, uint32_t color) {
+        const int glY = mScreenH - sy;
+        Render2D &mk = nextDraw();
+        mk.drawRectangle(sx - size / 2, glY - size / 2, size, size, color);
+    };
+    auto lineTo = [this](int x0, int y0, int x1, int y1, uint32_t color) {
+        const float gx0 = static_cast<float>(x0);
+        const float gy0 = static_cast<float>(mScreenH - y0);
+        const float gx1 = static_cast<float>(x1);
+        const float gy1 = static_cast<float>(mScreenH - y1);
+        const float dx = gx1 - gx0;
+        const float dy = gy1 - gy0;
+        const float len = std::hypot(dx, dy);
+        if (len < 1.0f)
+        {
+            return;
+        }
+        const int steps = std::max(1, static_cast<int>(len / 6.0f));
+        for (int i = 0; i <= steps; ++i)
+        {
+            const float t = static_cast<float>(i) / static_cast<float>(steps);
+            const int px = static_cast<int>(std::lround(gx0 + dx * t));
+            const int py = static_cast<int>(std::lround(gy0 + dy * t));
+            Render2D &seg = nextDraw();
+            seg.drawRectangle(px - 2, py - 2, 5, 5, color);
+        }
+    };
+
+    if (mDragRouteIndex >= 0 && mSnapValid)
+    {
+        int snapX = 0;
+        int snapY = 0;
+        mMap.latLonToScreen(mSnapLat, mSnapLon, snapX, snapY);
+        markerAt(snapX, snapY, 28, kCyan);
+        markerAt(snapX, snapY, 16, 0x0A0D10FFu);
+        markerAt(snapX, snapY, 8, kCyan);
+        Render2D &snapLbl = nextDraw();
+        snapLbl.drawTextCentered(mSnapIdent, 16.0f, static_cast<float>(snapX),
+                                 static_cast<float>(mScreenH - snapY + 22), kCyan,
+                                 ("plan-map-snap-" + mSnapIdent).c_str());
+
+        const std::vector<std::string> &route = mPlan.route();
+        auto projectIdent = [this](const std::string &ident, int &ox, int &oy) -> bool {
+            const Waypoint *wpt = NavDb::instance().find(ident);
+            if (wpt == nullptr)
+            {
+                return false;
+            }
+            mMap.latLonToScreen(wpt->lat, wpt->lon, ox, oy);
+            return true;
+        };
+        if (mDragRouteIndex > 0)
+        {
+            int px = 0;
+            int py = 0;
+            if (projectIdent(route[static_cast<size_t>(mDragRouteIndex - 1)], px, py))
+            {
+                lineTo(px, py, snapX, snapY, kMagenta);
+            }
+        }
+        if (mDragRouteIndex + 1 < static_cast<int>(route.size()))
+        {
+            int nx = 0;
+            int ny = 0;
+            if (projectIdent(route[static_cast<size_t>(mDragRouteIndex + 1)], nx, ny))
+            {
+                lineTo(snapX, snapY, nx, ny, kMagenta);
+            }
+        }
+    }
+    else if (mDragRouteIndex >= 0)
+    {
+        const std::vector<std::string> &route = mPlan.route();
+        if (mDragRouteIndex < static_cast<int>(route.size()))
+        {
+            const Waypoint *wpt = NavDb::instance().find(route[static_cast<size_t>(mDragRouteIndex)]);
+            if (wpt != nullptr)
+            {
+                int ox = 0;
+                int oy = 0;
+                mMap.latLonToScreen(wpt->lat, wpt->lon, ox, oy);
+                markerAt(ox, oy, 22, kAmber);
+            }
+        }
+    }
+
     const glm::mat4 identity(1.0f);
     for (size_t i = start; i < mDrawCursor; ++i)
     {
@@ -1338,6 +1458,18 @@ void PlanningWidget::render()
     glEnable(GL_DEPTH_TEST);
 }
 
+void PlanningWidget::cancelRouteDrag()
+{
+    mDragRouteIndex = -1;
+    mSnapValid = false;
+    mSnapIdent.clear();
+}
+
+void PlanningWidget::updateRouteSnap(int x, int y)
+{
+    mSnapValid = mMap.nearestMarked(x, y, 56.0f, mSnapIdent, mSnapLat, mSnapLon);
+}
+
 bool PlanningWidget::mouseClick(int x, int y)
 {
     if (!mEnabled)
@@ -1368,6 +1500,16 @@ bool PlanningWidget::mouseClick(int x, int y)
         }
         return true;
     }
+    if (mTab == Tab::Map && mEditMode && mMap.contains(x, y))
+    {
+        const int idx = mMap.hitRoutePoint(x, y, 36.0f);
+        if (idx >= 0)
+        {
+            mDragRouteIndex = idx;
+            updateRouteSnap(x, y);
+            return true;
+        }
+    }
     for (auto it = mHits.rbegin(); it != mHits.rend(); ++it)
     {
         const HitRect &r = *it;
@@ -1393,6 +1535,11 @@ bool PlanningWidget::mouseMove(int x, int y, int dx, int dy)
     {
         return false;
     }
+    if (mDragRouteIndex >= 0)
+    {
+        updateRouteSnap(x, y);
+        return true;
+    }
     if (mMapPinch || mMap.contains(x, y))
     {
         mMap.pan(dx, dy);
@@ -1403,6 +1550,28 @@ bool PlanningWidget::mouseMove(int x, int y, int dx, int dy)
 
 bool PlanningWidget::mouseUp(int, int)
 {
+    if (mDragRouteIndex >= 0)
+    {
+        if (mSnapValid)
+        {
+            const std::string prev = (mDragRouteIndex < static_cast<int>(mPlan.route().size()))
+                                         ? mPlan.route()[static_cast<size_t>(mDragRouteIndex)]
+                                         : std::string();
+            mPlan.setWaypoint(mDragRouteIndex, mSnapIdent);
+            mRouteBuffer = routeToString(mPlan.route());
+            if (mSnapIdent != prev)
+            {
+                showToast(std::string("MOVED TO ") + mSnapIdent);
+            }
+        }
+        else
+        {
+            showToast("NO SNAP TARGET");
+        }
+        cancelRouteDrag();
+        mMapPinch = false;
+        return true;
+    }
     mMapPinch = false;
     return false;
 }
@@ -1437,6 +1606,7 @@ bool PlanningWidget::pinch(int x, int y, float dz)
         {
             return false;
         }
+        cancelRouteDrag();
         mMapPinch = true;
     }
     mMap.zoomAt(dz, x, y);

@@ -123,6 +123,8 @@ private:
     void drawBriefingTab();
     void drawMapTab();
     void drawMapOverlays();
+    void cancelRouteDrag();
+    void updateRouteSnap(int x, int y);
 
     void addRect(int x, int y, int w, int h, std::function<void()> action);
     void drawButton(const std::string &cacheKey, const std::string &label, int x, int y, int w, int h, uint32_t fill,
@@ -170,6 +172,13 @@ private:
     bool mSimBriefPending = false;
     std::chrono::steady_clock::time_point mSimBriefAt{};
     bool mMapPinch = false;
+
+    bool mEditMode = false;
+    int mDragRouteIndex = -1;
+    bool mSnapValid = false;
+    std::string mSnapIdent;
+    double mSnapLat = 0.0;
+    double mSnapLon = 0.0;
 };
 
 #endif

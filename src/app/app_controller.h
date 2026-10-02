@@ -98,7 +98,8 @@ public:
     void leavePlanning();
     /// Selects a MAP row. Leaves AHRS-only and returns to 3D.
     void setMap(MapMode mode);
-    /// Toggles one AIP row. Row 1 is walls, 2 is text, 3 is reporting points, 4 is obstacles.
+    /// Toggles one AIP row. Rows 1 and 2 are walls and name plates together.
+    /// Row 3 is reporting points, 4 is obstacles.
     void toggleAip(int row);
     /// Highlights an ENR row. Nearest speaks the closest field.
     void setEnrPage(EnrPage page);
@@ -125,8 +126,8 @@ private:
     ViewMode mLastEfisView = ViewMode::ThreeD; ///< Picture restored when leaving PLANNING.
     MapMode mMapMode = MapMode::Simple; ///< MAP row. Satellite drapes imagery. Simple is shaded terrain.
 
-    bool mAipWalls = false;  ///< AIP 3D. Vertical airspace walls.
-    bool mAipText = false;   ///< AIP TEXT. Airspace name plates.
+    bool mAipWalls = false;  ///< AIP 3D. Vertical airspace walls. Toggles with TEXT.
+    bool mAipText = false;   ///< AIP TEXT. Airspace name plates. Toggles with 3D.
     bool mVrpOn = true;      ///< AIP VRP. Visual reporting points.
     bool mObstacles = false; ///< AIP OBSTCL. Obstacle masts. Voice can still run when this is off.
 

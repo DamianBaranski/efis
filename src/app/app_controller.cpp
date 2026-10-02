@@ -67,13 +67,11 @@ void AppController::cycleMap()
 
 void AppController::toggleAip(int row)
 {
-    if (row == 1)
+    if (row == 1 || row == 2)
     {
-        mAipWalls = !mAipWalls;
-    }
-    else if (row == 2)
-    {
-        mAipText = !mAipText;
+        const bool on = !(mAipWalls || mAipText);
+        mAipWalls = on;
+        mAipText = on;
     }
     else if (row == 3)
     {

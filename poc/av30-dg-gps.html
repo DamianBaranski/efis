@@ -117,22 +117,14 @@
   .rose-num { fill: #ececec; font-size: 16px; }
   .rose-card { fill: #ffffff; font-size: 24px; font-weight: 800; }
   .lbl {
-    fill: #e6e6e6;
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 0.14em;
-  }
-  .val { fill: var(--green); font-size: 28px; font-weight: 800; }
-  .val-sm { fill: var(--green); font-size: 26px; font-weight: 800; }
-  .ann {
-    fill: var(--green);
-    font-size: 15px;
-    font-weight: 800;
+    fill: #d5d5d5;
+    font-size: 12px;
+    font-weight: 650;
     letter-spacing: 0.12em;
   }
+  .val { fill: var(--green); font-size: 26px; font-weight: 800; }
   .chrome { fill: #d5d5d5; font-size: 15px; font-weight: 700; letter-spacing: 0.06em; }
-  .scale-lbl { fill: #efefef; font-size: 13px; font-weight: 700; }
-  .lbl, .val, .val-sm, .ann, .chrome, .scale-lbl {
+  .lbl, .val, .chrome {
     stroke: #0a0a0a;
     stroke-width: 4px;
     paint-order: stroke fill;
@@ -196,12 +188,6 @@
 
         <g id="course" class="spin">
           <rect class="pivot" x="0" y="0" width="600" height="600"/>
-          <g id="dev-dots" fill="none" stroke="#dcdcdc" stroke-width="1.7">
-            <circle cx="276" cy="300" r="4.2"/>
-            <circle cx="252" cy="300" r="4.2"/>
-            <circle cx="324" cy="300" r="4.2"/>
-            <circle cx="348" cy="300" r="4.2"/>
-          </g>
           <g id="needle">
             <line x1="300" y1="150" x2="300" y2="392" stroke="#ff2fd0" stroke-width="4" stroke-linecap="butt"/>
             <polygon points="300,118 311,146 289,146" fill="#ff2fd0">
@@ -227,50 +213,32 @@
         </g>
 
         <g id="readouts">
-          <text class="ann" x="248" y="182" text-anchor="middle">GPS</text>
-
           <g id="wpt-readout">
             <title id="wpt-title">Waypoint KABQ</title>
-            <text class="lbl" x="196" y="202" text-anchor="middle">WPT</text>
-            <text id="wpt-id" class="val" x="196" y="232" text-anchor="middle">KABQ</text>
+            <text class="lbl" x="242" y="188" text-anchor="middle">WPT</text>
+            <text id="wpt-id" class="val" x="242" y="216" text-anchor="middle">KABQ</text>
+          </g>
+          <g id="brg-readout">
+            <title id="brg-title">Bearing 016 degrees</title>
+            <text class="lbl" x="358" y="188" text-anchor="middle">BRG</text>
+            <text id="brg-val" class="val" x="358" y="216" text-anchor="middle">016</text>
           </g>
           <g id="dist-readout">
             <title id="dist-title">Distance 15.7 nautical miles</title>
-            <text class="lbl" x="408" y="202" text-anchor="middle">DIST</text>
-            <text id="dist-val" class="val" x="408" y="232" text-anchor="middle">15.7</text>
-          </g>
-
-          <text id="mode-val" class="ann" x="318" y="356" text-anchor="middle">VFR</text>
-          <text id="scale-val" class="scale-lbl" x="366" y="292" text-anchor="start">1.0nm</text>
-
-          <g id="trk-readout">
-            <title id="trk-title">Track 000 degrees</title>
-            <text class="lbl" x="178" y="356" text-anchor="middle">TRK</text>
-            <text id="trk-val" class="val-sm" x="178" y="384" text-anchor="middle">000</text>
-          </g>
-          <g id="gs-readout">
-            <title id="gs-title">Groundspeed 155 knots</title>
-            <text class="lbl" x="178" y="414" text-anchor="middle">GS</text>
-            <text id="gs-val" class="val-sm" x="178" y="442" text-anchor="middle">155</text>
-          </g>
-
-          <g id="brg-readout">
-            <title id="brg-title">Bearing 016 degrees</title>
-            <text class="lbl" x="422" y="352" text-anchor="middle">BRG</text>
-            <text id="brg-val" class="val-sm" x="422" y="380" text-anchor="middle">016</text>
+            <text class="lbl" x="242" y="384" text-anchor="middle">DIST</text>
+            <text id="dist-val" class="val" x="242" y="412" text-anchor="middle">15.7</text>
           </g>
           <g id="xte-readout">
             <title id="xte-title">Cross track error 0.5 nautical miles</title>
-            <text class="lbl" x="422" y="412" text-anchor="middle">XTE</text>
-            <text id="xte-val" class="val-sm" x="422" y="440" text-anchor="middle">0.5</text>
+            <text class="lbl" x="358" y="384" text-anchor="middle">XTE</text>
+            <text id="xte-val" class="val" x="358" y="412" text-anchor="middle">0.5</text>
           </g>
         </g>
 
         <g id="chrome">
-          <text class="chrome" x="190" y="540" text-anchor="start">MENU</text>
           <text id="page-val" class="chrome" x="300" y="540" text-anchor="middle">2:3</text>
           <text id="bat-val" class="chrome" x="386" y="540" text-anchor="end">100%</text>
-          <path id="bolt" fill="#f2f2f2" stroke="#0a0a0a" stroke-width="2" paint-order="stroke fill" transform="translate(394,532)" d="M4,-9 L0,1 H3.2 L-1,9 L6,0 H2.4 Z"/>
+          <path id="bolt" fill="#f2f2f2" stroke="#0a0a0a" stroke-width="2" paint-order="stroke fill" transform="translate(394,528) scale(1.15)" d="M4,-9 L0,1 H3.2 L-1,9 L6,0 H2.4 Z"/>
         </g>
       </g>
 
@@ -305,7 +273,7 @@
     <label class="slider">Groundspeed <span id="out-gs">155 kt</span>
       <input id="sl-gs" type="range" min="0" max="300" step="1" value="155" aria-label="Groundspeed knots">
     </label>
-    <p class="hint">The card is the directional gyro, read at the lubber. The green marker is ground track. The magenta arrow is bearing to the waypoint and slides off center with cross-track error; the dots are a 1.0 nm full-scale. Play turns toward the bearing and counts the distance down. Reset restores the reference indication.</p>
+    <p class="hint">The card is the directional gyro, read at the lubber. The green marker is ground track. The magenta arrow is bearing to the waypoint and slides off center with cross-track error. Play turns toward the bearing and counts the distance down. Reset restores the reference indication.</p>
   </aside>
 </div>
 
@@ -383,7 +351,6 @@
       xteNm: 0.5,
       groundSpeedKt: 155,
       waypointId: "KABQ",
-      mode: "VFR",
       page: "2:3",
       batteryPct: 100,
       scaleNm: 1,
@@ -538,27 +505,19 @@
 
     var distText = formatDist(data.distanceNm);
     var brgNum = formatHdg(data.bearing);
-    var trkNum = formatHdg(data.track);
     var xteNum = formatXte(data.xteNm);
-    var gsNum = String(Math.round(data.groundSpeedKt));
 
     document.getElementById("wpt-id").textContent = data.waypointId;
     document.getElementById("dist-val").textContent = distText;
     document.getElementById("brg-val").textContent = brgNum;
-    document.getElementById("trk-val").textContent = trkNum;
     document.getElementById("xte-val").textContent = xteNum;
-    document.getElementById("gs-val").textContent = gsNum;
-    document.getElementById("mode-val").textContent = data.mode;
     document.getElementById("page-val").textContent = data.page;
     document.getElementById("bat-val").textContent = data.batteryPct + "%";
-    document.getElementById("scale-val").textContent = data.scaleNm.toFixed(1) + "nm";
 
     document.getElementById("wpt-title").textContent = "Waypoint " + data.waypointId;
     document.getElementById("dist-title").textContent = "Distance " + distText + " nautical miles";
     document.getElementById("brg-title").textContent = "Bearing " + brgNum + " degrees";
-    document.getElementById("trk-title").textContent = "Track " + trkNum + " degrees";
     document.getElementById("xte-title").textContent = "Cross track error " + xteNum + " nautical miles";
-    document.getElementById("gs-title").textContent = "Groundspeed " + gsNum + " knots";
     document.getElementById("dg-desc").textContent =
       "Heading " + formatHdg(data.heading) +
       " degrees, waypoint " + data.waypointId +

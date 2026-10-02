@@ -42,8 +42,10 @@ void MenuWidget::buildCells()
     add("SMPL", 1, 2, false, [this] { mController.setMap(MapMode::Simple); },
         [this] { return mController.view() == ViewMode::ThreeD && mController.mapMode() == MapMode::Simple; });
     add("AIP", 2, 0, true, nullptr, off);
-    add("3D", 2, 1, false, [this] { mController.toggleAip(1); }, [this] { return mController.aipWalls(); });
-    add("TEXT", 2, 2, false, [this] { mController.toggleAip(2); }, [this] { return mController.aipText(); });
+    add("3D", 2, 1, false, [this] { mController.toggleAip(1); },
+        [this] { return mController.aipWalls() && mController.aipText(); });
+    add("TEXT", 2, 2, false, [this] { mController.toggleAip(2); },
+        [this] { return mController.aipWalls() && mController.aipText(); });
     add("VRP", 2, 3, false, [this] { mController.toggleAip(3); }, [this] { return mController.vrpsOn(); });
     add("OBSTCL", 2, 4, false, [this] { mController.toggleAip(4); }, [this] { return mController.obstacles(); });
     add("ENR", 3, 0, true, nullptr, off);

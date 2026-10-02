@@ -2,6 +2,7 @@
 /// Builds the window, the situation source, and the 3D and AHRS layers, then runs the frame.
 #include "ahrs_widget.h"
 #include "hsi_widget.h"
+#include "dg_gps_widget.h"
 #include "traffic_widget.h"
 #include "tape_widget.h"
 #include "route_strip.h"
@@ -127,14 +128,14 @@ int main(int argc, char **argv)
     route.setFlightPlan(&flightPlan);
     frame.add(&route);
     HsiWidget hsiLeftBottom(frame, session->data(), HsiWidget::Slot::LeftBottom);
-    HsiWidget hsiLeftTop(frame, session->data(), HsiWidget::Slot::LeftTop);
+    DgGpsWidget dgLeftTop(frame, session->data(), DgGpsWidget::Slot::LeftTop);
     HsiWidget hsiRightBottom(frame, session->data(), HsiWidget::Slot::RightBottom);
     hsiLeftBottom.setFlightPlan(&flightPlan);
-    hsiLeftTop.setFlightPlan(&flightPlan);
+    dgLeftTop.setFlightPlan(&flightPlan);
     hsiRightBottom.setFlightPlan(&flightPlan);
     TrafficWidget trafficRightTop(frame, session->data(), TrafficWidget::Slot::RightTop);
     frame.add(&hsiLeftBottom);
-    frame.add(&hsiLeftTop);
+    frame.add(&dgLeftTop);
     frame.add(&hsiRightBottom);
     frame.add(&trafficRightTop);
     TapeWidget tapes(frame, session->data());
@@ -145,7 +146,7 @@ int main(int argc, char **argv)
     AppController controller(frame, ahrs, terrain);
     controller.addCockpitLayer(&route);
     controller.addCockpitLayer(&hsiLeftBottom);
-    controller.addCockpitLayer(&hsiLeftTop);
+    controller.addCockpitLayer(&dgLeftTop);
     controller.addCockpitLayer(&hsiRightBottom);
     controller.addCockpitLayer(&trafficRightTop);
     controller.addCockpitLayer(&tapes);

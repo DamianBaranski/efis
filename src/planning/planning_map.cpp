@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -208,6 +209,23 @@ bool isEnrouteIfrFix(const std::string &ident)
     return true;
 }
 
+bool isSnappableWaypoint(const Waypoint &wpt, bool ifrOn)
+{
+    if (wpt.kind == Waypoint::Kind::Airport)
+    {
+        return true;
+    }
+    if (!ifrOn)
+    {
+        return false;
+    }
+    if (wpt.kind == Waypoint::Kind::Vor || wpt.kind == Waypoint::Kind::Ndb)
+    {
+        return true;
+    }
+    return isEnrouteIfrFix(wpt.ident);
+}
+
 TTF_Font *mapLabelFont(int px)
 {
     static TTF_Font *small = nullptr;
@@ -257,7 +275,8 @@ std::string shortenUtf8(const std::string &s, size_t maxChars)
     return s.substr(0, i);
 }
 
-void paintMapLabel(SDL_Surface *surface, int cx, int cy, const std::string &text, int fontPx, SDL_Color color)
+void paintMapLabel(SDL_Surface *surface, int cx, int cy, const std::string &text, int fontPx, SDL_Color color,
+                   bool centered = false)
 {
     TTF_Font *font = mapLabelFont(fontPx);
     if (surface == nullptr || font == nullptr || text.empty())
@@ -270,7 +289,7 @@ void paintMapLabel(SDL_Surface *surface, int cx, int cy, const std::string &text
         return;
     }
     SDL_Rect dst;
-    dst.x = cx + 5;
+    dst.x = centered ? cx - label->w / 2 : cx + 5;
     dst.y = cy - label->h / 2;
     dst.w = label->w;
     dst.h = label->h;
@@ -278,14 +297,217 @@ void paintMapLabel(SDL_Surface *surface, int cx, int cy, const std::string &text
     SDL_FreeSurface(label);
 }
 
-void paintHaloLabel(SDL_Surface *surface, int cx, int cy, const std::string &text, int fontPx, SDL_Color color)
+void paintHaloLabel(SDL_Surface *surface, int cx, int cy, const std::string &text, int fontPx, SDL_Color color,
+                    bool centered = false)
 {
     const SDL_Color ink{8, 10, 14, 255};
-    paintMapLabel(surface, cx - 1, cy, text, fontPx, ink);
-    paintMapLabel(surface, cx + 1, cy, text, fontPx, ink);
-    paintMapLabel(surface, cx, cy - 1, text, fontPx, ink);
-    paintMapLabel(surface, cx, cy + 1, text, fontPx, ink);
-    paintMapLabel(surface, cx, cy, text, fontPx, color);
+    paintMapLabel(surface, cx - 1, cy, text, fontPx, ink, centered);
+    paintMapLabel(surface, cx + 1, cy, text, fontPx, ink, centered);
+    paintMapLabel(surface, cx, cy - 1, text, fontPx, ink, centered);
+    paintMapLabel(surface, cx, cy + 1, text, fontPx, ink, centered);
+    paintMapLabel(surface, cx, cy, text, fontPx, color, centered);
+}
+
+std::string formatLegEte(float minutes)
+{
+    if (minutes < 0.5f)
+    {
+        return "--";
+    }
+    const int total = static_cast<int>(std::lround(minutes));
+    char buf[16];
+    std::snprintf(buf, sizeof(buf), "%d:%02d", total / 60, total % 60);
+    return buf;
+}
+
+void fillRoundRect(SDL_Surface *surface, int x, int y, int w, int h, int radius, Uint32 pixel)
+{
+    if (surface == nullptr || w <= 0 || h <= 0)
+    {
+        return;
+    }
+    const int r = std::clamp(radius, 1, std::min(w, h) / 2);
+    SDL_Rect mid{x + r, y, w - 2 * r, h};
+    SDL_Rect side{x, y + r, w, h - 2 * r};
+    SDL_FillRect(surface, &mid, pixel);
+    SDL_FillRect(surface, &side, pixel);
+    paintDisk(surface, x + r, y + r, r, pixel);
+    paintDisk(surface, x + w - 1 - r, y + r, r, pixel);
+    paintDisk(surface, x + r, y + h - 1 - r, r, pixel);
+    paintDisk(surface, x + w - 1 - r, y + h - 1 - r, r, pixel);
+}
+
+void blendPixel(SDL_Surface *dst, int x, int y, Uint8 sr, Uint8 sg, Uint8 sb, Uint8 sa)
+{
+    if (dst == nullptr || sa == 0 || x < 0 || y < 0 || x >= dst->w || y >= dst->h)
+    {
+        return;
+    }
+    Uint32 *row = reinterpret_cast<Uint32 *>(static_cast<Uint8 *>(dst->pixels) + y * dst->pitch);
+    Uint8 dr = 0;
+    Uint8 dg = 0;
+    Uint8 db = 0;
+    Uint8 da = 0;
+    SDL_GetRGBA(row[x], dst->format, &dr, &dg, &db, &da);
+    const float a = static_cast<float>(sa) / 255.0f;
+    const float ia = 1.0f - a;
+    const Uint8 or_ = static_cast<Uint8>(std::lround(static_cast<float>(sr) * a + static_cast<float>(dr) * ia));
+    const Uint8 og = static_cast<Uint8>(std::lround(static_cast<float>(sg) * a + static_cast<float>(dg) * ia));
+    const Uint8 ob = static_cast<Uint8>(std::lround(static_cast<float>(sb) * a + static_cast<float>(db) * ia));
+    const Uint8 oa = static_cast<Uint8>(std::lround(static_cast<float>(sa) + static_cast<float>(da) * ia));
+    row[x] = SDL_MapRGBA(dst->format, or_, og, ob, oa);
+}
+
+TTF_Font *b612At(int px)
+{
+    static std::unordered_map<int, TTF_Font *> fonts;
+    const auto it = fonts.find(px);
+    if (it != fonts.end())
+    {
+        return it->second;
+    }
+    if (TTF_Init() != 0)
+    {
+        fonts[px] = nullptr;
+        return nullptr;
+    }
+    TTF_Font *font = TTF_OpenFont(AssetPath::resolve("resources/fonts/B612Mono-Regular.ttf").c_str(), px);
+    if (font != nullptr)
+    {
+        TTF_SetFontStyle(font, TTF_STYLE_NORMAL);
+    }
+    fonts[px] = font;
+    return font;
+}
+
+SDL_Surface *makeLegBadge(const std::string &distTime, const std::string &hdg, bool active)
+{
+    const SDL_Color ink = active ? SDL_Color{255, 90, 220, 255} : SDL_Color{255, 210, 245, 255};
+    TTF_Font *topFont = b612At(12);
+    TTF_Font *hdgFont = b612At(11);
+    if (topFont == nullptr || hdgFont == nullptr)
+    {
+        return nullptr;
+    }
+    SDL_Surface *top = TTF_RenderUTF8_Blended(topFont, distTime.c_str(), ink);
+    SDL_Surface *bot = TTF_RenderUTF8_Blended(hdgFont, hdg.c_str(), ink);
+    if (top == nullptr || bot == nullptr)
+    {
+        SDL_FreeSurface(top);
+        SDL_FreeSurface(bot);
+        return nullptr;
+    }
+    const int padX = 12;
+    const int padY = 7;
+    const int gap = 1;
+    const int w = std::max(top->w, bot->w) + padX * 2;
+    const int h = top->h + bot->h + gap + padY * 2;
+    SDL_Surface *box = SDL_CreateRGBSurfaceWithFormat(0, w, h, 32, SDL_PIXELFORMAT_RGBA32);
+    if (box == nullptr)
+    {
+        SDL_FreeSurface(top);
+        SDL_FreeSurface(bot);
+        return nullptr;
+    }
+    SDL_FillRect(box, nullptr, SDL_MapRGBA(box->format, 0, 0, 0, 0));
+    const Uint32 fill = SDL_MapRGBA(box->format, 8, 12, 18, 170);
+    fillRoundRect(box, 0, 0, w, h, h / 2, fill);
+    SDL_SetSurfaceBlendMode(top, SDL_BLENDMODE_BLEND);
+    SDL_SetSurfaceBlendMode(bot, SDL_BLENDMODE_BLEND);
+    SDL_Rect t1{(w - top->w) / 2, padY, top->w, top->h};
+    SDL_Rect t2{(w - bot->w) / 2, padY + top->h + gap, bot->w, bot->h};
+    SDL_BlitSurface(top, nullptr, box, &t1);
+    SDL_BlitSurface(bot, nullptr, box, &t2);
+    SDL_FreeSurface(top);
+    SDL_FreeSurface(bot);
+    return box;
+}
+
+void blitRotated(SDL_Surface *dst, SDL_Surface *src, float cx, float cy, float angleRad)
+{
+    if (dst == nullptr || src == nullptr)
+    {
+        return;
+    }
+    const float c = std::cos(angleRad);
+    const float s = std::sin(angleRad);
+    const float ocx = static_cast<float>(src->w) * 0.5f;
+    const float ocy = static_cast<float>(src->h) * 0.5f;
+    const float extX = std::fabs(c) * ocx + std::fabs(s) * ocy;
+    const float extY = std::fabs(s) * ocx + std::fabs(c) * ocy;
+    const int x0 = std::max(0, static_cast<int>(std::floor(cx - extX)));
+    const int y0 = std::max(0, static_cast<int>(std::floor(cy - extY)));
+    const int x1 = std::min(dst->w - 1, static_cast<int>(std::ceil(cx + extX)));
+    const int y1 = std::min(dst->h - 1, static_cast<int>(std::ceil(cy + extY)));
+    for (int y = y0; y <= y1; ++y)
+    {
+        for (int x = x0; x <= x1; ++x)
+        {
+            const float dx = static_cast<float>(x) + 0.5f - cx;
+            const float dy = static_cast<float>(y) + 0.5f - cy;
+            const float sx = c * dx + s * dy + ocx - 0.5f;
+            const float sy = -s * dx + c * dy + ocy - 0.5f;
+            const int ix = static_cast<int>(std::floor(sx));
+            const int iy = static_cast<int>(std::floor(sy));
+            const float tx = sx - static_cast<float>(ix);
+            const float ty = sy - static_cast<float>(iy);
+            auto fetch = [&](int px, int py, float &r, float &g, float &b, float &a) {
+                if (px < 0 || py < 0 || px >= src->w || py >= src->h)
+                {
+                    r = g = b = a = 0.0f;
+                    return;
+                }
+                const Uint32 *row =
+                    reinterpret_cast<const Uint32 *>(static_cast<const Uint8 *>(src->pixels) + py * src->pitch);
+                Uint8 ir = 0;
+                Uint8 ig = 0;
+                Uint8 ib = 0;
+                Uint8 ia = 0;
+                SDL_GetRGBA(row[px], src->format, &ir, &ig, &ib, &ia);
+                r = static_cast<float>(ir);
+                g = static_cast<float>(ig);
+                b = static_cast<float>(ib);
+                a = static_cast<float>(ia);
+            };
+            float r00 = 0;
+            float g00 = 0;
+            float b00 = 0;
+            float a00 = 0;
+            float r10 = 0;
+            float g10 = 0;
+            float b10 = 0;
+            float a10 = 0;
+            float r01 = 0;
+            float g01 = 0;
+            float b01 = 0;
+            float a01 = 0;
+            float r11 = 0;
+            float g11 = 0;
+            float b11 = 0;
+            float a11 = 0;
+            fetch(ix, iy, r00, g00, b00, a00);
+            fetch(ix + 1, iy, r10, g10, b10, a10);
+            fetch(ix, iy + 1, r01, g01, b01, a01);
+            fetch(ix + 1, iy + 1, r11, g11, b11, a11);
+            const float r0 = r00 + (r10 - r00) * tx;
+            const float g0 = g00 + (g10 - g00) * tx;
+            const float b0 = b00 + (b10 - b00) * tx;
+            const float a0 = a00 + (a10 - a00) * tx;
+            const float r1 = r01 + (r11 - r01) * tx;
+            const float g1 = g01 + (g11 - g01) * tx;
+            const float b1 = b01 + (b11 - b01) * tx;
+            const float a1 = a01 + (a11 - a01) * tx;
+            const Uint8 r = static_cast<Uint8>(std::lround(r0 + (r1 - r0) * ty));
+            const Uint8 g = static_cast<Uint8>(std::lround(g0 + (g1 - g0) * ty));
+            const Uint8 b = static_cast<Uint8>(std::lround(b0 + (b1 - b0) * ty));
+            const Uint8 a = static_cast<Uint8>(std::lround(a0 + (a1 - a0) * ty));
+            if (a == 0)
+            {
+                continue;
+            }
+            blendPixel(dst, x, y, r, g, b, a);
+        }
+    }
 }
 
 const char *obstacleKindWord(ObstaclePoint::Kind kind)
@@ -365,8 +587,22 @@ enum class AspCat
     Rpd,
     Tra,
     Atz,
+    Fis,
     Other,
 };
+
+bool isFisAirspace(const AirspaceRing &r)
+{
+    std::string t = r.type;
+    std::string n = r.name;
+    toUpperInPlace(t);
+    toUpperInPlace(n);
+    if (t == "MIL_EXERCISE")
+    {
+        return true;
+    }
+    return n.rfind("FIS ", 0) == 0 || n.rfind("FIS-", 0) == 0;
+}
 
 AspCat categorize(const AirspaceRing &r)
 {
@@ -374,6 +610,10 @@ AspCat categorize(const AirspaceRing &r)
     std::string n = r.name;
     toUpperInPlace(t);
     toUpperInPlace(n);
+    if (isFisAirspace(r))
+    {
+        return AspCat::Fis;
+    }
     if (t == "CTR" || t == "TMA" || containsFold(n, "CTR") || containsFold(n, "TMA"))
     {
         return AspCat::Ctr;
@@ -468,6 +708,17 @@ void styleFor(const AirspaceRing &r, Uint8 &fillR, Uint8 &fillG, Uint8 &fillB, U
         strokeB = 106;
         strokeA = 180;
         strokeW = 1.5f;
+        return;
+    case AspCat::Fis:
+        fillR = 180;
+        fillG = 160;
+        fillB = 90;
+        fillA = 22;
+        strokeR = 200;
+        strokeG = 180;
+        strokeB = 90;
+        strokeA = 160;
+        strokeW = 1.4f;
         return;
     default:
         fillR = 136;
@@ -663,6 +914,78 @@ void PlanningMap::setBackgroundVector(bool vector)
 bool PlanningMap::contains(int x, int y) const
 {
     return x >= mX && y >= mY && x < mX + mW && y < mY + mH;
+}
+
+void PlanningMap::latLonToScreen(double lat, double lon, int &x, int &y) const
+{
+    const Point p = project(lat, lon);
+    x = static_cast<int>(std::lround(p.x));
+    y = static_cast<int>(std::lround(p.y));
+}
+
+int PlanningMap::hitRoutePoint(int x, int y, float maxPx) const
+{
+    int best = -1;
+    float bestD2 = maxPx * maxPx;
+    NavDb &db = NavDb::instance();
+    const std::vector<std::string> &route = mPlan.route();
+    for (int i = 0; i < static_cast<int>(route.size()); ++i)
+    {
+        const Waypoint *wpt = db.find(route[static_cast<size_t>(i)]);
+        if (wpt == nullptr)
+        {
+            continue;
+        }
+        const Point p = project(wpt->lat, wpt->lon);
+        const float dx = p.x - static_cast<float>(x);
+        const float dy = p.y - static_cast<float>(y);
+        const float d2 = dx * dx + dy * dy;
+        if (d2 <= bestD2)
+        {
+            bestD2 = d2;
+            best = i;
+        }
+    }
+    return best;
+}
+
+bool PlanningMap::nearestMarked(int x, int y, float maxPx, std::string &ident, double &lat, double &lon) const
+{
+    double minLat = 0.0;
+    double maxLat = 0.0;
+    double minLon = 0.0;
+    double maxLon = 0.0;
+    viewBounds(minLat, maxLat, minLon, maxLon);
+    const Waypoint *best = nullptr;
+    float bestD2 = maxPx * maxPx;
+    for (const Waypoint &wpt : NavDb::instance().waypoints())
+    {
+        if (!isSnappableWaypoint(wpt, mShowIfr))
+        {
+            continue;
+        }
+        if (wpt.lat < minLat || wpt.lat > maxLat || wpt.lon < minLon || wpt.lon > maxLon)
+        {
+            continue;
+        }
+        const Point p = project(wpt.lat, wpt.lon);
+        const float dx = p.x - static_cast<float>(x);
+        const float dy = p.y - static_cast<float>(y);
+        const float d2 = dx * dx + dy * dy;
+        if (d2 < bestD2)
+        {
+            bestD2 = d2;
+            best = &wpt;
+        }
+    }
+    if (best == nullptr)
+    {
+        return false;
+    }
+    ident = best->ident;
+    lat = best->lat;
+    lon = best->lon;
+    return true;
 }
 
 void PlanningMap::pan(int dx, int dy)
@@ -926,7 +1249,15 @@ void PlanningMap::rasterize()
         candidates.reserve(256);
         for (const AirspaceRing &r : rings)
         {
-            if (!matchesFilter(r, mFilter))
+            const bool fis = isFisAirspace(r);
+            if (fis)
+            {
+                if (!mShowFis)
+                {
+                    continue;
+                }
+            }
+            else if (!matchesFilter(r, mFilter))
             {
                 continue;
             }
@@ -1155,6 +1486,53 @@ void PlanningMap::rasterize()
         }
         const float width = static_cast<int>(i) == mPlan.activeLegIndex() ? 4.0f : 3.0f;
         paintLine(surface, routePts[i - 1].x, routePts[i - 1].y, routePts[i].x, routePts[i].y, width, routePx);
+    }
+    for (size_t i = 1; i < route.size(); ++i)
+    {
+        if (!routeOk[i - 1] || !routeOk[i])
+        {
+            continue;
+        }
+        const Waypoint *from = NavDb::instance().find(route[i - 1]);
+        const Waypoint *to = NavDb::instance().find(route[i]);
+        if (from == nullptr || to == nullptr)
+        {
+            continue;
+        }
+        const float distNm = FlightPlan::distanceNm(from->lat, from->lon, to->lat, to->lon);
+        const float trackDeg = FlightPlan::bearingDeg(from->lat, from->lon, to->lat, to->lon);
+        const WindResult wind = FlightPlan::windCorrection(trackDeg, mPlan.tasKt(), mPlan.windDirDeg(), mPlan.windSpdKt());
+        float eteMin = 0.0f;
+        if (wind.groundSpeedKt > 0.0f && distNm > 0.0f)
+        {
+            eteMin = std::round((distNm / wind.groundSpeedKt) * 60.0f);
+        }
+        char distTime[32];
+        char hdg[24];
+        std::snprintf(distTime, sizeof(distTime), "%.0fNM  %s", static_cast<double>(distNm),
+                      formatLegEte(eteMin).c_str());
+        std::snprintf(hdg, sizeof(hdg), "HDG %03d", static_cast<int>(std::lround(wind.headingDeg)));
+        const bool active = static_cast<int>(i) == mPlan.activeLegIndex();
+        SDL_Surface *badge = makeLegBadge(distTime, hdg, active);
+        if (badge == nullptr)
+        {
+            continue;
+        }
+        const float mx = (routePts[i - 1].x + routePts[i].x) * 0.5f;
+        const float my = (routePts[i - 1].y + routePts[i].y) * 0.5f;
+        const float dx = routePts[i].x - routePts[i - 1].x;
+        const float dy = routePts[i].y - routePts[i - 1].y;
+        float angle = std::atan2(dy, dx);
+        if (angle > kPi * 0.5f)
+        {
+            angle -= kPi;
+        }
+        else if (angle < -kPi * 0.5f)
+        {
+            angle += kPi;
+        }
+        blitRotated(surface, badge, mx, my, angle);
+        SDL_FreeSurface(badge);
     }
     for (size_t i = 0; i < route.size(); ++i)
     {
