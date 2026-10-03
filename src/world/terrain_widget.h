@@ -17,6 +17,7 @@
 #include "runway_overlay.h"
 #include "vrp_overlay.h"
 #include "obstacle_overlay.h"
+#include "route_ground.h"
 #include "nav_voice.h"
 #include "asset_path.h"
 #include "iworld_read.h"
@@ -26,6 +27,8 @@
 #include <iostream>
 #include <GLES3/gl3.h>
 #include <glm/gtc/matrix_transform.hpp>
+
+class FlightPlan;
 
 /// Owns the 3D frame: terrain, satellite drape, airspace, points, and obstacles.
 /// The attitude instrument is a separate widget drawn on top.
@@ -49,6 +52,7 @@ public:
         mProjW = mScreen.getWidth();
         mProjH = mScreen.getHeight();
         mProjMat = glm::perspective(glm::radians(60.0f), (float)mProjW / std::max(1, mProjH), 10.0f, 250000.0f);
+        mRoute.setTerrain(&mMap);
     }
 
     /// Drapes Esri imagery on the terrain when enable is true.
@@ -80,6 +84,9 @@ public:
     void setVrpsEnabled(bool enable) { mVrpsEnabled = enable; }
     /// Draws obstacle masts. Voice still runs when this is off.
     void setObstaclesEnabled(bool enable) { mObstaclesEnabled = enable; }
+
+    /// Route drawn on the ground ahead of the aircraft. Not owned.
+    void setFlightPlan(const FlightPlan *plan) { mRoute.setFlightPlan(plan); }
 
     /// True when airspace geometry is being updated.
     bool airspacesEnabled() const { return mAirspacesEnabled; }
@@ -231,6 +238,7 @@ public:
         terrain.render(frame);
         glDisable(GL_CULL_FACE);
         drawLayer(mRunways, frame);
+        drawLayer(mRoute, frame);
         if (mAirspacesEnabled)
         {
             drawLayer(mAirspaces, frame);
@@ -393,6 +401,7 @@ private:
     AirspaceOverlay mAirspaces;
     VrpOverlay mVrps;
     ObstacleOverlay mObstacles;
+    RouteGround mRoute;
 };
 
 #endif

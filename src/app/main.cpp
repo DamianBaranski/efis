@@ -126,6 +126,7 @@ int main(int argc, char **argv)
 
     // Instruments read the situation feed. They are not on the draw list yet.
     TerrainWidget terrain(frame, session->data());
+    terrain.setFlightPlan(&flightPlan);
     AhrsWidget ahrs(frame, session->data());
 
     // Draw order: 3D world, attitude instrument, the strip under it, then the side dials.

@@ -42,6 +42,9 @@ public:
     /// Tiles submitted on the last render.
     int drawnCount() const { return mDrawn; }
 
+    /// Height of the terrain under a point, in metres. Negative when no tile is ready.
+    float sampleGroundM(double lat, double lon) const;
+
 private:
     bool hasTile(float lat, float lon) const;
 

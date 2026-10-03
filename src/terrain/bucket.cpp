@@ -115,6 +115,119 @@ double Bucket::distanceTo(float lat, float lon) const
     return GeoCoordUtils::calculateDistance(mLat, mLon, lat, lon);
 }
 
+void Bucket::buildHeightGrid()
+{
+    mGround.clear();
+    mGroundCols = 0;
+    mGroundRows = 0;
+    if (mMesh.empty())
+    {
+        return;
+    }
+    const double latR = static_cast<double>(mLat) * (M_PI / 180.0);
+    const double lonR = static_cast<double>(mLon) * (M_PI / 180.0);
+    const glm::dvec3 east(-std::sin(lonR), std::cos(lonR), 0.0);
+    const glm::dvec3 north(-std::sin(latR) * std::cos(lonR), -std::sin(latR) * std::sin(lonR), std::cos(latR));
+    const glm::dvec3 up = glm::normalize(glm::cross(east, north));
+    const auto qxyz = GeoCoordUtils::convertLatLonToXYZ(mLat, mLon, 0.0);
+    const glm::dvec3 q(qxyz.x, qxyz.y, qxyz.z);
+
+    double minN = 1.0e12;
+    double minE = 1.0e12;
+    double maxN = -1.0e12;
+    double maxE = -1.0e12;
+    struct Sample
+    {
+        float north;
+        float east;
+        float alt;
+    };
+    std::vector<Sample> samples;
+    for (const Triangles &tri : mMesh)
+    {
+        for (const VertexTexture &vt : tri.vertex)
+        {
+            const glm::dvec3 p = mCenter + glm::dvec3(vt.vertex.x, vt.vertex.y, vt.vertex.z);
+            const glm::dvec3 d = p - q;
+            const float alt = static_cast<float>(glm::dot(d, up));
+            const float northM = static_cast<float>(glm::dot(d, north));
+            const float eastM = static_cast<float>(glm::dot(d, east));
+            minN = std::min(minN, static_cast<double>(northM));
+            minE = std::min(minE, static_cast<double>(eastM));
+            maxN = std::max(maxN, static_cast<double>(northM));
+            maxE = std::max(maxE, static_cast<double>(eastM));
+            samples.push_back(Sample{northM, eastM, alt});
+        }
+    }
+    if (samples.empty())
+    {
+        return;
+    }
+
+    float cell = 200.0f;
+    int cols = std::max(1, static_cast<int>(std::ceil((maxE - minE) / cell)) + 1);
+    int rows = std::max(1, static_cast<int>(std::ceil((maxN - minN) / cell)) + 1);
+    while (cols * rows > 12000 && cell < 1600.0f)
+    {
+        cell *= 2.0f;
+        cols = std::max(1, static_cast<int>(std::ceil((maxE - minE) / cell)) + 1);
+        rows = std::max(1, static_cast<int>(std::ceil((maxN - minN) / cell)) + 1);
+    }
+    mGroundNorth0 = minN;
+    mGroundEast0 = minE;
+    mGroundCell = cell;
+    mGroundCols = cols;
+    mGroundRows = rows;
+    mGround.assign(static_cast<size_t>(cols * rows), -1.0e9f);
+    for (const Sample &sample : samples)
+    {
+        const int c = static_cast<int>((sample.east - minE) / cell);
+        const int r = static_cast<int>((sample.north - minN) / cell);
+        if (c < 0 || r < 0 || c >= cols || r >= rows)
+        {
+            continue;
+        }
+        float &slot = mGround[static_cast<size_t>(r * cols + c)];
+        slot = std::max(slot, sample.alt);
+    }
+}
+
+float Bucket::sampleGroundM(double lat, double lon) const
+{
+    const uint8_t state = mState.load(std::memory_order_acquire);
+    if (state < 2 || state == 4 || mGround.empty() || mGroundCell <= 0.0f)
+    {
+        return -1.0e9f;
+    }
+    const double latR = static_cast<double>(mLat) * (M_PI / 180.0);
+    const double lonR = static_cast<double>(mLon) * (M_PI / 180.0);
+    const glm::dvec3 east(-std::sin(lonR), std::cos(lonR), 0.0);
+    const glm::dvec3 north(-std::sin(latR) * std::cos(lonR), -std::sin(latR) * std::sin(lonR), std::cos(latR));
+    const auto origin = GeoCoordUtils::convertLatLonToXYZ(mLat, mLon, 0.0);
+    const auto qxyz = GeoCoordUtils::convertLatLonToXYZ(lat, lon, 0.0);
+    const glm::dvec3 d(qxyz.x - origin.x, qxyz.y - origin.y, qxyz.z - origin.z);
+    const double northM = glm::dot(d, north);
+    const double eastM = glm::dot(d, east);
+    const int c = static_cast<int>(std::floor((eastM - mGroundEast0) / mGroundCell));
+    const int r = static_cast<int>(std::floor((northM - mGroundNorth0) / mGroundCell));
+    // Highest nearby cell. Skirts sit below the visible surface.
+    float top = -1.0e9f;
+    for (int dr = -1; dr <= 1; ++dr)
+    {
+        for (int dc = -1; dc <= 1; ++dc)
+        {
+            const int cc = c + dc;
+            const int rr = r + dr;
+            if (cc < 0 || rr < 0 || cc >= mGroundCols || rr >= mGroundRows)
+            {
+                continue;
+            }
+            top = std::max(top, mGround[static_cast<size_t>(rr * mGroundCols + cc)]);
+        }
+    }
+    return top;
+}
+
 void Bucket::setCamera(const glm::mat4 &proj, const glm::dvec3 &eye, const glm::vec3 &forward, const glm::vec3 &up)
 {
     const glm::vec3 eyeLocal(eye - mCenter);
@@ -133,6 +246,7 @@ void Bucket::loadFile(const std::string& filename)
                              btgFile.getBoundingSphere().getCenterZ());
         mModelMat = glm::mat4(1.0f);
         appendUnderlay();
+        buildHeightGrid();
         mState.store(2, std::memory_order_release);
     }
     else

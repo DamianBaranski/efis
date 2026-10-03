@@ -8,6 +8,7 @@
 #include "shader.h"
 #include <thread>
 #include <atomic>
+#include <vector>
 #include <glm/glm.hpp>
 
 /// One 0.1 degree terrain tile. Loading happens off the render thread.
@@ -55,12 +56,17 @@ public:
     /// @brief Builds a tile-local view from an ECEF camera and uploads the MVP matrix.
     void setCamera(const glm::mat4 &proj, const glm::dvec3 &eye, const glm::vec3 &forward, const glm::vec3 &up);
 
+    /// Terrain height in metres above the ellipsoid. Negative when this tile has no mesh nearby.
+    float sampleGroundM(double lat, double lon) const;
+
 private:
     /// @brief Loads terrain data from file.
     /// @param filename The filename of the terrain data file.
     void loadFile(const std::string &filename);
     void tileBounds(double &lat0, double &lat1, double &lon0, double &lon1) const;
     void appendUnderlay();
+    /// Bins mesh vertices into a coarse height grid so ground queries stay cheap.
+    void buildHeightGrid();
 
     /// @brief Generates the path for the tile based on latitude and longitude.
     /// @return The generated tile path.
@@ -81,6 +87,13 @@ private:
     std::thread mLoadingThread;   ///< Thread for loading terrain data.
     std::atomic<uint8_t> mState{0}; ///< 0 idle, 1 loading, 2 cpu ready, 3 gpu ready, 4 missing.
     std::vector<Triangles> mMesh; ///< Mesh representing the terrain geometry.
+    /// Max terrain height per cell, in metres. Empty cells are a large negative.
+    std::vector<float> mGround;
+    double mGroundNorth0 = 0.0;
+    double mGroundEast0 = 0.0;
+    float mGroundCell = 200.0f;
+    int mGroundCols = 0;
+    int mGroundRows = 0;
 
     static constexpr char const cTileFileExt[] = ".btg.gz"; ///< File extension for terrain tiles.
 };

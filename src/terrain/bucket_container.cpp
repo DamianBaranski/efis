@@ -99,6 +99,18 @@ void BucketContainer::render(const glm::mat4 &proj, const glm::dvec3 &eye, const
     airports.render(frame);
 }
 
+float BucketContainer::sampleGroundM(double lat, double lon) const
+{
+    for (const auto &bucket : mMap)
+    {
+        if (bucket && bucket->contain(static_cast<float>(lat), static_cast<float>(lon)))
+        {
+            return bucket->sampleGroundM(lat, lon);
+        }
+    }
+    return -1.0e9f;
+}
+
 bool BucketContainer::hasTile(float lat, float lon) const
 {
     return mIndices.count(Bucket::genIndex(lat, lon)) != 0;
