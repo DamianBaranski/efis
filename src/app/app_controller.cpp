@@ -17,13 +17,13 @@ AppController::AppController(Frame &frame, AhrsWidget &ahrs, TerrainWidget &terr
     TerrainDownload::instance().prepare();
     mTerrain.setSatFarZoom(mFarZoom);
     mTerrain.setSatDetailZoom(mSatZoom);
-    std::cout << "Keys: 1 AHRS only, 2 AHRS off, 3 overlay, 4 sat/simple, 5 AIP, Esc quit\n";
-    std::cout << "Touch: tap for layer menu (3s), double-tap to keep it until a choice\n";
+    std::cout << "Keys: 1 AHRS, 2 3D, 4/5 terrain picture in 3D, Esc quit\n";
+    std::cout << "Touch: top-left menu for layout, map corner menu for the map\n";
 }
 
 bool AppController::keyDown(SDL_Keycode key)
 {
-    if (mView == ViewMode::Planning)
+    if (mPlanningOpen)
     {
         return false;
     }
@@ -34,15 +34,15 @@ bool AppController::keyDown(SDL_Keycode key)
         return true;
     case SDLK_1:
     case SDLK_F1:
-        setView(ViewMode::Ahrs);
+        setPicture(ViewMode::Ahrs);
         return true;
     case SDLK_2:
     case SDLK_F2:
-        setView(ViewMode::ThreeD);
+        setPicture(ViewMode::ThreeD);
         return true;
     case SDLK_3:
     case SDLK_F3:
-        setView(ViewMode::ThreeD);
+        setPicture(ViewMode::ThreeD);
         return true;
     case SDLK_4:
     case SDLK_F4:
@@ -55,32 +55,64 @@ bool AppController::keyDown(SDL_Keycode key)
     }
 }
 
+ViewMode AppController::view() const
+{
+    if (mPlanningOpen)
+    {
+        return ViewMode::Planning;
+    }
+    if (mSplit)
+    {
+        return ViewMode::Split;
+    }
+    return mPicture;
+}
+
 void AppController::cycleAhrs()
 {
-    setView(mView == ViewMode::ThreeD ? ViewMode::Ahrs : ViewMode::ThreeD);
+    setPicture(mPicture == ViewMode::ThreeD ? ViewMode::Ahrs : ViewMode::ThreeD);
 }
 
 void AppController::cycleMap()
 {
-    setMap(mMapMode == MapMode::Satellite ? MapMode::Simple : MapMode::Satellite);
+    if (mPicture != ViewMode::ThreeD)
+    {
+        return;
+    }
+    setTerrainPicture(mMapMode == MapMode::Satellite ? MapMode::Simple : MapMode::Satellite);
 }
 
-void AppController::toggleAip(int row)
+void AppController::setTerrainPicture(MapMode mode)
 {
-    if (row == 1 || row == 2)
-    {
-        const bool on = !(mAipWalls || mAipText);
-        mAipWalls = on;
-        mAipText = on;
-    }
-    else if (row == 3)
-    {
-        mVrpOn = !mVrpOn;
-    }
-    else
-    {
-        mObstacles = !mObstacles;
-    }
+    mMapMode = mode;
+    applyLayers();
+    touch();
+}
+
+void AppController::setAipWalls(bool on)
+{
+    mAipWalls = on;
+    applyLayers();
+    touch();
+}
+
+void AppController::setAipLabels(bool on)
+{
+    mAipText = on;
+    applyLayers();
+    touch();
+}
+
+void AppController::setVrpsOn(bool on)
+{
+    mVrpOn = on;
+    applyLayers();
+    touch();
+}
+
+void AppController::setObstaclesOn(bool on)
+{
+    mObstacles = on;
     applyLayers();
     touch();
 }
@@ -102,32 +134,61 @@ void AppController::setPlanningWidget(IWidget *widget)
 
 void AppController::setView(ViewMode mode)
 {
-    if (mode == ViewMode::Planning && mView != ViewMode::Planning)
+    if (mode == ViewMode::Planning)
     {
-        mLastEfisView = (mView == ViewMode::ThreeD) ? ViewMode::ThreeD : mView;
-        mGeneralOpen = false;
+        if (!mPlanningOpen)
+        {
+            mLastPicture = mPicture;
+            mLastSplit = mSplit;
+            mGeneralOpen = false;
+        }
+        mPlanningOpen = true;
     }
-    mView = mode;
+    else if (mode == ViewMode::Split)
+    {
+        mPlanningOpen = false;
+        mSplit = true;
+        mPicture = ViewMode::Ahrs;
+    }
+    else if (mode == ViewMode::Ahrs || mode == ViewMode::ThreeD)
+    {
+        mPlanningOpen = false;
+        mSplit = false;
+        mPicture = mode;
+    }
+    applyLayers();
+    touch();
+}
+
+void AppController::setPicture(ViewMode mode)
+{
+    if (mode != ViewMode::Ahrs && mode != ViewMode::ThreeD)
+    {
+        return;
+    }
+    mPlanningOpen = false;
+    mPicture = mode;
+    applyLayers();
+    touch();
+}
+
+void AppController::setSplit(bool on)
+{
+    mPlanningOpen = false;
+    mSplit = on;
     applyLayers();
     touch();
 }
 
 void AppController::leavePlanning()
 {
-    if (mView != ViewMode::Planning)
+    if (!mPlanningOpen)
     {
         return;
     }
-    setView(mLastEfisView);
-}
-
-void AppController::setMap(MapMode mode)
-{
-    mMapMode = mode;
-    if (mView != ViewMode::ThreeD)
-    {
-        mView = ViewMode::ThreeD;
-    }
+    mPlanningOpen = false;
+    mPicture = mLastPicture;
+    mSplit = mLastSplit;
     applyLayers();
     touch();
 }
@@ -172,12 +233,13 @@ void AppController::setNearCoverage(int zoom, int grid)
 
 void AppController::applyLayers()
 {
-    const bool threeD = mView == ViewMode::ThreeD;
-    const bool ahrsOnly = mView == ViewMode::Ahrs;
-    const bool split = mView == ViewMode::Split;
-    const bool planning = mView == ViewMode::Planning;
-    const bool efis = (threeD || ahrsOnly) && !planning;
+    const bool planning = mPlanningOpen;
+    const bool split = mSplit && !planning;
+    const bool threeD = !planning && mPicture == ViewMode::ThreeD;
+    const bool ahrsPicture = !planning && mPicture == ViewMode::Ahrs;
+    const bool efis = threeD || ahrsPicture;
     mTerrain.enable(threeD);
+    mTerrain.setSplit(split && threeD);
     mTerrain.setSatelliteGround(threeD && mMapMode == MapMode::Satellite);
     mTerrain.setChartOverlay(false);
     mTerrain.setAirspaceWalls(mAipWalls);
@@ -185,8 +247,8 @@ void AppController::applyLayers()
     mTerrain.setAirspacesEnabled(threeD && (mAipWalls || mAipText));
     mTerrain.setVrpsEnabled(mVrpOn);
     mTerrain.setObstaclesEnabled(mObstacles);
-    mAhrs.enable(efis || split);
-    mAhrs.setDrawSkyGround(ahrsOnly || split);
+    mAhrs.enable(efis);
+    mAhrs.setDrawSkyGround(ahrsPicture);
     mAhrs.setSplit(split);
     for (const CockpitEntry &layer : mCockpitLayers)
     {
@@ -195,7 +257,7 @@ void AppController::applyLayers()
             continue;
         }
         const bool dial = layer.role == CockpitRole::Dial;
-        layer.widget->enable(dial ? efis : (efis || split));
+        layer.widget->enable(dial ? (efis && !split) : efis);
         layer.widget->setSplit(!dial && split);
     }
     if (mPlanning != nullptr)

@@ -59,6 +59,7 @@ set(SRC
     src/overlays/airspace_overlay.cpp
     src/overlays/vrp_overlay.cpp
     src/overlays/obstacle_overlay.cpp
+    src/overlays/route_ground.cpp
     src/planning/flight_plan.cpp
     src/planning/nav_db.cpp
     src/planning/planning_map.cpp
@@ -115,6 +116,7 @@ set(INC
     src/overlays/airspace_overlay.h
     src/overlays/vrp_overlay.h
     src/overlays/obstacle_overlay.h
+    src/overlays/route_ground.h
     src/planning/flight_plan.h
     src/planning/nav_db.h
     src/planning/planning_map.h

@@ -62,8 +62,12 @@ public:
     /// Mode and map keys. 1 is AHRS, 2 and 3 are 3D, 4 and 5 cycle the map.
     bool keyDown(SDL_Keycode key) override;
 
-    /// Picture currently selected.
-    ViewMode view() const { return mView; }
+    /// Picture currently selected. SPLIT means the map is beside the flight picture.
+    ViewMode view() const;
+    /// Attitude or 3D, including while split is on.
+    ViewMode picture() const { return mPicture; }
+    /// True while the map is shown beside the flight picture.
+    bool split() const { return mSplit && !mPlanningOpen; }
     /// Imagery currently selected.
     MapMode mapMode() const { return mMapMode; }
     /// ENR row currently highlighted.
@@ -102,15 +106,24 @@ public:
     /// \param widget Not owned. Must outlive this controller.
     void setPlanningWidget(IWidget *widget);
 
-    /// Selects a MODE row. PLANNING, AHRS, 3D, and SPLIT apply layers.
+    /// Selects a picture or the planner. AHRS and 3D leave split. SPLIT shows AHRS beside the map.
     void setView(ViewMode mode);
+    /// Selects AHRS or 3D and leaves split as it is.
+    void setPicture(ViewMode mode);
+    /// Shows or hides the map beside the current flight picture.
+    void setSplit(bool on);
     /// Leaves PLANNING and restores the EFIS picture that was showing before it.
     void leavePlanning();
-    /// Selects a MAP row. Leaves AHRS-only and returns to 3D.
-    void setMap(MapMode mode);
-    /// Toggles one AIP row. Rows 1 and 2 are walls and name plates together.
-    /// Row 3 is reporting points, 4 is obstacles.
-    void toggleAip(int row);
+    /// Selects the 3D ground picture without leaving the current view.
+    void setTerrainPicture(MapMode mode);
+    /// Airspace walls on the 3D picture.
+    void setAipWalls(bool on);
+    /// Airspace name plates on the 3D picture.
+    void setAipLabels(bool on);
+    /// Reporting points on the 3D picture.
+    void setVrpsOn(bool on);
+    /// Obstacle masts on the 3D picture.
+    void setObstaclesOn(bool on);
     /// Highlights an ENR row. Nearest speaks the closest field.
     void setEnrPage(EnrPage page);
     /// Shows or hides the diagnostics panel.
@@ -138,12 +151,15 @@ private:
 
     std::vector<CockpitEntry> mCockpitLayers; ///< Route strip, tapes, and the corner dials.
     IWidget *mPlanning = nullptr;             ///< Full planner, or its map alone in SPLIT.
-    ViewMode mView = ViewMode::ThreeD;        ///< MODE row. PLANNING swaps layers.
-    ViewMode mLastEfisView = ViewMode::ThreeD; ///< Picture restored when leaving PLANNING.
+    ViewMode mPicture = ViewMode::ThreeD;     ///< AHRS or 3D. Stays selected while split is on.
+    bool mSplit = false;                      ///< Map beside the flight picture.
+    bool mPlanningOpen = false;               ///< Full-screen flight planner is showing.
+    ViewMode mLastPicture = ViewMode::ThreeD; ///< Picture restored when leaving PLANNING.
+    bool mLastSplit = false;                  ///< Split flag restored when leaving PLANNING.
     MapMode mMapMode = MapMode::Simple; ///< MAP row. Satellite drapes imagery. Simple is shaded terrain.
 
-    bool mAipWalls = false;  ///< AIP 3D. Vertical airspace walls. Toggles with TEXT.
-    bool mAipText = false;   ///< AIP TEXT. Airspace name plates. Toggles with 3D.
+    bool mAipWalls = false;  ///< Airspace walls on the 3D picture.
+    bool mAipText = false;   ///< Airspace name plates on the 3D picture.
     bool mVrpOn = true;      ///< AIP VRP. Visual reporting points.
     bool mObstacles = false; ///< AIP OBSTCL. Obstacle masts. Voice can still run when this is off.
 

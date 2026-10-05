@@ -83,6 +83,9 @@ public:
         (void)dz;
         return false;
     }
+
+    /// A second finger landed. Armed taps should be dropped so a pinch is not a click.
+    virtual void gesturePinchBegan() {}
 };
 
 /// Opens the GLES window. Frame pumps events and presents through this window.

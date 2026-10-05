@@ -148,6 +148,55 @@ PlanningWidget::PlanningWidget(Frame &frame, AppController &controller, IDataMan
 void PlanningWidget::bindMenu(MenuWidget &menu)
 {
     mMenu = &menu;
+    menu.setOnOpen([this] { mMapMenuOpen = false; });
+}
+
+void PlanningWidget::gesturePinchBegan()
+{
+    clearMapArm();
+}
+
+void PlanningWidget::clearMapArm()
+{
+    mMapArmed = false;
+    mMapArmAction = nullptr;
+    mMapArmScroll = false;
+}
+
+bool PlanningWidget::mapSurfaceActive() const
+{
+    if (mMapPaneW < 8 || mMapPaneH < 8)
+    {
+        return false;
+    }
+    if (mController.view() == ViewMode::Split)
+    {
+        return true;
+    }
+    return mEnabled && mTab == Tab::Map;
+}
+
+bool PlanningWidget::menuBlocksMap() const
+{
+    if (mMapMenuOpen || mSuppressPan)
+    {
+        return true;
+    }
+    return mMenu != nullptr && mMenu->isOpen();
+}
+
+void PlanningWidget::noteMapArm(int x, int y)
+{
+    if (!mMapArmed || !mMapArmAction)
+    {
+        return;
+    }
+    const int dx = x - mMapArmX;
+    const int dy = y - mMapArmY;
+    if (dx * dx + dy * dy > 14 * 14)
+    {
+        mMapArmAction = nullptr;
+    }
 }
 
 void PlanningWidget::updateTextInput()
@@ -201,6 +250,9 @@ void PlanningWidget::enable(bool enable)
         mModalOpen = false;
         cancelRouteDrag();
         mEditMode = false;
+        mMapMenuOpen = false;
+        mSuppressPan = false;
+        clearMapArm();
     }
     updateTextInput();
 }
@@ -1150,6 +1202,261 @@ void PlanningWidget::drawBriefingTab()
                [this] { showToast("METAR REFRESH (STUB)"); });
 }
 
+void PlanningWidget::layoutMapChrome(MapChrome &chrome)
+{
+    chrome = MapChrome{};
+    if (!mapSurfaceActive())
+    {
+        return;
+    }
+    chrome.btnW = 80;
+    chrome.btnH = 96;
+    chrome.btnY = mMapPaneY + 12;
+    const int panelW = std::min(440, std::max(280, mMapPaneW * 7 / 10));
+    const int panelX = mMapPaneX + mMapPaneW - panelW;
+    const int panelY = mMapPaneY;
+    const int panelH = mMapPaneH;
+    chrome.btnX = mMapMenuOpen ? panelX - chrome.btnW : mMapPaneX + mMapPaneW - chrome.btnW;
+
+    constexpr int kHeaders = 4;
+    constexpr int kBodies = 10;
+    int headerH = 40;
+    int rowH = 72;
+    int contentH = kHeaders * headerH + kBodies * rowH;
+    if (contentH < panelH)
+    {
+        rowH = std::min(88, (panelH - kHeaders * headerH) / kBodies);
+        contentH = kHeaders * headerH + kBodies * rowH;
+    }
+    mMapScrollMax = std::max(0, contentH - panelH);
+    mMapScroll = std::clamp(mMapScroll, 0, mMapScrollMax);
+    const int bodyPx = std::clamp(rowH * 2 / 5, 22, 32);
+    const int headPx = std::max(16, bodyPx - 6);
+
+    int y = panelY - mMapScroll;
+    auto header = [&](const char *text) {
+        MapChromeRow row;
+        row.x = panelX;
+        row.y = y;
+        row.w = panelW;
+        row.h = headerH;
+        row.header = true;
+        row.label = text;
+        row.fontPx = headPx;
+        chrome.rows.push_back(std::move(row));
+        y += headerH;
+    };
+    auto full = [&](const std::string &label, bool selected, std::function<void()> action) {
+        MapChromeRow row;
+        row.x = panelX;
+        row.y = y;
+        row.w = panelW;
+        row.h = rowH;
+        row.selected = selected;
+        row.label = label;
+        row.fontPx = bodyPx;
+        row.action = std::move(action);
+        chrome.rows.push_back(std::move(row));
+        y += rowH;
+    };
+    auto pair = [&](const std::string &leftLabel, bool leftOn, std::function<void()> leftAction,
+                    const std::string &rightLabel, bool rightOn, std::function<void()> rightAction) {
+        const int gap = 4;
+        const int leftW = (panelW - gap) / 2;
+        MapChromeRow left;
+        left.x = panelX;
+        left.y = y;
+        left.w = leftW;
+        left.h = rowH;
+        left.selected = leftOn;
+        left.label = leftLabel;
+        left.fontPx = bodyPx;
+        left.action = std::move(leftAction);
+        MapChromeRow right;
+        right.x = panelX + leftW + gap;
+        right.y = y;
+        right.w = panelW - leftW - gap;
+        right.h = rowH;
+        right.selected = rightOn;
+        right.label = rightLabel;
+        right.fontPx = bodyPx;
+        right.action = std::move(rightAction);
+        chrome.rows.push_back(std::move(left));
+        chrome.rows.push_back(std::move(right));
+        y += rowH;
+    };
+
+    header("VIEW");
+    full("FIT", false, [this] {
+        mMap.setTrackAircraft(false);
+        mMap.fitRoute();
+    });
+    full(mMap.trackAircraft() ? "TRACK ON" : "TRACK OFF", mMap.trackAircraft(),
+         [this] { mMap.setTrackAircraft(!mMap.trackAircraft()); });
+    const bool vector = std::strcmp(mMap.backgroundLabel(), "VECTOR") == 0;
+    header("BASEMAP");
+    pair("VECTOR", vector, [this] { mMap.setBackgroundVector(true); }, "SATELLITE", !vector,
+         [this] { mMap.setBackgroundVector(false); });
+    header("OVERLAYS");
+    full(mMap.airspaceVisible() ? "AIRSPACE ON" : "AIRSPACE OFF", mMap.airspaceVisible(),
+         [this] { mMap.setAirspaceVisible(!mMap.airspaceVisible()); });
+    full(mMap.fisVisible() ? "FIS ON" : "FIS OFF", mMap.fisVisible(),
+         [this] { mMap.setFisVisible(!mMap.fisVisible()); });
+    full(mMap.ifrVisible() ? "IFR ON" : "IFR OFF", mMap.ifrVisible(),
+         [this] { mMap.setIfrVisible(!mMap.ifrVisible()); });
+    header("FILTER");
+    const AirspaceFilter filters[4] = {AirspaceFilter::All, AirspaceFilter::CtrTma, AirspaceFilter::Rpd,
+                                       AirspaceFilter::Tra};
+    const char *filterNames[4] = {"ALL", "CTR/TMA", "R/P/D", "TRA"};
+    for (int i = 0; i < 4; i += 2)
+    {
+        const AirspaceFilter leftVal = filters[i];
+        const AirspaceFilter rightVal = filters[i + 1];
+        pair(filterNames[i], mMap.filter() == leftVal, [this, leftVal] { mMap.setFilter(leftVal); }, filterNames[i + 1],
+             mMap.filter() == rightVal, [this, rightVal] { mMap.setFilter(rightVal); });
+    }
+    full("ATZ", mMap.filter() == AirspaceFilter::Atz, [this] { mMap.setFilter(AirspaceFilter::Atz); });
+    full("RELOAD AIP", false, [this] {
+        NavDb::instance().reloadAirspaces();
+        mMap.invalidate();
+        showToast("AIP RELOADED");
+    });
+
+    chrome.panelX = panelX;
+    chrome.panelY = panelY;
+    chrome.panelW = panelW;
+    chrome.panelH = panelH;
+}
+
+void PlanningWidget::drawMapChrome()
+{
+    if (!mapSurfaceActive())
+    {
+        return;
+    }
+    MapChrome chrome;
+    layoutMapChrome(chrome);
+    if (mMapMenuOpen && chrome.panelH > 0)
+    {
+        const size_t rowStart = mDrawCursor;
+        glEnable(GL_SCISSOR_TEST);
+        glScissor(chrome.panelX, mScreenH - chrome.panelY - chrome.panelH, chrome.panelW, chrome.panelH);
+        nextDraw().drawRectangle(chrome.panelX, mScreenH - chrome.panelY - chrome.panelH, chrome.panelW, chrome.panelH,
+                                 0x101820B8u);
+        for (const MapChromeRow &row : chrome.rows)
+        {
+            const uint32_t fill = row.header ? 0x00000088u : (row.selected ? 0x4DA3FFC0u : 0x1A2430B0u);
+            nextDraw().drawRectangle(row.x, mScreenH - row.y - row.h, row.w, row.h, fill);
+            nextDraw().drawTextCentered(row.label, static_cast<float>(row.fontPx), static_cast<float>(row.x + row.w / 2),
+                                        static_cast<float>(mScreenH - row.y - row.h / 2), kInk, row.label);
+        }
+        const glm::mat4 rowIdentity(1.0f);
+        for (size_t i = rowStart; i < mDrawCursor; ++i)
+        {
+            mDraws[i]->setTransformationMatrix(rowIdentity);
+            mDraws[i]->render();
+        }
+        glDisable(GL_SCISSOR_TEST);
+    }
+    const size_t start = mDrawCursor;
+    const int tabGl = mScreenH - chrome.btnY - chrome.btnH;
+    const uint32_t tabFill = mMapMenuOpen ? 0x4DA3FFD0u : 0x101820E8u;
+    if (!mMapMenuOpen && chrome.btnX + chrome.btnW >= mScreenW - 1)
+    {
+        nextDraw().drawRectangle(mScreenW, tabGl, chrome.btnW, chrome.btnH, tabFill);
+    }
+    nextDraw().drawRectangle(chrome.btnX, tabGl, chrome.btnW, chrome.btnH, tabFill);
+    const int steps = 8;
+    const int arm = 26;
+    const int thick = 8;
+    const int cx = chrome.btnX + chrome.btnW / 2;
+    const int cy = chrome.btnY + chrome.btnH / 2;
+    const int tip = mMapMenuOpen ? arm / 2 : -arm / 2;
+    const int tail = mMapMenuOpen ? -arm / 2 : arm / 2;
+    for (int i = 0; i <= steps; ++i)
+    {
+        const float t = static_cast<float>(i) / static_cast<float>(steps);
+        const int px = tail + static_cast<int>(std::lround(t * static_cast<float>(tip - tail)));
+        const int py = static_cast<int>(std::lround((1.0f - t) * static_cast<float>(arm)));
+        nextDraw().drawRectangle(cx + px - thick / 2, mScreenH - (cy - py) - thick, thick, thick, 0xFFFFFFFFu);
+        nextDraw().drawRectangle(cx + px - thick / 2, mScreenH - (cy + py) - thick, thick, thick, 0xFFFFFFFFu);
+    }
+
+    const glm::mat4 identity(1.0f);
+    for (size_t i = start; i < mDrawCursor; ++i)
+    {
+        mDraws[i]->setTransformationMatrix(identity);
+        mDraws[i]->render();
+    }
+}
+
+bool PlanningWidget::handleMapChromeClick(int x, int y)
+{
+    if (!mapSurfaceActive() || mController.generalOpen() || (mMenu != nullptr && mMenu->isOpen()))
+    {
+        return false;
+    }
+    MapChrome chrome;
+    layoutMapChrome(chrome);
+    auto inside = [](int px, int py, int rx, int ry, int rw, int rh) {
+        return px >= rx && py >= ry && px < rx + rw && py < ry + rh;
+    };
+    auto arm = [this, x, y](std::function<void()> action) {
+        mMapArmed = true;
+        mMapArmX = x;
+        mMapArmY = y;
+        mMapArmAction = std::move(action);
+        mSuppressPan = true;
+        return true;
+    };
+    if (inside(x, y, chrome.btnX, chrome.btnY, chrome.btnW, chrome.btnH))
+    {
+        return arm([this] {
+            if (mMapMenuOpen)
+            {
+                mMapMenuOpen = false;
+                return;
+            }
+            if (mMenu != nullptr)
+            {
+                mMenu->close();
+            }
+            mMapMenuOpen = true;
+        });
+    }
+    if (!mMapMenuOpen)
+    {
+        return false;
+    }
+    for (const MapChromeRow &row : chrome.rows)
+    {
+        if (row.header || !row.action)
+        {
+            continue;
+        }
+        if (row.y + row.h <= chrome.panelY || row.y >= chrome.panelY + chrome.panelH)
+        {
+            continue;
+        }
+        if (inside(x, y, row.x, row.y, row.w, row.h))
+        {
+            mMapArmScroll = true;
+            return arm(row.action);
+        }
+    }
+    if (inside(x, y, chrome.panelX, chrome.panelY, chrome.panelW, chrome.panelH))
+    {
+        mMapArmScroll = true;
+        mSuppressPan = true;
+        return true;
+    }
+    if (inside(x, y, mMapPaneX, mMapPaneY, mMapPaneW, mMapPaneH))
+    {
+        return arm([this] { mMapMenuOpen = false; });
+    }
+    return false;
+}
+
 void PlanningWidget::drawMapTab()
 {
     const int headerH = std::max(48, mScreenH / 14);
@@ -1157,17 +1464,23 @@ void PlanningWidget::drawMapTab()
     const int top = headerH + tabsH + 12;
     const int pad = 16;
     const int contentW = mScreenW - pad * 2;
-    const int controlsH = 68;
     const int dockH = 72;
-    const int mapH = mScreenH - top - controlsH - dockH - 24;
+    const int mapY = top;
+    const int mapH = std::max(1, mScreenH - top - dockH - 16);
+    mMapPaneX = pad;
+    mMapPaneY = mapY;
+    mMapPaneW = contentW;
+    mMapPaneH = mapH;
+    mMap.place(pad, mapY, contentW, mapH);
+    Render2D &well = nextDraw();
+    well.drawRectangle(pad, mScreenH - mapY - mapH, contentW, mapH, 0x101820FFu);
 
-    // Controls row
-    const int controlsY = top;
-    Render2D &cbg = nextDraw();
-    cbg.drawRectangle(pad, mScreenH - controlsY - controlsH, contentW, controlsH, kCard);
-    int cx = pad + 12;
-    drawButton("plan-map-edit", "EDIT MODE", cx, controlsY + 10, 148, 48,
-               mEditMode ? kButtonBgHi : kButtonBg, mEditMode ? kCyan : kInk, 15.0f, [this] {
+    const int dockY = mapY + mapH + 8;
+    Render2D &dbg = nextDraw();
+    dbg.drawRectangle(pad, mScreenH - dockY - dockH, contentW, dockH, kCard);
+    int bx = pad + 12;
+    drawButton("plan-map-edit", "EDIT", bx, dockY + 12, 120, dockH - 24, mEditMode ? kButtonBgHi : kButtonBg,
+               mEditMode ? kCyan : kInk, 18.0f, [this] {
                    mEditMode = !mEditMode;
                    if (!mEditMode)
                    {
@@ -1179,70 +1492,11 @@ void PlanningWidget::drawMapTab()
                        showToast("EDIT MODE: DRAG POINTS TO SNAP");
                    }
                });
-    cx += 156;
-    drawButton("plan-map-fit", "FIT", cx, controlsY + 10, 80, 48, kButtonBg, kInk, 16.0f, [this] { mMap.fitRoute(); });
-    cx += 88;
-    drawButton("plan-map-as", mMap.airspaceVisible() ? "AS ON" : "AS OFF", cx, controlsY + 10, 88, 48,
-               mMap.airspaceVisible() ? kButtonBgHi : kButtonBg, kInk, 16.0f,
-               [this] { mMap.setAirspaceVisible(!mMap.airspaceVisible()); });
-    cx += 96;
-    drawButton("plan-map-fis", mMap.fisVisible() ? "FIS ON" : "FIS OFF", cx, controlsY + 10, 88, 48,
-               mMap.fisVisible() ? kButtonBgHi : kButtonBg, mMap.fisVisible() ? kAmber : kInk, 16.0f, [this] {
-                   mMap.setFisVisible(!mMap.fisVisible());
-                   showToast(mMap.fisVisible() ? "FIS SECTORS ON" : "FIS SECTORS OFF");
-               });
-    cx += 96;
-    drawButton("plan-map-ifr", mMap.ifrVisible() ? "IFR ON" : "IFR OFF", cx, controlsY + 10, 88, 48,
-               mMap.ifrVisible() ? kButtonBgHi : kButtonBg, kInk, 16.0f, [this] {
-                   mMap.setIfrVisible(!mMap.ifrVisible());
-                   showToast(mMap.ifrVisible() ? "IFR POINTS ON" : "IFR POINTS OFF");
-               });
-    cx += 96;
-    drawButton("plan-map-bg", mMap.backgroundLabel(), cx, controlsY + 10, 110, 48, kButtonBg, kInk, 16.0f, [this] {
-        mMap.toggleBackground();
-        showToast(std::string("BASEMAP: ") + mMap.backgroundLabel());
-    });
-    cx += 118;
-
-    // Filters
-    struct FilterOpt
-    {
-        const char *label;
-        AirspaceFilter val;
-    };
-    FilterOpt opts[] = {
-        {"ALL", AirspaceFilter::All},   {"CTR/TMA", AirspaceFilter::CtrTma}, {"R/P/D", AirspaceFilter::Rpd},
-        {"TRA", AirspaceFilter::Tra},   {"ATZ", AirspaceFilter::Atz},
-    };
-    for (const FilterOpt &opt : opts)
-    {
-        const bool active = mMap.filter() == opt.val;
-        drawButton(std::string("plan-map-f-") + opt.label, opt.label, cx, controlsY + 10, 88, 48,
-                   active ? kButtonBgHi : kButtonBg, active ? kCyan : kInk, 14.0f,
-                   [this, val = opt.val, name = std::string(opt.label)] {
-                       mMap.setFilter(val);
-                       showToast(std::string("FILTER: ") + name);
-                   });
-        cx += 92;
-    }
-
-    // Map viewport
-    const int mapY = controlsY + controlsH + 8;
-    const int mapHeight = std::max(1, mapH);
-    mMap.place(pad, mapY, contentW, mapHeight);
-    Render2D &well = nextDraw();
-    well.drawRectangle(pad, mScreenH - mapY - mapHeight, contentW, mapHeight, 0x101820FFu);
-    addRect(pad, mapY, contentW, mapHeight, [] {});
-
-    // Dock
-    const int dockY = mapY + std::max(1, mapH) + 8;
-    Render2D &dbg = nextDraw();
-    dbg.drawRectangle(pad, mScreenH - dockY - dockH, contentW, dockH, kCard);
-    int bx = pad + 12;
-    drawButton("plan-mapdock-dto", "DIRECT-TO", bx, dockY + 12, 160, dockH - 24, kButtonBgMag, kInk, 18.0f,
+    bx += 132;
+    drawButton("plan-mapdock-dto", "DIRECT-TO", bx, dockY + 12, 180, dockH - 24, kButtonBgMag, kInk, 18.0f,
                [this] { showToast("SELECT ROW ON ROUTE TAB"); });
-    bx += 172;
-    drawButton("plan-mapdock-send", "SEND TO AVIONICS", bx, dockY + 12, 220, dockH - 24, kButtonBgGrn, kInk, 18.0f,
+    bx += 192;
+    drawButton("plan-mapdock-send", "SEND TO AVIONICS", bx, dockY + 12, 240, dockH - 24, kButtonBgGrn, kInk, 18.0f,
                [this] {
                    if (mPlan.armActiveLeg())
                    {
@@ -1253,23 +1507,12 @@ void PlanningWidget::drawMapTab()
                        showToast("CANNOT ARM (unknown ident)");
                    }
                });
-    bx += 232;
-    drawButton("plan-mapdock-aip", "RELOAD AIP", bx, dockY + 12, 160, dockH - 24, kButtonBg, kInk, 16.0f, [this] {
-        NavDb::instance().reloadAirspaces();
-        mMap.invalidate();
-        showToast("AIP RELOADED");
-    });
-    bx += 172;
-    drawButton("plan-mapdock-back", "BACK TO ROUTE", bx, dockY + 12, 180, dockH - 24, kButtonBg, kInk, 16.0f,
-               [this] { mTab = Tab::Route; });
 }
 
 void PlanningWidget::drawMapOverlays()
 {
-    const int headerH = std::max(48, mScreenH / 14);
-    const int tabsH = std::max(52, mScreenH / 14);
-    const int pad = 16;
-    const int mapY = headerH + tabsH + 12 + 68 + 8;
+    const int mapY = mMap.y();
+    const int textX = mMap.x() + 72;
     float totalNm = 0.0f;
     float totalMin = 0.0f;
     computeTotals(totalNm, totalMin);
@@ -1278,13 +1521,13 @@ void PlanningWidget::drawMapOverlays()
                   formatEteShort(totalMin).c_str(), mPlan.altitudeFt());
     const size_t start = mDrawCursor;
     Render2D &ovl = nextDraw();
-    ovl.drawText(buf, 14.0f, static_cast<float>(pad + 12), static_cast<float>(mScreenH - mapY - 24), kInk,
+    ovl.drawText(buf, 14.0f, static_cast<float>(textX), static_cast<float>(mScreenH - mapY - 24), kInk,
                  ("plan-map-ovl-" + std::string(buf)).c_str());
     char coord[64];
     std::snprintf(coord, sizeof(coord), "LAT %.3f  LON %.3f  Z%.1f", mMap.centerLat(), mMap.centerLon(),
                   static_cast<double>(mMap.zoomLevel()));
     Render2D &co = nextDraw();
-    co.drawText(coord, 12.0f, static_cast<float>(pad + 12),
+    co.drawText(coord, 12.0f, static_cast<float>(textX),
                 static_cast<float>(mScreenH - mapY - mMap.h() + 12), kMuted,
                 ("plan-map-coord-" + std::string(coord)).c_str());
 
@@ -1294,7 +1537,7 @@ void PlanningWidget::drawMapOverlays()
                                ? (mSnapValid ? mSnapIdent.c_str() : "DRAG TO A MARKED POINT")
                                : "EDIT MODE: DRAG ROUTE POINTS";
         Render2D &hintTxt = nextDraw();
-        hintTxt.drawText(hint, 14.0f, static_cast<float>(pad + 12),
+        hintTxt.drawText(hint, 14.0f, static_cast<float>(textX),
                          static_cast<float>(mScreenH - mapY - mMap.h() + 32),
                          mDragRouteIndex >= 0 && mSnapValid ? kCyan : kAmber, "plan-map-edit-hint");
     }
@@ -1396,6 +1639,10 @@ void PlanningWidget::drawMapOverlays()
 void PlanningWidget::renderSplitMap()
 {
     const SplitLayout layout = makeSplitLayout(std::max(1, mScreen.getWidth()), std::max(1, mScreen.getHeight()));
+    mMapPaneX = layout.map.x;
+    mMapPaneY = layout.map.y;
+    mMapPaneW = layout.map.w;
+    mMapPaneH = layout.map.h;
     mMap.place(layout.map.x, layout.map.y, layout.map.w, layout.map.h);
 
     glDisable(GL_CULL_FACE);
@@ -1404,13 +1651,14 @@ void PlanningWidget::renderSplitMap()
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     mMap.render();
+    drawMapChrome();
     glDepthMask(GL_TRUE);
     glEnable(GL_DEPTH_TEST);
 }
 
 bool PlanningWidget::pointingAtSplitMap(int x, int y) const
 {
-    if (mController.view() != ViewMode::Split || (mMenu != nullptr && mMenu->isOpen()))
+    if (mController.view() != ViewMode::Split || menuBlocksMap())
     {
         return false;
     }
@@ -1421,11 +1669,14 @@ void PlanningWidget::render()
 {
     if (mController.view() == ViewMode::Split)
     {
+        mDrawCursor = 0;
+        layout();
         renderSplitMap();
         return;
     }
     if (!mEnabled)
     {
+        mMapMenuOpen = false;
         return;
     }
     if (mSimBriefPending && std::chrono::steady_clock::now() >= mSimBriefAt)
@@ -1483,6 +1734,11 @@ void PlanningWidget::render()
     {
         mMap.render();
         drawMapOverlays();
+        drawMapChrome();
+    }
+    else
+    {
+        mMapMenuOpen = false;
     }
     glDepthMask(GL_TRUE);
     glEnable(GL_DEPTH_TEST);
@@ -1502,6 +1758,14 @@ void PlanningWidget::updateRouteSnap(int x, int y)
 
 bool PlanningWidget::mouseClick(int x, int y)
 {
+    if (mController.generalOpen() || (mMenu != nullptr && mMenu->isOpen()))
+    {
+        return false;
+    }
+    if (handleMapChromeClick(x, y))
+    {
+        return true;
+    }
     if (!mEnabled)
     {
         return false;
@@ -1561,8 +1825,18 @@ bool PlanningWidget::mouseClick(int x, int y)
 
 bool PlanningWidget::mouseMove(int x, int y, int dx, int dy)
 {
+    if (mMapArmScroll)
+    {
+        mMapScroll = std::clamp(mMapScroll - dy, 0, mMapScrollMax);
+        return true;
+    }
+    noteMapArm(x, y);
     if (mController.view() == ViewMode::Split)
     {
+        if (menuBlocksMap())
+        {
+            return mMap.contains(x, y);
+        }
         if (pointingAtSplitMap(x, y))
         {
             mMap.pan(dx, dy);
@@ -1579,6 +1853,10 @@ bool PlanningWidget::mouseMove(int x, int y, int dx, int dy)
         updateRouteSnap(x, y);
         return true;
     }
+    if (menuBlocksMap())
+    {
+        return mMap.contains(x, y);
+    }
     if (mMapPinch || mMap.contains(x, y))
     {
         mMap.pan(dx, dy);
@@ -1587,8 +1865,22 @@ bool PlanningWidget::mouseMove(int x, int y, int dx, int dy)
     return false;
 }
 
-bool PlanningWidget::mouseUp(int, int)
+bool PlanningWidget::mouseUp(int x, int y)
 {
+    bool consumed = false;
+    if (mMapArmed)
+    {
+        const int dx = x - mMapArmX;
+        const int dy = y - mMapArmY;
+        if (mMapArmAction && dx * dx + dy * dy <= 14 * 14)
+        {
+            mMapArmAction();
+        }
+        clearMapArm();
+        consumed = true;
+    }
+    mMapArmScroll = false;
+    mSuppressPan = false;
     if (mDragRouteIndex >= 0)
     {
         if (mSnapValid)
@@ -1612,11 +1904,16 @@ bool PlanningWidget::mouseUp(int, int)
         return true;
     }
     mMapPinch = false;
-    return false;
+    return consumed;
 }
 
 bool PlanningWidget::mouseWheel(int x, int y, int dy)
 {
+    if (menuBlocksMap() && mMap.contains(x, y) &&
+        (mController.view() == ViewMode::Split || (mEnabled && mTab == Tab::Map)))
+    {
+        return true;
+    }
     if (mController.view() == ViewMode::Split)
     {
         if (pointingAtSplitMap(x, y))
@@ -1640,6 +1937,12 @@ bool PlanningWidget::mouseWheel(int x, int y, int dy)
 
 bool PlanningWidget::pinch(int x, int y, float dz)
 {
+    const bool onPlannerMap = mEnabled && mTab == Tab::Map && mMap.contains(x, y);
+    const bool onSplitMap = mController.view() == ViewMode::Split && mMap.contains(x, y);
+    if (menuBlocksMap())
+    {
+        return onPlannerMap || onSplitMap;
+    }
     if (mController.view() == ViewMode::Split)
     {
         if (!pointingAtSplitMap(x, y) && !mMapPinch)
@@ -1651,10 +1954,6 @@ bool PlanningWidget::pinch(int x, int y, float dz)
         return true;
     }
     if (!mEnabled || mTab != Tab::Map)
-    {
-        return false;
-    }
-    if (mMenu != nullptr && mMenu->isOpen())
     {
         return false;
     }

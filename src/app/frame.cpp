@@ -391,6 +391,10 @@ void Frame::run()
                 }
                 else
                 {
+                    for (auto *renderer : mInput)
+                    {
+                        renderer->gesturePinchBegan();
+                    }
                     beginPinch();
                 }
                 break;

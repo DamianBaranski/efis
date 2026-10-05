@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <string>
@@ -805,8 +806,68 @@ void PlanningMap::place(int x, int y, int w, int h)
     }
 }
 
+void PlanningMap::setTrackAircraft(bool on)
+{
+    if (mTrack == on)
+    {
+        return;
+    }
+    mTrack = on;
+    followAircraft();
+    markDirty();
+}
+
+void PlanningMap::followAircraft()
+{
+    if (!mTrack)
+    {
+        return;
+    }
+    const LocationData &loc = mData.getLocationData();
+    if (loc.latitude == 0.0f && loc.longitude == 0.0f)
+    {
+        return;
+    }
+    const double lat = loc.latitude;
+    const double lon = loc.longitude;
+    if (std::fabs(lat - mCenterLat) < 1.0e-7 && std::fabs(lon - mCenterLon) < 1.0e-7)
+    {
+        return;
+    }
+    mCenterLat = lat;
+    mCenterLon = lon;
+    mCentered = true;
+}
+
+bool PlanningMap::trackAtlasStale() const
+{
+    if (!mTrack)
+    {
+        return false;
+    }
+    if (!mAtlasValid || mAtlasZoom != mZoom || mAtlasViewW != mW || mAtlasViewH != mH)
+    {
+        return true;
+    }
+    const Point c = project(mAtlasLat, mAtlasLon);
+    const float dx = c.x - static_cast<float>(mX + mW / 2);
+    const float dy = c.y - static_cast<float>(mY + mH / 2);
+    // A wide tablet map cannot grow a pad past the texture limit. Sliding with a
+    // zero pad used to fail this test every frame and repaint the whole chart.
+    const float margin = mAtlasPad >= 48 ? static_cast<float>(mAtlasPad - 16) : 96.0f;
+    if (std::fabs(dx) <= margin && std::fabs(dy) <= margin)
+    {
+        return false;
+    }
+    const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
+                         std::chrono::steady_clock::now().time_since_epoch())
+                         .count();
+    return now - mAtlasMs >= 400;
+}
+
 void PlanningMap::fitRoute()
 {
+    mTrack = false;
     double minLat = 90.0;
     double maxLat = -90.0;
     double minLon = 180.0;
@@ -872,6 +933,12 @@ void PlanningMap::zoomAt(float delta, int x, int y)
     const float next = std::min(mZoom + delta, static_cast<float>(kZoomMax));
     if (next == mZoom || mW <= 0 || mH <= 0)
     {
+        return;
+    }
+    if (mTrack)
+    {
+        mZoom = next;
+        markDirty();
         return;
     }
     const double scale0 = zoomScale(mZoom);
@@ -994,6 +1061,10 @@ void PlanningMap::pan(int dx, int dy)
     {
         return;
     }
+    if (dx != 0 || dy != 0)
+    {
+        mTrack = false;
+    }
     const double scale = zoomScale(mZoom);
     const double cosCenter = std::cos(mCenterLat * kPi / 180.0);
     if (std::fabs(scale * cosCenter) < 1.0e-6)
@@ -1045,8 +1116,10 @@ void PlanningMap::viewBounds(double &minLat, double &maxLat, double &minLon, dou
 {
     const double scale = zoomScale(mZoom);
     const double cosCenter = std::cos(mCenterLat * kPi / 180.0);
-    const double halfLatDeg = (mH / 2.0) / std::max(1.0e-6, scale);
-    const double halfLonDeg = (mW / 2.0) / std::max(1.0e-6, scale * cosCenter);
+    const int bw = mGeoW > 0 ? mGeoW : mW;
+    const int bh = mGeoH > 0 ? mGeoH : mH;
+    const double halfLatDeg = (bh / 2.0) / std::max(1.0e-6, scale);
+    const double halfLonDeg = (bw / 2.0) / std::max(1.0e-6, scale * cosCenter);
     minLat = mCenterLat - halfLatDeg;
     maxLat = mCenterLat + halfLatDeg;
     minLon = mCenterLon - halfLonDeg;
@@ -1184,11 +1257,24 @@ int PlanningMap::paintSatellite(SDL_Surface *surface, int texW, int texH, double
 
 void PlanningMap::rasterize()
 {
-    const int texW = std::clamp(mW, 8, 1280);
-    const int texH = std::clamp(mH, 8, 800);
+    constexpr int kTrackPad = 128;
+    constexpr int kMaxTex = 2048;
+    int pad = 0;
+    if (mTrack)
+    {
+        pad = kTrackPad;
+        pad = std::min(pad, std::max(0, (kMaxTex - mW) / 2));
+        pad = std::min(pad, std::max(0, (kMaxTex - mH) / 2));
+    }
+    const int texW = std::max(8, mW + pad * 2);
+    const int texH = std::max(8, mH + pad * 2);
+    mGeoW = texW;
+    mGeoH = texH;
     SDL_Surface *surface = SDL_CreateRGBSurfaceWithFormat(0, texW, texH, 32, SDL_PIXELFORMAT_RGBA32);
     if (surface == nullptr)
     {
+        mGeoW = 0;
+        mGeoH = 0;
         return;
     }
 
@@ -1587,6 +1673,20 @@ void PlanningMap::rasterize()
     mUpload.setTexture(kAtlasName, surface);
     mDirty = false;
     mSeenPlanRevision = mPlan.revision();
+    mAtlasLat = mCenterLat;
+    mAtlasLon = mCenterLon;
+    mAtlasZoom = mZoom;
+    mAtlasTexW = texW;
+    mAtlasTexH = texH;
+    mAtlasPad = std::min((texW - mW) / 2, (texH - mH) / 2);
+    mAtlasViewW = mW;
+    mAtlasViewH = mH;
+    mAtlasMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                   std::chrono::steady_clock::now().time_since_epoch())
+                   .count();
+    mAtlasValid = true;
+    mGeoW = 0;
+    mGeoH = 0;
 }
 
 void PlanningMap::render()
@@ -1594,6 +1694,11 @@ void PlanningMap::render()
     if (mW <= 0 || mH <= 0)
     {
         return;
+    }
+    followAircraft();
+    if (trackAtlasStale())
+    {
+        markDirty();
     }
     if (mPlan.revision() != mSeenPlanRevision)
     {
@@ -1623,7 +1728,19 @@ void PlanningMap::render()
     glEnable(GL_SCISSOR_TEST);
     glScissor(mX, glY, mW, mH);
 
-    mPanel.drawTexture(kAtlasName, mX, glY, mW, mH);
+    if (mAtlasValid && mAtlasTexW > 0 && mAtlasTexH > 0)
+    {
+        const Point c = project(mAtlasLat, mAtlasLon);
+        const float left = c.x - static_cast<float>(mAtlasTexW) * 0.5f;
+        const float top = c.y - static_cast<float>(mAtlasTexH) * 0.5f;
+        const int drawX = static_cast<int>(std::lround(left));
+        const int drawY = scrH - static_cast<int>(std::lround(top + static_cast<float>(mAtlasTexH)));
+        mPanel.drawTexture(kAtlasName, drawX, drawY, mAtlasTexW, mAtlasTexH);
+    }
+    else
+    {
+        mPanel.drawTexture(kAtlasName, mX, glY, mW, mH);
+    }
     const glm::mat4 identity(1.0f);
     mPanel.setTransformationMatrix(identity);
     mPanel.render();
@@ -1715,5 +1832,8 @@ void PlanningMap::drawOwnship(float glX, float glY)
     const int my = static_cast<int>(std::lround(glY)) - size / 2;
     mMarker.drawTexture(kOwnshipTex, mx, my, size, size);
     mMarker.setTransformationMatrix(glm::mat4(1.0f));
+    // Nose art points north. Heading is clockwise from north, screen rotation is the other way.
+    const float heading = mData.getAttitudeData().heading;
+    mMarker.setRotation(-heading, static_cast<int>(std::lround(glX)), static_cast<int>(std::lround(glY)));
     mMarker.render();
 }

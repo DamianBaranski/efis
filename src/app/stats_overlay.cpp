@@ -515,8 +515,9 @@ void StatsOverlay::rebuildPreloadSprites(const std::string &l0, const std::strin
     if (mController.view() == ViewMode::Split)
     {
         const SplitLayout layout = makeSplitLayout(w, h);
-        x = layout.map.x + pad;
-        limitW = std::max(1, layout.map.w - 2 * pad);
+        const int fitReserve = std::clamp(h / 8, 44, 56) + 28;
+        x = layout.map.x + pad + fitReserve;
+        limitW = std::max(1, layout.map.w - fitReserve - 2 * pad);
     }
     const int boxW = std::min(limitW, std::max(std::min(460, limitW), w / 3));
     const int lineH = std::max(18, h / 36);

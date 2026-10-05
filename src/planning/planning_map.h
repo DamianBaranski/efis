@@ -39,7 +39,13 @@ public:
     void place(int x, int y, int w, int h);
 
     /// Centres the map on the route and zooms so the whole plan fills the viewport.
+    /// Turns aircraft tracking off.
     void fitRoute();
+
+    /// Keeps the aircraft in the middle of the map. The chart moves with it.
+    void setTrackAircraft(bool on);
+    /// True while the map follows the aircraft.
+    bool trackAircraft() const { return mTrack; }
 
     /// Steps the zoom by `delta`. Clamps to the working range.
     void zoom(int delta);
@@ -148,6 +154,8 @@ private:
     };
 
     void markDirty() { mDirty = true; }
+    void followAircraft();
+    bool trackAtlasStale() const;
     void rasterize();
     void pumpSatellite();
     int countCachedSatTiles() const;
@@ -184,7 +192,20 @@ private:
     bool mBackgroundVector = true;
     AirspaceFilter mFilter = AirspaceFilter::All;
     bool mCentered = false;
+    bool mTrack = false;
     bool mDirty = true;
+    bool mAtlasValid = false;
+    double mAtlasLat = 0.0;
+    double mAtlasLon = 0.0;
+    float mAtlasZoom = -1.0f;
+    int mAtlasTexW = 0;
+    int mAtlasTexH = 0;
+    int mAtlasPad = 0;
+    int mAtlasViewW = 0;
+    int mAtlasViewH = 0;
+    std::int64_t mAtlasMs = 0;
+    int mGeoW = 0;
+    int mGeoH = 0;
     std::uint64_t mSeenPlanRevision = 0;
     int mSatZoom = 10;
     int mSatMinX = 0;

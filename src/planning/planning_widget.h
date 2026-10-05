@@ -44,9 +44,12 @@ public:
     /// \param plan Shared flight plan. Also read by HSI / route strip.
     PlanningWidget(Frame &frame, AppController &controller, IDataManager &data, FlightPlan &plan);
 
-    /// Points the planner at the chrome menu so taps defer while the menu is open.
+    /// Points the planner at the layout menu so the two menus do not stay open together.
     /// \param menu Menu owned by Hud. Must outlive this widget.
     void bindMenu(MenuWidget &menu);
+
+    /// Drops an armed map-menu tap when a second finger lands.
+    void gesturePinchBegan() override;
 
     /// Enables / disables the widget. Also toggles SDL text input.
     void enable(bool enable) override;
@@ -123,6 +126,43 @@ private:
     void drawRouteTab();
     void drawSetupTab();
     void drawBriefingTab();
+    struct MapChromeRow
+    {
+        int x = 0;
+        int y = 0;
+        int w = 0;
+        int h = 0;
+        bool header = false;
+        bool selected = false;
+        int fontPx = 26;
+        std::string label;
+        std::function<void()> action;
+    };
+
+    struct MapChrome
+    {
+        int btnX = 0;
+        int btnY = 0;
+        int btnW = 22;
+        int btnH = 56;
+        int fitX = 0;
+        int fitY = 0;
+        int fitW = 0;
+        int fitH = 0;
+        int panelX = 0;
+        int panelY = 0;
+        int panelW = 0;
+        int panelH = 0;
+        std::vector<MapChromeRow> rows;
+    };
+
+    bool mapSurfaceActive() const;
+    bool menuBlocksMap() const;
+    void layoutMapChrome(MapChrome &chrome);
+    void drawMapChrome();
+    bool handleMapChromeClick(int x, int y);
+    void noteMapArm(int x, int y);
+    void clearMapArm();
     void drawMapTab();
     void drawMapOverlays();
     void cancelRouteDrag();
@@ -174,6 +214,19 @@ private:
     bool mSimBriefPending = false;
     std::chrono::steady_clock::time_point mSimBriefAt{};
     bool mMapPinch = false;
+    bool mMapMenuOpen = false;
+    bool mMapArmScroll = false;
+    int mMapScroll = 0;
+    int mMapScrollMax = 0;
+    bool mSuppressPan = false;
+    bool mMapArmed = false;
+    int mMapArmX = 0;
+    int mMapArmY = 0;
+    std::function<void()> mMapArmAction;
+    int mMapPaneX = 0;
+    int mMapPaneY = 0;
+    int mMapPaneW = 0;
+    int mMapPaneH = 0;
 
     bool mEditMode = false;
     int mDragRouteIndex = -1;

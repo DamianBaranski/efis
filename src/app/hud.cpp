@@ -7,7 +7,7 @@ Hud::Hud(Frame &frame, AppController &controller, IWorldRead &world, ISession &s
     : mSettings(frame, controller, world, session), mStats(frame, controller, world, session),
       mMenu(frame, controller, mSettings)
 {
-    frame.add(&mMenu);
     frame.add(&mStats);
     frame.add(&mSettings);
+    frame.add(&mMenu);
 }

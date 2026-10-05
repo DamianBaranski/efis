@@ -21,6 +21,7 @@
 #include "nav_voice.h"
 #include "asset_path.h"
 #include "iworld_read.h"
+#include "split_layout.h"
 #include <algorithm>
 #include <cmath>
 #include <vector>
@@ -54,6 +55,9 @@ public:
         mProjMat = glm::perspective(glm::radians(60.0f), (float)mProjW / std::max(1, mProjH), 10.0f, 250000.0f);
         mRoute.setTerrain(&mMap);
     }
+
+    /// Draws the world in the left half while the map owns the right half.
+    void setSplit(bool split) { mSplit = split; }
 
     /// Drapes Esri imagery on the terrain when enable is true.
     void setSatelliteGround(bool enable) { mSatelliteGround = enable; }
@@ -161,12 +165,31 @@ public:
         {
             return;
         }
-        if (mScreen.getWidth() != mProjW || mScreen.getHeight() != mProjH)
+        const int screenW = std::max(1, mScreen.getWidth());
+        const int screenH = std::max(1, mScreen.getHeight());
+        int viewX = 0;
+        int viewY = 0;
+        int viewW = screenW;
+        int viewH = screenH;
+        if (mSplit)
         {
-            mProjW = mScreen.getWidth();
-            mProjH = mScreen.getHeight();
+            const SplitLayout layout = makeSplitLayout(screenW, screenH);
+            viewX = layout.ahrsClip.x;
+            viewW = std::max(1, layout.ahrsClip.w);
+            viewH = std::max(1, layout.ahrsClip.h);
+            viewY = screenH - (layout.ahrsClip.y + viewH);
+        }
+        const int splitFlag = mSplit ? 1 : 0;
+        if (viewW != mProjW || viewH != mProjH || splitFlag != mProjSplit)
+        {
+            mProjW = viewW;
+            mProjH = viewH;
+            mProjSplit = splitFlag;
             mProjMat = glm::perspective(glm::radians(60.0f), (float)mProjW / std::max(1, mProjH), 10.0f, 250000.0f);
         }
+        GLint previousViewport[4] = {0, 0, screenW, screenH};
+        glGetIntegerv(GL_VIEWPORT, previousViewport);
+        glViewport(viewX, viewY, viewW, viewH);
         mLocation = mDataManager.getLocationData();
         NavVoice::instance().setPosition(mLocation.latitude, mLocation.longitude);
         SceneFrame ground;
@@ -233,8 +256,8 @@ public:
         frame.eye = eye;
         frame.forward = forward;
         frame.up = up;
-        frame.screenW = mScreen.getWidth();
-        frame.screenH = mScreen.getHeight();
+        frame.screenW = viewW;
+        frame.screenH = viewH;
         terrain.render(frame);
         glDisable(GL_CULL_FACE);
         drawLayer(mRunways, frame);
@@ -271,6 +294,7 @@ public:
             NavVoice::instance().updateObstacles(mLocation.latitude, mLocation.longitude, cues);
         }
         Shader::setSatClip(false, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16, 13, 11, 8, nullptr, 8, nullptr, 0, 0);
+        glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
         glEnable(GL_BLEND);
     }
 
@@ -387,6 +411,8 @@ private:
     glm::mat4 mProjMat;
     int mProjW = 0;
     int mProjH = 0;
+    int mProjSplit = -1;
+    bool mSplit = false;
     mutable BucketContainer mMap;
     IDataManager &mDataManager;
     LocationData mLocation;
