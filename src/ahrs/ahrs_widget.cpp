@@ -56,6 +56,8 @@ namespace
 {
 constexpr float kPi = 3.14159265f;
 constexpr uint32_t kRuler = 0xFFFFFFFFu;
+constexpr float kRollLift = 15.5f;
+constexpr float kRollUpPx = 100.0f;
 
 void addTri(Triangles &dst, float x0, float y0, float x1, float y1, float x2, float y2)
 {
@@ -156,9 +158,8 @@ void AhrsWidget::buildRulers(float cx, float cy, float scale)
 
     // Bank arc. The old 340px plate put the circle 5px below the wings.
     // Lifted by 10% of the arc radius so more pitch fits under it.
-    constexpr float kRollLift = 15.5f;
     const float arcX = cx;
-    const float arcY = cy + (kRollLift - 5.0f) * scale;
+    const float arcY = cy + (kRollLift - 5.0f) * scale + kRollUpPx;
     const float radius = 155.0f * scale;
     const float arcThick = thick;
     Triangles bank = rulerMesh();
@@ -207,9 +208,19 @@ void AhrsWidget::buildRulers(float cx, float cy, float scale)
     mAttitudeIndicator.setSolidMesh({bank}, kRuler);
 
     Triangles index = rulerMesh();
-    addTri(index, cx, cy + (148.0f + kRollLift) * scale, cx - 9.0f * scale, cy + (134.0f + kRollLift) * scale,
-           cx + 9.0f * scale, cy + (134.0f + kRollLift) * scale);
+    addTri(index, cx, cy + (148.0f + kRollLift) * scale + kRollUpPx, cx - 9.0f * scale,
+           cy + (134.0f + kRollLift) * scale + kRollUpPx, cx + 9.0f * scale,
+           cy + (134.0f + kRollLift) * scale + kRollUpPx);
     mRollPointer.setSolidMesh({index}, kRuler);
+
+    // Slip mark from the old layer7 plate: a short trapezoid just under the index.
+    // Wider on the side away from the triangle. Same lift, so the gap stays.
+    Triangles skid = rulerMesh();
+    const float skidTop = cy + (130.0f + kRollLift) * scale + kRollUpPx;
+    const float skidBot = cy + (126.0f + kRollLift) * scale + kRollUpPx;
+    addQuad(skid, cx - 11.0f * scale, skidTop, cx + 11.0f * scale, skidTop, cx + 13.0f * scale, skidBot,
+            cx - 13.0f * scale, skidBot);
+    mSkipSkidIndicator.setSolidMesh({skid}, kRuler);
 }
 
 void AhrsWidget::buildVisibleLadder(float pitchDeg)
@@ -231,8 +242,8 @@ void AhrsWidget::buildVisibleLadder(float pitchDeg)
             continue;
         }
         const float deg = static_cast<float>(step) * 2.5f;
-        // Whole bars only. A bar on the 30° boundary stays; the next one stays out.
-        if (std::fabs(deg - pitchDeg) > 30.01f)
+        // Whole bars only. A bar inside the window stays; the next one stays out.
+        if (std::fabs(deg - pitchDeg) > cPitchWindowDeg + 0.01f)
         {
             continue;
         }
@@ -300,7 +311,6 @@ void AhrsWidget::rebuildSprites()
 
     const std::string ahrsDir = AssetPath::resolve("resources/textures/ui/AHRS") + "/";
     mLandRepresentation.drawTexture(ahrsDir + std::string(cLandRepresentationTexture), cx, cy, scale);
-    mSkipSkidIndicator.drawTexture(ahrsDir + std::string(cSkipSkidIndicatorTexture), cx, cy, scale);
     mAircraftSymbol.drawTexture(ahrsDir + std::string(cAircraftSymbolTexture), cx, cy, scale);
     buildRulers(static_cast<float>(cx), static_cast<float>(cy), scale);
 }
@@ -345,7 +355,7 @@ void AhrsWidget::render()
         for (int sign : {1, -1})
         {
             const float value = static_cast<float>(sign * deg);
-            if (std::fabs(value - mPitchDeg) <= 30.01f)
+            if (std::fabs(value - mPitchDeg) <= cPitchWindowDeg + 0.01f)
             {
                 mPitchLabel[static_cast<size_t>(slot)].render();
                 mPitchLabel[static_cast<size_t>(slot + 1)].render();

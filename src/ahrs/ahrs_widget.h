@@ -42,7 +42,7 @@ public:
 private:
     void rebuildSprites();
     void buildRulers(float cx, float cy, float scale);
-    /// Whole pitch bars from -90° to +90° whose degree is within 30° of `pitchDeg`.
+    /// Whole pitch bars from -90° to +90° whose degree is within 23° of `pitchDeg`.
     void buildVisibleLadder(float pitchDeg);
     float hudScale() const;
 
@@ -54,7 +54,7 @@ private:
     Render2D mHorizonLine;         ///< Horizon line, drawn as geometry so it stays sharp.
     Render2D mPithScale;           ///< Pitch ladder, drawn as geometry so it stays sharp.
     Render2D mRollPointer;         ///< Fixed bank index, drawn as geometry.
-    Render2D mSkipSkidIndicator;   ///< Representation of the skip/skid indicator in the AHRS widget.
+    Render2D mSkipSkidIndicator;   ///< Slip trapezoid under the bank index, drawn as geometry.
     Render2D mAttitudeIndicator;   ///< Bank arc and sky pointer, drawn as geometry.
     Render2D mAircraftSymbol;      ///< Representation of the aircraft symbol in the AHRS widget.
     /// ±10° through ±90° on each side of the ladder.
@@ -76,12 +76,13 @@ private:
     /// Aircraft pitch in degrees. Nose up is positive. The ladder window follows it.
     float mPitchDeg = 0.0f;
 
-    static constexpr const char *cSkipSkidIndicatorTexture = "layer7.png";          ///< Texture file for the skip/skid indicator.
     static constexpr const char *cAircraftSymbolTexture = "layer11.png";            ///< Texture file for the aircraft symbol.
     static constexpr const char *cLandRepresentationTexture = "layer3.png";         ///< Texture file for the land representation.
     static constexpr float cDesignHeight = 600.0f;
     /// The 10° labels sit 62.5 px from the horizon in the unscaled ladder art.
     static constexpr float cPitchPixelsPerDegree = 6.25f;
+    /// Visible ladder either side of the aircraft pitch. Whole bars only.
+    static constexpr float cPitchWindowDeg = 23.0f;
     static constexpr float cPixelPerPitchRadians = cPitchPixelsPerDegree * (180.0f / static_cast<float>(M_PI));
 };
 
