@@ -35,6 +35,7 @@ set(SRC
     src/app/menu_widget.cpp
     src/app/hud.cpp
     src/app/settings_popup.cpp
+    src/app/general_settings.cpp
     src/app/stats_overlay.cpp
     src/app/sim_input.cpp
     src/app/session.cpp

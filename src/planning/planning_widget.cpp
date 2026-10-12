@@ -6,6 +6,7 @@
 #include "app_controller.h"
 #include "asset_path.h"
 #include "frame.h"
+#include "general_settings.h"
 #include "menu_widget.h"
 #include "nav_db.h"
 #include "split_layout.h"
@@ -179,6 +180,10 @@ bool PlanningWidget::mapSurfaceActive() const
 bool PlanningWidget::menuBlocksMap() const
 {
     if (mMapMenuOpen || mSuppressPan)
+    {
+        return true;
+    }
+    if (coverageMapOpen() || mController.generalOpen())
     {
         return true;
     }
@@ -1360,27 +1365,16 @@ void PlanningWidget::drawMapChrome()
     }
     const size_t start = mDrawCursor;
     const int tabGl = mScreenH - chrome.btnY - chrome.btnH;
-    const uint32_t tabFill = mMapMenuOpen ? 0x4DA3FFD0u : 0x101820E8u;
+    const uint32_t tabFill = mMapMenuOpen ? 0x4DA3FF75u : 0x10182075u;
     if (!mMapMenuOpen && chrome.btnX + chrome.btnW >= mScreenW - 1)
     {
         nextDraw().drawRectangle(mScreenW, tabGl, chrome.btnW, chrome.btnH, tabFill);
     }
     nextDraw().drawRectangle(chrome.btnX, tabGl, chrome.btnW, chrome.btnH, tabFill);
-    const int steps = 8;
-    const int arm = 26;
-    const int thick = 8;
-    const int cx = chrome.btnX + chrome.btnW / 2;
-    const int cy = chrome.btnY + chrome.btnH / 2;
-    const int tip = mMapMenuOpen ? arm / 2 : -arm / 2;
-    const int tail = mMapMenuOpen ? -arm / 2 : arm / 2;
-    for (int i = 0; i <= steps; ++i)
-    {
-        const float t = static_cast<float>(i) / static_cast<float>(steps);
-        const int px = tail + static_cast<int>(std::lround(t * static_cast<float>(tip - tail)));
-        const int py = static_cast<int>(std::lround((1.0f - t) * static_cast<float>(arm)));
-        nextDraw().drawRectangle(cx + px - thick / 2, mScreenH - (cy - py) - thick, thick, thick, 0xFFFFFFFFu);
-        nextDraw().drawRectangle(cx + px - thick / 2, mScreenH - (cy + py) - thick, thick, thick, 0xFFFFFFFFu);
-    }
+    const int icon = chrome.btnH;
+    const char *glyph = mMapMenuOpen ? "chevron-right" : "chevron-left";
+    nextDraw().drawTexture(AssetPath::resolve(std::string("resources/textures/ui/icons/") + glyph + ".png"),
+                           chrome.btnX + (chrome.btnW - icon) / 2, tabGl + (chrome.btnH - icon) / 2, icon, icon);
 
     const glm::mat4 identity(1.0f);
     for (size_t i = start; i < mDrawCursor; ++i)
@@ -1392,7 +1386,7 @@ void PlanningWidget::drawMapChrome()
 
 bool PlanningWidget::handleMapChromeClick(int x, int y)
 {
-    if (!mapSurfaceActive() || mController.generalOpen() || (mMenu != nullptr && mMenu->isOpen()))
+    if (!mapSurfaceActive() || mController.generalOpen() || coverageMapOpen() || (mMenu != nullptr && mMenu->isOpen()))
     {
         return false;
     }
@@ -1758,7 +1752,7 @@ void PlanningWidget::updateRouteSnap(int x, int y)
 
 bool PlanningWidget::mouseClick(int x, int y)
 {
-    if (mController.generalOpen() || (mMenu != nullptr && mMenu->isOpen()))
+    if (mController.generalOpen() || coverageMapOpen() || (mMenu != nullptr && mMenu->isOpen()))
     {
         return false;
     }

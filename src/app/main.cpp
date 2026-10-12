@@ -7,6 +7,7 @@
 #include "tape_widget.h"
 #include "route_strip.h"
 #include "app_controller.h"
+#include "general_settings.h"
 #include "flight_plan.h"
 #include "frame.h"
 #include "hud.h"
@@ -168,6 +169,7 @@ int main(int argc, char **argv)
     // Menu, stats, and GENERAL. Added above the instruments and the planner.
     // SOURCES on GENERAL switches the feed the instruments already read.
     Hud hud(frame, controller, terrain, *session);
+    bindGeneralSettings(controller, *session, terrain, hud.settings());
     planner.bindMenu(hud.menu());
     frame.addInputFront(&planner);
     if (startPlanning)
@@ -189,7 +191,10 @@ int main(int argc, char **argv)
     }
 
     // Each frame, before drawing: step the simulator. Stratux does nothing here.
-    frame.setTick([&] { session->tick(); });
+    frame.setTick([&] {
+        generalSettingsTick();
+        session->tick();
+    });
     // Park the simulator at home, or start the Stratux HTTP poll.
     session->start();
     // Pump events, tick, draw, present, until the window closes.

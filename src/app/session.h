@@ -85,6 +85,9 @@ public:
 
     /// Flips one sensor into or out of the attitude filter.
     virtual void toggleSensor(int index) = 0;
+
+    /// Turns one sensor into or out of the attitude filter. 0 GPS, 1 gyro, 2 accelerometer, 3 compass.
+    virtual void setSensor(int index, bool on) = 0;
 };
 
 /// Opens the simulator, or live Stratux when liveStratux is true.

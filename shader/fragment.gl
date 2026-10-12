@@ -3,7 +3,7 @@ precision mediump float;
 precision highp int;
 precision highp sampler2DArray;
 
-in vec2 TexCoord;
+in highp vec2 TexCoord;
 in highp vec2 GeoCoord;
 out vec4 fragColour;
 

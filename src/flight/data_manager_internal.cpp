@@ -246,25 +246,30 @@ bool DataManagerInternal::sensorOn(int index) const
     }
 }
 
-void DataManagerInternal::toggleSensor(int index)
+void DataManagerInternal::setSensor(int index, bool on)
 {
     switch (index)
     {
     case 0:
-        mUseGps = !mUseGps;
+        mUseGps = on;
         break;
     case 1:
-        mUseGyro = !mUseGyro;
+        mUseGyro = on;
         break;
     case 2:
-        mUseAccel = !mUseAccel;
+        mUseAccel = on;
         break;
     case 3:
-        mUseMag = !mUseMag;
+        mUseMag = on;
         break;
     default:
         break;
     }
+}
+
+void DataManagerInternal::toggleSensor(int index)
+{
+    setSensor(index, !sensorOn(index));
 }
 
 void DataManagerInternal::fuse(const float sample[32])
@@ -531,10 +536,11 @@ void DataManagerInternal::setDisplayQuat()
         const float heading = std::atan2(nose(1), nose(0));
         q = Quatf(Eulerf(0.0f, 0.0f, heading)) * qTilt;
     }
-    // Mount axes are correct. Display pitch and roll are the other way from the EKF.
+    // Mount axes are correct. Display pitch is the other way from the EKF.
+    // Roll keeps the EKF sign so the right wing drops on a right bank.
     {
         const Eulerf e(q);
-        q = Quatf(Eulerf(-e.phi(), -e.theta(), e.psi()));
+        q = Quatf(Eulerf(e.phi(), -e.theta(), e.psi()));
     }
     mAttitude.qw = q(0);
     mAttitude.qx = q(1);

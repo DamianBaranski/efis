@@ -1,66 +1,154 @@
 /// \file settings_popup.cpp
-/// Draws the GENERAL window and edits imagery, narration, the situation source, and layout.
+/// Draws GENERAL as a page list, described rows, and softkeys for the cursor row.
 #include "settings_popup.h"
 #include "app_controller.h"
-#include "screen.h"
+#include "asset_path.h"
+#include "general_settings.h"
 #include "nav_voice.h"
+#include "screen.h"
+#include "stats_overlay.h"
 #include <GLES3/gl3.h>
+#include <SDL_ttf.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <string>
-#include <vector>
+
+namespace
+{
+constexpr uint32_t kPlate = 0x131920F0u;
+constexpr uint32_t kPlateDim = 0x101820C0u;
+constexpr uint32_t kCursor = 0x152030FFu;
+constexpr uint32_t kEdge = 0x273444FFu;
+constexpr uint32_t kEdgeOn = 0x39FF6AFFu;
+constexpr uint32_t kInk = 0xFFFFFFFFu;
+constexpr uint32_t kMuted = 0xA89988FFu;
+constexpr const char *kPageName[] = {"IMAGERY", "MAPS", "SOUND", "SITUATION", "DISPLAY", "DEBUG"};
+
+int textWidth(const std::string &text, int font)
+{
+    if (text.empty())
+    {
+        return 0;
+    }
+    const int guess = static_cast<int>(text.size()) * font * 3 / 5;
+    if (TTF_Init() != 0)
+    {
+        return guess;
+    }
+    TTF_Font *face = TTF_OpenFont(AssetPath::resolve("resources/fonts/B612Mono-Regular.ttf").c_str(), font);
+    if (face == nullptr)
+    {
+        return guess;
+    }
+    int w = 0;
+    int h = 0;
+    TTF_SizeText(face, text.c_str(), &w, &h);
+    TTF_CloseFont(face);
+    return w > 0 ? w : guess;
+}
+
+std::string xyzLine(bool sample, float x, float y, float z, const char *unit)
+{
+    if (!sample)
+    {
+        return {};
+    }
+    char buf[80];
+    std::snprintf(buf, sizeof(buf), "X %+.2f  Y %+.2f  Z %+.2f %s", x, y, z, unit);
+    return buf;
+}
+
+std::string gpsLine(const SensorReport &report)
+{
+    if (!report.gps)
+    {
+        return {};
+    }
+    char buf[96];
+    std::snprintf(buf, sizeof(buf), "%.5f%c  %.5f%c  %.0f m  %.1f m/s", std::fabs(report.lat),
+                  report.lat >= 0.0f ? 'N' : 'S', std::fabs(report.lon), report.lon >= 0.0f ? 'E' : 'W', report.alt,
+                  report.speed);
+    return buf;
+}
+
+const char *onOff(bool on)
+{
+    return on ? "On" : "Off";
+}
+}
 
 SettingsPopup::SettingsPopup(Frame &frame, AppController &controller, IWorldRead &world, ISession &session)
     : IWidget(frame), mController(controller), mWorld(world), mSession(session), mWindow(frame.screen()),
-      mEuropeMap(frame.screen()), mVoice(frame.screen()), mSource(frame.screen())
+      mEuropeMap(frame.screen()), mCoverageFill(frame.screen())
 {
 }
 
 void SettingsPopup::invalidate()
 {
-    mVoice.close();
-    mSource.close();
     mKey.clear();
 }
 
-int SettingsPopup::hitTab(int x, int y) const
+void SettingsPopup::bindDebug(StatsOverlay &stats)
 {
-    return mWindow.hitTab(x, y);
+    mStats = &stats;
 }
 
-int SettingsPopup::activeTab() const
+bool SettingsPopup::handleBack()
 {
-    return mWindow.activeTab();
-}
-
-void SettingsPopup::setActiveTab(int tab)
-{
-    mWindow.setActiveTab(tab);
-    if (tab != 2)
+    if (!mVoicePage)
     {
-        mVoice.close();
+        return false;
     }
-    if (tab != 3)
-    {
-        mSource.close();
-    }
+    mVoicePage = false;
+    mVoiceDrag = 0;
     mKey.clear();
+    return true;
 }
 
-int SettingsPopup::hitButton(int x, int y) const
+bool SettingsPopup::scrollBy(int dy)
 {
-    return mWindow.hitButton(x, y);
-}
-
-bool SettingsPopup::contains(int x, int y) const
-{
-    return mWindow.contains(x, y);
+    if (!mVoicePage)
+    {
+        return false;
+    }
+    mVoiceDrag += dy;
+    constexpr int kStep = 48;
+    bool moved = false;
+    while (mVoiceDrag >= kStep && mVoiceScroll > 0)
+    {
+        mVoiceDrag -= kStep;
+        --mVoiceScroll;
+        moved = true;
+    }
+    while (mVoiceDrag <= -kStep && mVoiceScroll < mVoiceMax)
+    {
+        mVoiceDrag += kStep;
+        ++mVoiceScroll;
+        moved = true;
+    }
+    if (moved)
+    {
+        mKey.clear();
+    }
+    return true;
 }
 
 bool SettingsPopup::hitChart(int x, int y)
 {
-    return mWindow.activeTab() == 1 && mEuropeMap.hit(x, y);
+    if (coverageMapOpen())
+    {
+        return mEuropeMap.hit(x, y);
+    }
+    if (mWindow.activeTab() != 1 || mVoicePage)
+    {
+        return false;
+    }
+    if (x < mChartX || y < mChartY || x >= mChartX + mChartW || y >= mChartY + mChartH)
+    {
+        return false;
+    }
+    return mEuropeMap.hit(x, y);
 }
 
 int SettingsPopup::stepGrid(int grid, int delta)
@@ -212,362 +300,708 @@ void SettingsPopup::adjustRender(int control)
         mController.setNearCoverage(nearZoom, nearGrid);
     }
     mKey.clear();
+    saveGeneralSettings();
 }
 
-void SettingsPopup::adjustSound(int control)
+void SettingsPopup::addSoft(const char *label, bool marked, Act action, int arg)
 {
-    NavVoice &voice = NavVoice::instance();
-    switch (control)
-    {
-    case 0:
-        voice.setNarration(!voice.narration());
-        break;
-    case 3:
-        voice.setAirspace(!voice.airspace());
-        break;
-    case 4:
-        voice.setReporting(!voice.reporting());
-        break;
-    case 5:
-        voice.setNearest(!voice.nearest());
-        break;
-    case 6:
-        voice.setObstacles(!voice.obstacles());
-        break;
-    default:
-        voice.preview();
-        break;
-    }
-    mKey.clear();
+    Soft key;
+    key.label = label;
+    key.marked = marked;
+    key.action = action;
+    key.arg = arg;
+    mSoft.push_back(std::move(key));
 }
 
-void SettingsPopup::drawSoundPage(int screenH)
-{
-    NavVoice &voice = NavVoice::instance();
-    const int boxX = mWindow.contentX();
-    const int boxY = mWindow.contentY();
-    const int boxW = mWindow.contentW();
-    const int boxH = mWindow.contentH();
-    constexpr int kRows = 7;
-    const int rowH = std::max(1, boxH / kRows);
-    const int btnH = std::clamp(rowH * 2 / 3, 36, 72);
-    const int btnW = std::clamp(boxW / 5, 96, 160);
-    const float font = static_cast<float>(std::clamp(btnH / 3, 16, 28));
-    const char *names[kRows] = {"NARRATION", "VOICE", "AIRSPACE", "REPORTS", "NEAREST", "OBSTACLES", "TEST"};
-    const int labelX = boxX + boxW * 22 / 100;
-    const int btnX = boxX + boxW - btnW - boxW / 14;
-    for (int row = 0; row < kRows; ++row)
-    {
-        if (row == 1)
-        {
-            continue;
-        }
-        const int sdlRowTop = boxY + row * rowH;
-        const int btnY = sdlRowTop + (rowH - btnH) / 2;
-        const float textY = static_cast<float>(screenH - (sdlRowTop + rowH / 2));
-        const std::string nameKey = std::string("efis-sound-name-") + std::to_string(row);
-        mWindow.setText(row, names[row], font, static_cast<float>(labelX), textY, nameKey.c_str());
-        const char *label = "ON";
-        int slot = row;
-        if (row == 0)
-        {
-            label = voice.narration() ? "ON" : "OFF";
-        }
-        else if (row == 2)
-        {
-            label = voice.airspace() ? "ON" : "OFF";
-            slot = 3;
-        }
-        else if (row == 3)
-        {
-            label = voice.reporting() ? "ON" : "OFF";
-            slot = 4;
-        }
-        else if (row == 4)
-        {
-            label = voice.nearest() ? "ON" : "OFF";
-            slot = 5;
-        }
-        else if (row == 5)
-        {
-            label = voice.obstacles() ? "ON" : "OFF";
-            slot = 6;
-        }
-        else
-        {
-            label = "PLAY";
-            slot = 7;
-        }
-        const std::string buttonKey = std::string("efis-sound-btn-") + std::to_string(slot) + "-" + label;
-        mWindow.setButton(slot, btnX, btnY, btnW, btnH, label, font, buttonKey.c_str());
-    }
-
-    const int voiceTop = boxY + rowH;
-    const int voiceY = voiceTop + (rowH - btnH) / 2;
-    const float voiceTextY = static_cast<float>(screenH - (voiceTop + rowH / 2));
-    const int dropW = std::clamp(boxW * 46 / 100, 220, 480);
-    const int dropX = boxX + boxW - dropW - boxW / 14;
-    mWindow.setText(1, "VOICE", font, static_cast<float>(labelX), voiceTextY, "efis-sound-name-1");
-    mVoice.setFont(font);
-    mVoice.place(dropX, voiceY, dropW, btnH);
-    mVoice.setItems(voice.voiceLabels(), voice.voiceIndex());
-}
-
-bool SettingsPopup::handleVoice(int x, int y)
-{
-    if (mWindow.activeTab() != 2)
-    {
-        return false;
-    }
-    const Dropdown::Click click = mVoice.mouseClick(x, y);
-    if (!click.consumed)
-    {
-        return false;
-    }
-    if (click.chosen >= 0)
-    {
-        NavVoice::instance().selectVoice(click.chosen);
-        mKey.clear();
-    }
-    return true;
-}
-
-bool SettingsPopup::handleSource(int x, int y)
-{
-    if (mWindow.activeTab() != 3)
-    {
-        return false;
-    }
-    const int button = mWindow.hitButton(x, y);
-    if (button == 0)
-    {
-        mSession.toggleHorizon();
-        mKey.clear();
-        return true;
-    }
-    if (button >= 1 && button <= 4)
-    {
-        mSession.toggleSensor(button - 1);
-        mKey.clear();
-        return true;
-    }
-    const Dropdown::Click click = mSource.mouseClick(x, y);
-    if (!click.consumed)
-    {
-        return false;
-    }
-    if (click.chosen == 0)
-    {
-        mSession.setSource(SituationSource::Sim);
-    }
-    else if (click.chosen == 1)
-    {
-        mSession.setSource(SituationSource::Internal);
-    }
-    else if (click.chosen == 2)
-    {
-        mSession.setSource(SituationSource::Stratux);
-    }
-    if (click.chosen >= 0)
-    {
-        mKey.clear();
-    }
-    return true;
-}
-
-void SettingsPopup::adjustApp(int control)
-{
-    if (control != 0)
-    {
-        return;
-    }
-    Screen::setLayoutVertical(!Screen::layoutVertical());
-    mKey.clear();
-}
-
-void SettingsPopup::drawAppPage(int screenH)
-{
-    const int boxX = mWindow.contentX();
-    const int boxY = mWindow.contentY();
-    const int boxW = mWindow.contentW();
-    const int boxH = mWindow.contentH();
-    constexpr int kRows = 7;
-    const int rowH = std::max(1, boxH / kRows);
-    const int btnH = std::clamp(rowH * 2 / 3, 36, 72);
-    const int btnW = std::clamp(boxW / 4, 120, 200);
-    const float font = static_cast<float>(std::clamp(btnH / 3, 16, 28));
-    const int labelX = boxX + boxW * 22 / 100;
-    const int btnX = boxX + boxW - btnW - boxW / 14;
-    const int btnY = boxY + (rowH - btnH) / 2;
-    const float textY = static_cast<float>(screenH - (boxY + rowH / 2));
-    const bool vertical = Screen::layoutVertical();
-    mWindow.setText(0, "LAYOUT", font, static_cast<float>(labelX), textY, "efis-app-layout");
-    mWindow.setButton(0, btnX, btnY, btnW, btnH, vertical ? "VERT" : "HORIZ", font,
-                      vertical ? "efis-app-vert" : "efis-app-horiz", vertical ? 0x4DA3FFB0u : 0xFFFFFF40u);
-}
-
-void SettingsPopup::drawSourcesPage(int screenH)
-{
-    const int boxX = mWindow.contentX();
-    const int boxY = mWindow.contentY();
-    const int boxW = mWindow.contentW();
-    const int boxH = mWindow.contentH();
-    constexpr int kRows = 7;
-    const int rowH = std::max(1, boxH / kRows);
-    const int btnH = std::clamp(rowH * 2 / 3, 36, 72);
-    const float font = static_cast<float>(std::clamp(btnH / 3, 16, 28));
-    const int labelX = boxX + boxW * 22 / 100;
-    const int rowTop = boxY + rowH;
-    const int dropY = rowTop + (rowH - btnH) / 2;
-    const float textY = static_cast<float>(screenH - (rowTop + rowH / 2));
-    const int dropW = std::clamp(boxW * 46 / 100, 220, 480);
-    const int dropX = boxX + boxW - dropW - boxW / 14;
-    mWindow.setText(0, "SOURCE", font, static_cast<float>(labelX), textY, "efis-source-name");
-    const char *names[4] = {"GPS", "GYRO", "ACCEL", "COMPASS"};
-    const int togW = std::clamp(boxW / 5, 96, 150);
-    const int togX = boxX + boxW - togW - boxW / 14;
-    for (int i = 0; i < 4; ++i)
-    {
-        const int top = boxY + (i + 2) * rowH;
-        const int togY = top + (rowH - btnH) / 2;
-        const float y = static_cast<float>(screenH - (top + rowH / 2));
-        const std::string key = std::string("efis-sensor-name-") + names[i];
-        const bool on = mSession.sensorOn(i);
-        mWindow.setText(1 + i, names[i], font, static_cast<float>(labelX), y, key.c_str());
-        const std::string buttonKey = std::string("efis-sensor-sw-") + names[i] + (on ? "-on" : "-off");
-        mWindow.setButton(1 + i, togX, togY, togW, btnH, on ? "ON" : "OFF", font, buttonKey.c_str(),
-                          on ? 0x4DA3FFB0u : 0xFFFFFF40u);
-    }
-    std::vector<std::string> items = {"SIM", "INTERNAL"};
-    int selected = mSession.source() == SituationSource::Internal ? 1 : 0;
-    if (mSession.receiver())
-    {
-        items.emplace_back("STRATUX");
-        if (mSession.source() == SituationSource::Stratux)
-        {
-            selected = 2;
-        }
-    }
-    mSource.setFont(font);
-    mSource.place(dropX, dropY, dropW, btnH);
-    mSource.setItems(items, selected);
-    const int levelTop = boxY + 6 * rowH;
-    const int levelY = levelTop + (rowH - btnH) / 2;
-    const float levelTextY = static_cast<float>(screenH - (levelTop + rowH / 2));
-    const bool level = mSession.horizonSet();
-    const bool attitude = mSession.source() == SituationSource::Internal && mSession.sensors().attitude;
-    mWindow.setText(9, "HORIZON", font, static_cast<float>(labelX), levelTextY, "efis-horizon-name");
-    const char *levelLabel = attitude ? "SET" : "WAIT";
-    const uint32_t levelColor = attitude ? 0x4DA3FFB0u : 0xFFFFFF40u;
-    mWindow.setButton(0, dropX, levelY, dropW, btnH, levelLabel, font,
-                      level ? "efis-horizon-on" : (attitude ? "efis-horizon-ready" : "efis-horizon-wait"), levelColor);
-}
-
-namespace
-{
-std::string xyzLine(bool sample, float x, float y, float z, const char *unit)
-{
-    if (!sample)
-    {
-        return "N/A";
-    }
-    char buf[80];
-    std::snprintf(buf, sizeof(buf), "X %+.2f  Y %+.2f  Z %+.2f %s", x, y, z, unit);
-    return buf;
-}
-
-std::string gpsLine(const SensorReport &report)
-{
-    if (!report.gps)
-    {
-        return "N/A";
-    }
-    char buf[96];
-    std::snprintf(buf, sizeof(buf), "%.5f%c  %.5f%c  %.0f m  %.1f m/s", std::fabs(report.lat),
-                  report.lat >= 0.0f ? 'N' : 'S', std::fabs(report.lon), report.lon >= 0.0f ? 'E' : 'W', report.alt,
-                  report.speed);
-    return buf;
-}
-
-std::string gyroLine(const SensorReport &report)
-{
-    return xyzLine(report.gyro, report.gx, report.gy, report.gz, "rad/s");
-}
-
-std::string accelLine(const SensorReport &report)
-{
-    return xyzLine(report.accel, report.ax, report.ay, report.az, "m/s2");
-}
-
-std::string compassLine(const SensorReport &report)
-{
-    return xyzLine(report.compass, report.mx, report.my, report.mz, "uT");
-}
-}
-
-void SettingsPopup::drawSensorLines(int screenH)
-{
-    const int boxX = mWindow.contentX();
-    const int boxY = mWindow.contentY();
-    const int boxW = mWindow.contentW();
-    const int boxH = mWindow.contentH();
-    constexpr int kRows = 7;
-    const int rowH = std::max(1, boxH / kRows);
-    const int btnH = std::clamp(rowH * 2 / 3, 36, 72);
-    const float font = static_cast<float>(std::clamp(btnH / 3, 16, 28));
-    const int valueX = boxX + boxW * 42 / 100;
-    const SensorReport report = mSession.source() == SituationSource::Internal ? mSession.sensors() : SensorReport{};
-    const std::string lines[4] = {mSession.source() == SituationSource::Internal ? gpsLine(report) : "N/A",
-                                  mSession.source() == SituationSource::Internal ? gyroLine(report) : "N/A",
-                                  mSession.source() == SituationSource::Internal ? accelLine(report) : "N/A",
-                                  mSession.source() == SituationSource::Internal ? compassLine(report) : "N/A"};
-    for (int i = 0; i < 4; ++i)
-    {
-        if (lines[i] == mSensorValue[i])
-        {
-            continue;
-        }
-        mSensorValue[i] = lines[i];
-        const int top = boxY + (i + 2) * rowH;
-        const float y = static_cast<float>(screenH - (top + rowH / 2));
-        const std::string key = std::string("efis-sensor-value-") + std::to_string(i);
-        mWindow.setText(5 + i, lines[i], font, static_cast<float>(valueX), y, key.c_str());
-    }
-}
-
-void SettingsPopup::drawPage()
+void SettingsPopup::layoutBody()
 {
     const int screenW = std::max(1, mScreen.getWidth());
     const int screenH = std::max(1, mScreen.getHeight());
-    mWindow.setTabLabel(0, "RENDER");
-    mWindow.setTabLabel(1, "MAPS");
-    mWindow.setTabLabel(2, "SOUND");
-    mWindow.setTabLabel(3, "SOURCES");
-    mWindow.setTabLabel(4, "APP");
-    const int menuPad = std::max(4, screenH / 160);
-    const int menuGap = std::max(4, screenW / 220);
-    const int menuBox = std::max(36, screenH / 18);
-    const int menuBottom = menuPad + 5 * menuBox + 4 * menuGap;
-    mWindow.layout(screenW, screenH, menuBottom + menuGap);
-    char farDist[16];
-    char nearDist[16];
-    formatKm(farDist, sizeof(farDist), ringRadiusKm(mController.farZoom(), mController.farGrid()));
-    formatKm(nearDist, sizeof(nearDist), ringRadiusKm(mController.satZoom(), mController.nearGrid()));
-    char farZoom[8];
-    char nearZoom[8];
-    std::snprintf(farZoom, sizeof(farZoom), "Z%d", mController.farZoom());
-    std::snprintf(nearZoom, sizeof(nearZoom), "Z%d", mController.satZoom());
-    const NavVoice &voice = NavVoice::instance();
-    const std::string sound = std::string(voice.narration() ? "1" : "0") + (voice.airspace() ? "1" : "0") +
-                              (voice.reporting() ? "1" : "0") + (voice.nearest() ? "1" : "0") +
-                              (voice.obstacles() ? "1" : "0") + NavVoice::instance().voiceLabel();
-    const std::string key = std::to_string(mWindow.activeTab()) + farDist + farZoom + nearDist + nearZoom + sound +
-                            std::to_string(static_cast<int>(mSession.source())) + (mSession.horizonSet() ? "1" : "0") +
-                            (mSession.sensors().attitude ? "1" : "0") +
-                            (mSession.sensorOn(0) ? "1" : "0") + (mSession.sensorOn(1) ? "1" : "0") +
-                            (mSession.sensorOn(2) ? "1" : "0") + (mSession.sensorOn(3) ? "1" : "0") +
-                            (Screen::layoutVertical() ? "V" : "H") + std::to_string(mWindow.width()) +
-                            std::to_string(mWindow.height());
+    for (int i = 0; i < kPages; ++i)
+    {
+        mWindow.setTabLabel(i, kPageName[i]);
+    }
+    mWindow.layout(screenW, screenH);
+    const int tab = std::clamp(mWindow.activeTab(), 0, kPages - 1);
+    mTitle = mVoicePage ? "GENERAL  /  VOICE" : std::string("GENERAL  /  ") + kPageName[tab];
+
+    mLines.clear();
+    mSoft.clear();
+    mChartW = 0;
+    mChartH = 0;
+
+    const int boxX = mWindow.contentX() + 12;
+    const int boxY = mWindow.contentY() + 12;
+    const int boxW = std::max(1, mWindow.contentW() - 24);
+    const int boxH = std::max(1, mWindow.contentH() - 24);
+    const int gap = 8;
+
+    auto placeRows = [&](int count) {
+        count = std::max(1, count);
+        int rowH = (boxH - gap * (count - 1)) / count;
+        rowH = std::clamp(rowH, 52, 120);
+        const int used = count * rowH + (count - 1) * gap;
+        int y = boxY + std::max(0, (boxH - used) / 2);
+        for (int i = 0; i < count && i < static_cast<int>(mLines.size()); ++i)
+        {
+            Line &line = mLines[static_cast<size_t>(i)];
+            line.x = boxX;
+            line.y = y;
+            line.w = boxW;
+            line.h = rowH;
+            y += rowH + gap;
+        }
+    };
+
+    if (mVoicePage)
+    {
+        const std::vector<std::string> labels = NavVoice::instance().voiceLabels();
+        const int count = std::max(1, static_cast<int>(labels.size()));
+        const int fit = std::max(1, boxH / (64 + gap));
+        const int window = std::min(kMaxRows, fit);
+        mVoiceMax = std::max(0, count - window);
+        mVoiceScroll = std::clamp(mVoiceScroll, 0, mVoiceMax);
+        mVoiceCursor = std::clamp(mVoiceCursor, 0, count - 1);
+        const int inUse = NavVoice::instance().voiceIndex();
+        const int shown = std::min(window, count - mVoiceScroll);
+        for (int i = 0; i < shown; ++i)
+        {
+            const int index = mVoiceScroll + i;
+            Line line;
+            line.id = index;
+            line.name = index < static_cast<int>(labels.size()) ? labels[static_cast<size_t>(index)] : "DEFAULT";
+            line.cursor = index == mVoiceCursor;
+            line.marked = index == inUse;
+            if (line.marked)
+            {
+                line.value = "In use";
+            }
+            mLines.push_back(std::move(line));
+        }
+        if (mLines.empty())
+        {
+            Line line;
+            line.name = "DEFAULT";
+            line.cursor = true;
+            line.marked = true;
+            line.value = "In use";
+            mLines.push_back(std::move(line));
+        }
+        placeRows(static_cast<int>(mLines.size()));
+        addSoft("SELECT", false, Act::UseVoice);
+        return;
+    }
+
+    auto push = [&](int id, const std::string &name, const std::string &sentence, const std::string &value, bool dim,
+                    bool marked) {
+        Line line;
+        line.id = id;
+        line.name = name;
+        line.sentence = sentence;
+        line.value = value;
+        line.dim = dim;
+        line.cursor = id == mCursor[tab];
+        line.marked = marked;
+        mLines.push_back(std::move(line));
+    };
+
+    if (tab == 0)
+    {
+        char farDist[24];
+        char nearDist[24];
+        formatKm(farDist, sizeof(farDist), ringRadiusKm(mController.farZoom(), mController.farGrid()));
+        formatKm(nearDist, sizeof(nearDist), ringRadiusKm(mController.satZoom(), mController.nearGrid()));
+        char farValue[40];
+        char nearValue[40];
+        std::snprintf(farValue, sizeof(farValue), "%s  Z%d", farDist, mController.farZoom());
+        std::snprintf(nearValue, sizeof(nearValue), "%s  Z%d", nearDist, mController.satZoom());
+        push(0, "Far ring", "How far imagery is loaded", farValue, false, false);
+        push(1, "Near ring", "The inner imagery radius", nearValue, false, false);
+        mCursor[0] = std::clamp(mCursor[0], 0, 1);
+        mLines[0].cursor = mCursor[0] == 0;
+        mLines[1].cursor = mCursor[0] == 1;
+        placeRows(2);
+        const bool near = mCursor[0] == 1;
+        addSoft("CLOSER", false, near ? Act::NearCloser : Act::FarCloser);
+        addSoft("FARTHER", false, near ? Act::NearFarther : Act::FarFarther);
+        addSoft("ZOOM OUT", false, near ? Act::NearZoomOut : Act::FarZoomOut);
+        addSoft("ZOOM IN", false, near ? Act::NearZoomIn : Act::FarZoomIn);
+    }
+    else if (tab == 1)
+    {
+        const int cap = 36;
+        mChartX = mWindow.contentX();
+        mChartY = mWindow.contentY() + cap;
+        mChartW = mWindow.contentW();
+        mChartH = std::max(1, mWindow.contentH() - cap);
+    }
+    else if (tab == 2)
+    {
+        NavVoice &voice = NavVoice::instance();
+        const bool spoken = voice.narration();
+        push(0, "Narration", "Master switch for spoken calls", onOff(spoken), false, spoken);
+        push(1, "Voice", "Which installed voice speaks", voice.voiceLabel(), false, false);
+        push(2, "Airspace", "Spoken call. Drawing is the Walls switch.", onOff(voice.airspace()), !spoken,
+             voice.airspace());
+        push(3, "Points", "Spoken call. Drawing is the Points switch.", onOff(voice.reporting()), !spoken,
+             voice.reporting());
+        push(4, "Nearest", "Spoken call for the nearest field.", onOff(voice.nearest()), !spoken, voice.nearest());
+        push(5, "Obstacles", "Spoken call. Drawing is the Obstacles switch.", onOff(voice.obstacles()), !spoken,
+             voice.obstacles());
+        push(6, "Test phrase", "Speaks a short preview.", "Sample", false, false);
+        mCursor[2] = std::clamp(mCursor[2], 0, 6);
+        for (Line &line : mLines)
+        {
+            line.cursor = line.id == mCursor[2];
+        }
+        placeRows(7);
+        const int row = mCursor[2];
+        if (row == 0)
+        {
+            addSoft("ON", spoken, Act::NarrOn);
+            addSoft("OFF", !spoken, Act::NarrOff);
+        }
+        else if (row == 1)
+        {
+            const std::vector<std::string> labels = voice.voiceLabels();
+            bool longName = labels.size() > 4;
+            for (const std::string &label : labels)
+            {
+                if (label.size() > 16)
+                {
+                    longName = true;
+                }
+            }
+            if (longName || labels.empty())
+            {
+                addSoft("VOICES", false, Act::OpenVoices);
+            }
+            else
+            {
+                const int current = voice.voiceIndex();
+                for (int i = 0; i < static_cast<int>(labels.size()); ++i)
+                {
+                    addSoft(labels[static_cast<size_t>(i)].c_str(), i == current, Act::UseVoice, i);
+                }
+            }
+        }
+        else if (row == 6)
+        {
+            addSoft("PLAY", false, Act::Play);
+        }
+        else
+        {
+            const bool on = mLines[static_cast<size_t>(row)].marked;
+            const Act onAct = row == 2 ? Act::AirOn : (row == 3 ? Act::PointOn : (row == 4 ? Act::NearOn : Act::ObstOn));
+            const Act offAct =
+                row == 2 ? Act::AirOff : (row == 3 ? Act::PointOff : (row == 4 ? Act::NearOff : Act::ObstOff));
+            addSoft("ON", on, onAct);
+            addSoft("OFF", !on, offAct);
+        }
+    }
+    else if (tab == 3)
+    {
+        const char *sourceName = "Simulator";
+        if (mSession.source() == SituationSource::Internal)
+        {
+            sourceName = "Tablet";
+        }
+        else if (mSession.source() == SituationSource::Stratux)
+        {
+            sourceName = "Stratux";
+        }
+        push(0, "Source", "Where attitude and position come from", sourceName, false, false);
+        push(1, "GPS", "Position from the tablet", onOff(mSession.sensorOn(0)), false, mSession.sensorOn(0));
+        push(2, "Gyro", "Rotation rate from the tablet", onOff(mSession.sensorOn(1)), false, mSession.sensorOn(1));
+        push(3, "Accelerometer", "Specific force from the tablet", onOff(mSession.sensorOn(2)), false,
+             mSession.sensorOn(2));
+        push(4, "Compass", "Magnetic field from the tablet", onOff(mSession.sensorOn(3)), false, mSession.sensorOn(3));
+        const bool level = mSession.horizonSet();
+        const bool attitude = mSession.source() == SituationSource::Internal && mSession.sensors().attitude;
+        const char *horizon = level ? "Horizon set" : (attitude ? "Ready" : "Wait");
+        push(5, "Horizon", "Level the attitude picture", horizon, false, level);
+        mCursor[3] = std::clamp(mCursor[3], 0, 5);
+        for (Line &line : mLines)
+        {
+            line.cursor = line.id == mCursor[3];
+        }
+        placeRows(6);
+        const int row = mCursor[3];
+        if (row == 0)
+        {
+            const int selected = mSession.source() == SituationSource::Internal
+                                     ? 1
+                                     : (mSession.source() == SituationSource::Stratux ? 2 : 0);
+            addSoft("SIMULATOR", selected == 0, Act::SourceSim);
+            addSoft("TABLET", selected == 1, Act::SourceTab);
+            if (mSession.receiver())
+            {
+                addSoft("STRATUX", selected == 2, Act::SourceRadio);
+            }
+        }
+        else if (row >= 1 && row <= 4)
+        {
+            const bool on = mSession.sensorOn(row - 1);
+            addSoft("ON", on, Act::SensOn, row - 1);
+            addSoft("OFF", !on, Act::SensOff, row - 1);
+        }
+        else if (attitude && !level)
+        {
+            addSoft("SET", false, Act::Horizon);
+        }
+    }
+    else if (tab == 4)
+    {
+        const bool vertical = Screen::layoutVertical();
+        push(0, "Layout", vertical ? "Attitude above the map" : "Attitude beside the map",
+             vertical ? "Vertical" : "Horizontal", false, false);
+        mCursor[4] = 0;
+        mLines[0].cursor = true;
+        placeRows(1);
+        addSoft("HORIZONTAL", !vertical, Act::LayHoriz);
+        addSoft("VERTICAL", vertical, Act::LayVert);
+    }
+}
+
+void SettingsPopup::drawBody(int screenH)
+{
+    const float titleFont = static_cast<float>(std::clamp(mWindow.titleHeight() / 4, 18, 28));
+    const float titleY = static_cast<float>(screenH - mWindow.titleHeight() / 2) - titleFont * 0.35f;
+    mWindow.setTextLeft(0, mTitle, titleFont, 104.0f, titleY, kInk, (std::string("efis-general-title-") + mTitle).c_str());
+
+    if (!mVoicePage && mWindow.activeTab() == 1)
+    {
+        const float y = static_cast<float>(screenH - (mWindow.contentY() + 28));
+        mWindow.setTextLeft(1, "Shaded countries have stored terrain tiles.", 16.0f,
+                            static_cast<float>(mWindow.contentX() + 16), y, kMuted, "efis-maps-caption");
+    }
+    else if (!mVoicePage && mWindow.activeTab() == 5)
+    {
+        const float y = static_cast<float>(screenH - (mWindow.contentY() + 28));
+        mWindow.setTextLeft(1, "Frame rate, terrain load, sensors, and cache.", 16.0f,
+                            static_cast<float>(mWindow.contentX() + 16), y, kMuted, "efis-debug-caption");
+    }
+
+    const int limit = std::min(static_cast<int>(mLines.size()), TabWindow<kPages, 24, 6>::kPlates);
+    for (int i = 0; i < limit; ++i)
+    {
+        const Line &line = mLines[static_cast<size_t>(i)];
+        const uint32_t fill = line.cursor ? kCursor : (line.dim ? kPlateDim : kPlate);
+        const uint32_t edge = line.marked ? kEdgeOn : kEdge;
+        mWindow.setPlate(i, line.x, line.y, line.w, line.h, fill, edge);
+
+        const int nameFont = std::clamp(line.h / 4, 15, 24);
+        const int sentFont = std::clamp(line.h / 5, 13, 18);
+        const int left = line.x + 18;
+        const int right = line.x + line.w - 18;
+        const int glBottom = screenH - (line.y + line.h);
+        const int nameSlot = 2 + i * 3;
+        const std::string nameKey = "efis-row-name-" + std::to_string(mWindow.activeTab()) + "-" +
+                                    std::to_string(line.id) + "-" + line.name;
+        if (line.sentence.empty())
+        {
+            const float y = static_cast<float>(glBottom + (line.h - nameFont) / 2);
+            mWindow.setTextLeft(nameSlot, line.name, static_cast<float>(nameFont), static_cast<float>(left), y, kInk,
+                                nameKey.c_str());
+            if (!line.value.empty())
+            {
+                const int vw = textWidth(line.value, nameFont);
+                const float vy = y;
+                mWindow.setTextLeft(nameSlot + 2, line.value, static_cast<float>(nameFont),
+                                    static_cast<float>(std::max(left, right - vw)), vy, kInk,
+                                    (nameKey + "-v-" + line.value).c_str());
+            }
+        }
+        else
+        {
+            const int nameW = textWidth(line.name, nameFont);
+            const int valueW = textWidth(line.value, nameFont);
+            const bool valueOnTop = !line.value.empty() && nameW + 28 + valueW < (right - left);
+            const float nameY = static_cast<float>(glBottom + line.h * 58 / 100);
+            const float sentY = static_cast<float>(glBottom + line.h * 18 / 100);
+            mWindow.setTextLeft(nameSlot, line.name, static_cast<float>(nameFont), static_cast<float>(left), nameY, kInk,
+                                nameKey.c_str());
+            if (valueOnTop)
+            {
+                mWindow.setTextLeft(nameSlot + 2, line.value, static_cast<float>(nameFont),
+                                    static_cast<float>(right - valueW), nameY, kInk, (nameKey + "-v-" + line.value).c_str());
+                mWindow.setTextLeft(nameSlot + 1, line.sentence, static_cast<float>(sentFont), static_cast<float>(left),
+                                    sentY, kMuted, (nameKey + "-s-" + line.sentence).c_str());
+            }
+            else if (!line.value.empty())
+            {
+                mWindow.setTextLeft(nameSlot + 1, line.value, static_cast<float>(sentFont), static_cast<float>(left), sentY,
+                                    kInk, (nameKey + "-v2-" + line.value).c_str());
+            }
+            else
+            {
+                mWindow.setTextLeft(nameSlot + 1, line.sentence, static_cast<float>(sentFont), static_cast<float>(left),
+                                    sentY, kMuted, (nameKey + "-s-" + line.sentence).c_str());
+            }
+        }
+    }
+
+    const int keyCount = std::min(static_cast<int>(mSoft.size()), 6);
+    if (keyCount > 0)
+    {
+        const int gap = 10;
+        const int barY = mWindow.softY() + 10;
+        const int barH = std::max(40, mWindow.softH() - 20);
+        const int keyW = std::max(1, (mWindow.width() - gap * (keyCount + 1)) / keyCount);
+        const float font = static_cast<float>(std::clamp(barH / 3, 14, 22));
+        for (int i = 0; i < keyCount; ++i)
+        {
+            Soft &key = mSoft[static_cast<size_t>(i)];
+            key.x = gap + i * (keyW + gap);
+            key.y = barY;
+            key.w = keyW;
+            key.h = barH;
+            const std::string cache = std::string("efis-soft-") + key.label + (key.marked ? "-on" : "-off");
+            mWindow.setButton(i, key.x, key.y, key.w, key.h, key.label, font, cache.c_str(), kPlate,
+                              key.marked ? kEdgeOn : kEdge);
+        }
+    }
+}
+
+void SettingsPopup::refreshLive(int screenH)
+{
+    if (mVoicePage || mWindow.activeTab() != 3)
+    {
+        return;
+    }
+    const SensorReport report = mSession.source() == SituationSource::Internal ? mSession.sensors() : SensorReport{};
+    const bool internal = mSession.source() == SituationSource::Internal;
+    const std::string live[4] = {internal ? gpsLine(report) : std::string(),
+                                 internal ? xyzLine(report.gyro, report.gx, report.gy, report.gz, "rad/s") : std::string(),
+                                 internal ? xyzLine(report.accel, report.ax, report.ay, report.az, "m/s2") : std::string(),
+                                 internal ? xyzLine(report.compass, report.mx, report.my, report.mz, "uT") : std::string()};
+    for (int s = 0; s < 4; ++s)
+    {
+        const Line *line = nullptr;
+        int slot = -1;
+        for (int i = 0; i < static_cast<int>(mLines.size()) && i < TabWindow<kPages, 24, 6>::kPlates; ++i)
+        {
+            if (mLines[static_cast<size_t>(i)].id == s + 1)
+            {
+                line = &mLines[static_cast<size_t>(i)];
+                slot = 2 + i * 3 + 1;
+                break;
+            }
+        }
+        if (line == nullptr)
+        {
+            continue;
+        }
+        const std::string shown = live[s].empty() ? line->sentence : live[s];
+        if (shown == mSensorValue[s])
+        {
+            continue;
+        }
+        mSensorValue[s] = shown;
+        const int sentFont = std::clamp(line->h / 5, 13, 18);
+        const int glBottom = screenH - (line->y + line->h);
+        const float sentY = static_cast<float>(glBottom + line->h * 18 / 100);
+        const uint32_t color = live[s].empty() ? kMuted : kInk;
+        const std::string key = "efis-sensor-live-" + std::to_string(s) + "-" + shown;
+        mWindow.setTextLeft(slot, shown, static_cast<float>(sentFont), static_cast<float>(line->x + 18), sentY, color,
+                            key.c_str());
+    }
+}
+
+void SettingsPopup::apply(const Soft &key)
+{
+    NavVoice &voice = NavVoice::instance();
+    switch (key.action)
+    {
+    case Act::FarCloser:
+        adjustRender(0);
+        return;
+    case Act::FarFarther:
+        adjustRender(1);
+        return;
+    case Act::FarZoomOut:
+        adjustRender(2);
+        return;
+    case Act::FarZoomIn:
+        adjustRender(3);
+        return;
+    case Act::NearCloser:
+        adjustRender(4);
+        return;
+    case Act::NearFarther:
+        adjustRender(5);
+        return;
+    case Act::NearZoomOut:
+        adjustRender(6);
+        return;
+    case Act::NearZoomIn:
+        adjustRender(7);
+        return;
+    case Act::NarrOn:
+        if (!voice.narration())
+        {
+            voice.setNarration(true);
+        }
+        break;
+    case Act::NarrOff:
+        if (voice.narration())
+        {
+            voice.setNarration(false);
+        }
+        break;
+    case Act::AirOn:
+        if (!voice.airspace())
+        {
+            voice.setAirspace(true);
+        }
+        break;
+    case Act::AirOff:
+        if (voice.airspace())
+        {
+            voice.setAirspace(false);
+        }
+        break;
+    case Act::PointOn:
+        if (!voice.reporting())
+        {
+            voice.setReporting(true);
+        }
+        break;
+    case Act::PointOff:
+        if (voice.reporting())
+        {
+            voice.setReporting(false);
+        }
+        break;
+    case Act::NearOn:
+        if (!voice.nearest())
+        {
+            voice.setNearest(true);
+        }
+        break;
+    case Act::NearOff:
+        if (voice.nearest())
+        {
+            voice.setNearest(false);
+        }
+        break;
+    case Act::ObstOn:
+        if (!voice.obstacles())
+        {
+            voice.setObstacles(true);
+        }
+        break;
+    case Act::ObstOff:
+        if (voice.obstacles())
+        {
+            voice.setObstacles(false);
+        }
+        break;
+    case Act::Play:
+        voice.preview();
+        return;
+    case Act::OpenVoices:
+        mVoicePage = true;
+        mVoiceCursor = voice.voiceIndex();
+        mVoiceScroll = std::max(0, mVoiceCursor - 3);
+        mVoiceDrag = 0;
+        mKey.clear();
+        return;
+    case Act::UseVoice:
+        voice.selectVoice(mVoicePage ? mVoiceCursor : key.arg);
+        mVoicePage = false;
+        break;
+    case Act::SourceSim:
+        if (mSession.source() != SituationSource::Sim)
+        {
+            mSession.setSource(SituationSource::Sim);
+        }
+        break;
+    case Act::SourceTab:
+        if (mSession.source() != SituationSource::Internal)
+        {
+            mSession.setSource(SituationSource::Internal);
+        }
+        break;
+    case Act::SourceRadio:
+        if (!mSession.receiver() || mSession.source() == SituationSource::Stratux)
+        {
+            break;
+        }
+        mSession.setSource(SituationSource::Stratux);
+        break;
+    case Act::SensOn:
+        if (!mSession.sensorOn(key.arg))
+        {
+            mSession.toggleSensor(key.arg);
+        }
+        break;
+    case Act::SensOff:
+        if (mSession.sensorOn(key.arg))
+        {
+            mSession.toggleSensor(key.arg);
+        }
+        break;
+    case Act::Horizon:
+        mSession.toggleHorizon();
+        mKey.clear();
+        return;
+    case Act::LayHoriz:
+        if (Screen::layoutVertical())
+        {
+            Screen::setLayoutVertical(false);
+        }
+        break;
+    case Act::LayVert:
+        if (!Screen::layoutVertical())
+        {
+            Screen::setLayoutVertical(true);
+        }
+        break;
+    case Act::None:
+        return;
+    }
+    mKey.clear();
+    saveGeneralSettings();
+}
+
+SettingsPopup::TapKind SettingsPopup::hit(int x, int y, int &index)
+{
+    index = -1;
+    if (!mController.generalOpen() && !coverageMapOpen())
+    {
+        return TapKind::None;
+    }
+    layoutBody();
+    const int tab = mWindow.hitTab(x, y);
+    if (tab >= 0)
+    {
+        index = tab;
+        return TapKind::Tab;
+    }
+    const int plate = mWindow.hitPlate(x, y);
+    if (plate >= 0 && plate < static_cast<int>(mLines.size()))
+    {
+        index = mLines[static_cast<size_t>(plate)].id;
+        return TapKind::Row;
+    }
+    const int key = mWindow.hitButton(x, y);
+    if (key >= 0 && key < static_cast<int>(mSoft.size()))
+    {
+        index = key;
+        return TapKind::Key;
+    }
+    if (mWindow.activeTab() == 1 && !mVoicePage && mChartW > 0 && x >= mChartX && y >= mChartY && x < mChartX + mChartW &&
+        y < mChartY + mChartH)
+    {
+        return TapKind::Chart;
+    }
+    return TapKind::None;
+}
+
+void SettingsPopup::activate(TapKind kind, int index, int x, int y)
+{
+    if (kind == TapKind::Tab)
+    {
+        if (index < 0 || index >= kPages)
+        {
+            return;
+        }
+        if (index != mWindow.activeTab() || mVoicePage)
+        {
+            mVoicePage = false;
+            mVoiceDrag = 0;
+            mWindow.setActiveTab(index);
+            mKey.clear();
+        }
+        return;
+    }
+    if (kind == TapKind::Row)
+    {
+        if (mVoicePage)
+        {
+            mVoiceCursor = index;
+        }
+        else
+        {
+            const int tab = std::clamp(mWindow.activeTab(), 0, kPages - 1);
+            mCursor[tab] = index;
+        }
+        mKey.clear();
+        return;
+    }
+    if (kind == TapKind::Key)
+    {
+        if (index < 0 || index >= static_cast<int>(mSoft.size()))
+        {
+            return;
+        }
+        apply(mSoft[static_cast<size_t>(index)]);
+        return;
+    }
+    if (kind == TapKind::Chart)
+    {
+        hitChart(x, y);
+    }
+}
+
+void SettingsPopup::render()
+{
+    if (coverageMapOpen())
+    {
+        const int screenW = std::max(1, mScreen.getWidth());
+        const int screenH = std::max(1, mScreen.getHeight());
+        int x = 0;
+        int y = 0;
+        int w = 0;
+        int h = 0;
+        coverageMapRect(x, y, w, h);
+        if (w < 8 || h < 8)
+        {
+            x = 0;
+            y = 0;
+            w = screenW;
+            h = screenH;
+        }
+        glDisable(GL_DEPTH_TEST);
+        glDepthMask(GL_FALSE);
+        mCoverageFill.drawRectangle(x, screenH - y - h, w, h, 0x0A0D10FFu);
+        mCoverageFill.render();
+        glDepthMask(GL_TRUE);
+        mEuropeMap.layout(x, y, w, h, screenW, screenH);
+        mEuropeMap.render();
+        return;
+    }
+    if (!mController.generalOpen())
+    {
+        return;
+    }
+
+    const int screenW = std::max(1, mScreen.getWidth());
+    const int screenH = std::max(1, mScreen.getHeight());
+    layoutBody();
+    NavVoice &voice = NavVoice::instance();
+    std::string voiceKey;
+    if (mVoicePage || mWindow.activeTab() == 2)
+    {
+        for (const std::string &label : voice.voiceLabels())
+        {
+            voiceKey += label;
+            voiceKey.push_back('|');
+        }
+    }
+    const std::string key =
+        mTitle + "|" + std::to_string(mWindow.activeTab()) + "|" + std::to_string(mCursor[mWindow.activeTab()]) + "|" +
+        std::to_string(mVoiceCursor) + "|" + std::to_string(mVoiceScroll) + "|" + voice.voiceLabel() + "|" +
+        (voice.narration() ? "1" : "0") + (voice.airspace() ? "1" : "0") + (voice.reporting() ? "1" : "0") +
+        (voice.nearest() ? "1" : "0") + (voice.obstacles() ? "1" : "0") + voiceKey +
+        std::to_string(mController.farZoom()) + ":" + std::to_string(mController.farGrid()) + ":" +
+        std::to_string(mController.satZoom()) + ":" + std::to_string(mController.nearGrid()) + ":" +
+        std::to_string(static_cast<int>(mSession.source())) + (mSession.horizonSet() ? "H" : "h") +
+        (mSession.sensors().attitude ? "A" : "a") + (mSession.sensorOn(0) ? "1" : "0") +
+        (mSession.sensorOn(1) ? "1" : "0") + (mSession.sensorOn(2) ? "1" : "0") + (mSession.sensorOn(3) ? "1" : "0") +
+        (mSession.receiver() ? "R" : "r") + (Screen::layoutVertical() ? "V" : "L") + std::to_string(mWindow.width()) +
+        "x" + std::to_string(mWindow.height());
     if (key != mKey)
     {
         mKey = key;
@@ -576,81 +1010,19 @@ void SettingsPopup::drawPage()
             line.clear();
         }
         mWindow.clearContent();
-        if (mWindow.activeTab() == 0)
-        {
-            const int boxX = mWindow.contentX();
-            const int boxY = mWindow.contentY();
-            const int boxW = mWindow.contentW();
-            const int boxH = mWindow.contentH();
-            const int rowH = boxH / 2;
-            const int btn = std::clamp(std::min(rowH, boxW / 8) * 2 / 3, 48, 96);
-            const float font = static_cast<float>(std::clamp(btn / 2, 18, 36));
-            const char *names[2] = {"FAR", "NEAR"};
-            const char *dists[2] = {farDist, nearDist};
-            const char *zooms[2] = {farZoom, nearZoom};
-            static const char *kNameKeys[2] = {"efis-render-far", "efis-render-near"};
-            static const char *kDistKeys[2] = {"efis-render-fard", "efis-render-neard"};
-            static const char *kZoomKeys[2] = {"efis-render-farz", "efis-render-nearz"};
-            for (int row = 0; row < 2; ++row)
-            {
-                const int sdlRowTop = boxY + row * rowH;
-                const int btnY = sdlRowTop + (rowH - btn) / 2;
-                const int sdlMid = sdlRowTop + rowH / 2;
-                const float textY = static_cast<float>(screenH - sdlMid);
-                const int labelX = boxX + boxW / 10;
-                const int distCenter = boxX + boxW * 42 / 100;
-                const int zoomCenter = boxX + boxW * 78 / 100;
-                const int distGap = btn + btn / 2;
-                const int zoomGap = btn;
-                mWindow.setText(row * 3, names[row], font, static_cast<float>(labelX), textY, kNameKeys[row]);
-                mWindow.setText(1 + row * 3, dists[row], font, static_cast<float>(distCenter), textY, kDistKeys[row]);
-                mWindow.setText(2 + row * 3, zooms[row], font, static_cast<float>(zoomCenter), textY, kZoomKeys[row]);
-                const int base = row * 4;
-                mWindow.setButton(base + 0, distCenter - distGap - btn, btnY, btn, btn, "-", font, "efis-pop-minus");
-                mWindow.setButton(base + 1, distCenter + distGap, btnY, btn, btn, "+", font, "efis-pop-plus");
-                mWindow.setButton(base + 2, zoomCenter - zoomGap - btn, btnY, btn, btn, "-", font, "efis-pop-minus");
-                mWindow.setButton(base + 3, zoomCenter + zoomGap, btnY, btn, btn, "+", font, "efis-pop-plus");
-            }
-        }
-        else if (mWindow.activeTab() == 2)
-        {
-            drawSoundPage(screenH);
-        }
-        else if (mWindow.activeTab() == 3)
-        {
-            drawSourcesPage(screenH);
-        }
-        else if (mWindow.activeTab() == 4)
-        {
-            drawAppPage(screenH);
-        }
+        drawBody(screenH);
     }
-    if (mWindow.activeTab() == 3)
-    {
-        drawSensorLines(screenH);
-    }
+    refreshLive(screenH);
     mWindow.render();
-    if (mWindow.activeTab() == 2)
+    if (!mVoicePage && mWindow.activeTab() == 1)
     {
-        mVoice.render();
-    }
-    if (mWindow.activeTab() == 3)
-    {
-        mSource.render();
-    }
-    if (mWindow.activeTab() == 1)
-    {
-        mEuropeMap.layout(mWindow.contentX(), mWindow.contentY(), mWindow.contentW(), mWindow.contentH(), screenW,
-                          screenH);
+        mEuropeMap.layout(mChartX, mChartY, mChartW, mChartH, screenW, screenH);
         mEuropeMap.render();
     }
-}
-
-void SettingsPopup::render()
-{
-    if (!mController.generalOpen())
+    if (!mVoicePage && mWindow.activeTab() == 5 && mStats != nullptr)
     {
-        return;
+        const int cap = 40;
+        mStats->drawDebug(mWindow.contentX(), mWindow.contentY() + cap, mWindow.contentW(),
+                          std::max(1, mWindow.contentH() - cap));
     }
-    drawPage();
 }

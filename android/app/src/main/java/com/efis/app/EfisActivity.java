@@ -256,6 +256,17 @@ public class EfisActivity extends SDLActivity {
      * @param text Spoken text. Empty is ignored.
      * @param flush True replaces the current phrase. False waits its turn.
      */
+    /**
+     * Opens GENERAL as a platform settings list. The picture keeps drawing underneath.
+     */
+    public static void openGeneralSettings() {
+        final SDLActivity activity = mSingleton;
+        if (activity == null) {
+            return;
+        }
+        activity.runOnUiThread(() -> GeneralSettings.show(activity));
+    }
+
     public static void speak(final String text, final boolean flush) {
         final SDLActivity activity = mSingleton;
         if (activity == null || text == null || text.isEmpty()) {

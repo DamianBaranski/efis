@@ -31,6 +31,16 @@ bool isFile(const std::string &path)
 }
 
 #ifdef __ANDROID__
+off_t fileSize(const std::string &path)
+{
+    struct stat info {};
+    if (stat(path.c_str(), &info) != 0)
+    {
+        return -1;
+    }
+    return info.st_size;
+}
+
 void makeDirs(const std::string &path)
 {
     std::string dir;
@@ -235,7 +245,18 @@ void AssetPath::extractPackagedAssets(const std::string &destRoot)
             {
                 const std::string dest = destRoot + "/" + line;
                 const bool shader = line.rfind("shader/", 0) == 0;
-                if (isFile(dest) && !shader)
+                const bool ui = line.rfind("resources/textures/ui/", 0) == 0;
+                bool replace = !isFile(dest) || shader;
+                if (!replace && ui)
+                {
+                    AAsset *probe = AAssetManager_open(mgr, line.c_str(), AASSET_MODE_UNKNOWN);
+                    if (probe)
+                    {
+                        replace = AAsset_getLength(probe) != fileSize(dest);
+                        AAsset_close(probe);
+                    }
+                }
+                if (!replace)
                 {
                     ++skipped;
                 }

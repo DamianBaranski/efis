@@ -1,7 +1,9 @@
 /// \file menu_widget.cpp
-/// Bookmark on the right edge and the full-height side menu it opens.
+/// Bookmark on the left edge and the full-screen menu it opens.
 #include "menu_widget.h"
 #include "app_controller.h"
+#include "asset_path.h"
+#include "general_settings.h"
 #include "settings_popup.h"
 #include <GLES3/gl3.h>
 #include <algorithm>
@@ -11,13 +13,21 @@
 namespace
 {
 constexpr uint32_t kPanel = 0x101820B8u;
-constexpr uint32_t kTab = 0x101820E8u;
-constexpr uint32_t kTabOn = 0x4DA3FFD0u;
-constexpr uint32_t kHeader = 0x00000088u;
-constexpr uint32_t kRow = 0x1A2430B0u;
-constexpr uint32_t kRowOn = 0x4DA3FFC0u;
+constexpr uint32_t kTab = 0x10182075u;
+constexpr uint32_t kTabOn = 0x15203075u;
+constexpr uint32_t kTile = 0x131920F0u;
+constexpr uint32_t kEdge = 0x273444FFu;
+constexpr uint32_t kEdgeOn = 0x39FF6AFFu;
 constexpr uint32_t kInk = 0xFFFFFFFFu;
+constexpr uint32_t kMuted = 0xA89988FFu;
 constexpr int kSlopPx = 14;
+
+/// Square on the left of a tile. The gap to the top, bottom, and left edges is the same.
+void iconPane(int tileH, int &inset, int &pane)
+{
+    inset = std::max(16, tileH / 10);
+    pane = std::max(1, tileH - inset * 2);
+}
 }
 
 MenuWidget::MenuWidget(Frame &frame, AppController &controller, SettingsPopup &popup)
@@ -28,136 +38,179 @@ MenuWidget::MenuWidget(Frame &frame, AppController &controller, SettingsPopup &p
 
 void MenuWidget::buildEntries()
 {
-    auto header = [this](const char *label) {
+    auto header = [this](const char *title) {
         Entry row;
-        row.label = label;
+        row.label = title;
         row.header = true;
         mRows.push_back(std::move(row));
     };
-    auto choice = [this](const char *label, std::function<void()> run, std::function<bool()> selected) {
+    auto tile = [this](const char *label, const char *detail, const char *icon, bool stateLine,
+                       std::function<void()> run, std::function<bool()> selected) {
         Entry row;
         row.label = label;
+        row.detail = detail;
+        row.icon = icon;
+        row.stateLine = stateLine;
         row.run = std::move(run);
         row.selected = std::move(selected);
         mRows.push_back(std::move(row));
     };
 
-    header("PICTURE");
-    choice("AHRS", [this] {
-        if (mController.picture() != ViewMode::Ahrs)
-        {
-            mController.setPicture(ViewMode::Ahrs);
-        }
-    }, [this] { return mController.picture() == ViewMode::Ahrs; });
-    choice("3D", [this] {
-        if (mController.picture() != ViewMode::ThreeD)
-        {
-            mController.setPicture(ViewMode::ThreeD);
-        }
-    }, [this] { return mController.picture() == ViewMode::ThreeD; });
-    choice("SPLIT", [this] { mController.setSplit(!mController.split()); }, [this] { return mController.split(); });
-    mRows.back().textOf = [this] { return mController.split() ? std::string("SPLIT ON") : std::string("SPLIT OFF"); };
+    header("PRIMARY INSTRUMENT");
+    tile("PLANNING MODE", "Route, direct-to, and send to the panel", "planning", false,
+         [this] {
+             if (mController.view() != ViewMode::Planning)
+             {
+                 mOpen = false;
+                 mController.setView(ViewMode::Planning);
+             }
+         },
+         [this] { return mController.view() == ViewMode::Planning; });
+    tile("AHRS + PLAN", "Map beside the picture", "split", true, [this] { mController.setSplit(!mController.split()); },
+         [this] { return mController.split(); });
+    tile("AHRS ONLY", "Attitude, heading, and the tapes", "ahrs", false,
+         [this] {
+             if (mController.picture() != ViewMode::Ahrs)
+             {
+                 mController.setPicture(ViewMode::Ahrs);
+             }
+         },
+         [this] { return mController.picture() == ViewMode::Ahrs; });
+    tile("AHRS + GEO", "Terrain ahead of the aircraft", "three-d", false,
+         [this] {
+             if (mController.picture() != ViewMode::ThreeD)
+             {
+                 mController.setPicture(ViewMode::ThreeD);
+             }
+         },
+         [this] { return mController.picture() == ViewMode::ThreeD; });
 
-    header("TERRAIN");
-    choice("SATELLITE", [this] {
-        if (mController.mapMode() != MapMode::Satellite)
-        {
-            mController.setTerrainPicture(MapMode::Satellite);
-        }
-    }, [this] { return mController.mapMode() == MapMode::Satellite; });
-    choice("SIMPLE", [this] {
-        if (mController.mapMode() != MapMode::Simple)
-        {
-            mController.setTerrainPicture(MapMode::Simple);
-        }
-    }, [this] { return mController.mapMode() == MapMode::Simple; });
+    header("3D TERRAIN FEATURES");
+    tile("SATELLITE", "Photo ground on the 3D view", "satellite", false,
+         [this] {
+             if (mController.mapMode() != MapMode::Satellite)
+             {
+                 mController.setTerrainPicture(MapMode::Satellite);
+             }
+         },
+         [this] { return mController.mapMode() == MapMode::Satellite; });
+    tile("SIMPLE", "Shaded ground on the 3D view", "simple", false,
+         [this] {
+             if (mController.mapMode() != MapMode::Simple)
+             {
+                 mController.setTerrainPicture(MapMode::Simple);
+             }
+         },
+         [this] { return mController.mapMode() == MapMode::Simple; });
 
-    header("LAYERS");
-    choice("WALLS", [this] { mController.setAipWalls(!mController.aipWalls()); },
-           [this] { return mController.aipWalls(); });
-    mRows.back().textOf = [this] {
-        return mController.aipWalls() ? std::string("WALLS ON") : std::string("WALLS OFF");
-    };
-    choice("LABELS", [this] { mController.setAipLabels(!mController.aipText()); },
-           [this] { return mController.aipText(); });
-    mRows.back().textOf = [this] {
-        return mController.aipText() ? std::string("LABELS ON") : std::string("LABELS OFF");
-    };
-    choice("POINTS", [this] { mController.setVrpsOn(!mController.vrpsOn()); }, [this] { return mController.vrpsOn(); });
-    mRows.back().textOf = [this] {
-        return mController.vrpsOn() ? std::string("POINTS ON") : std::string("POINTS OFF");
-    };
-    choice("OBSTACLES", [this] { mController.setObstaclesOn(!mController.obstacles()); },
-           [this] { return mController.obstacles(); });
-    mRows.back().textOf = [this] {
-        return mController.obstacles() ? std::string("OBSTACLES ON") : std::string("OBSTACLES OFF");
-    };
+    header("3D AIRSPACE FEATURES");
+    tile("WALLS", "Airspace volumes in the 3D view", "walls", true,
+         [this] { mController.setAipWalls(!mController.aipWalls()); }, [this] { return mController.aipWalls(); });
+    tile("LABELS", "Airspace names in the 3D view", "labels", true,
+         [this] { mController.setAipLabels(!mController.aipText()); }, [this] { return mController.aipText(); });
+    tile("POINTS", "Reporting points in the 3D view", "points", true,
+         [this] { mController.setVrpsOn(!mController.vrpsOn()); }, [this] { return mController.vrpsOn(); });
+    tile("OBSTACLES", "Towers in the 3D view", "obstacles", true,
+         [this] { mController.setObstaclesOn(!mController.obstacles()); }, [this] { return mController.obstacles(); });
 
-    header("SETUP");
-    choice("STATS", [this] { mController.toggleStats(); }, [this] { return mController.statsVisible(); });
-    mRows.back().textOf = [this] {
-        return mController.statsVisible() ? std::string("STATS ON") : std::string("STATS OFF");
-    };
-    choice("GENERAL", [this] {
-        mOpen = false;
-        mController.setGeneralOpen(true);
-        mPopup.invalidate();
-    }, [this] { return mController.generalOpen(); });
-    choice("PLANNING", [this] {
-        if (mController.view() != ViewMode::Planning)
-        {
-            mOpen = false;
-            mController.setView(ViewMode::Planning);
-        }
-    }, [this] { return mController.view() == ViewMode::Planning; });
+    header("SYSTEM SETUP");
+    tile("GENERAL", "Imagery, sound, sensors, and layout", "general", false,
+         [this] {
+             mOpen = false;
+             openGeneralSettings();
+         },
+         [this] { return mController.generalOpen() || coverageMapOpen(); });
 }
 
 void MenuWidget::measure()
 {
     mScreenW = std::max(1, mScreen.getWidth());
     mScreenH = std::max(1, mScreen.getHeight());
-    mTabW = 80;
-    mTabH = 96;
+    // Square, 15% larger than the old 96px height.
+    mTabW = 96 * 115 / 100;
+    mTabH = mTabW;
     mTabY = 12;
-    mPanelW = std::min(440, std::max(300, mScreenW * 2 / 5));
+    mTabX = 0;
     mPanelX = 0;
     mPanelY = 0;
+    mPanelW = mScreenW;
     mPanelH = mScreenH;
-    mTabX = mOpen ? mPanelW : 0;
 
-    int headers = 0;
-    int items = 0;
-    for (const Entry &row : mRows)
-    {
-        if (row.header)
+    const int pad = 16;
+    const int gap = 12;
+    const int headerH = std::clamp(mScreenH / 16, 64, 96) * 70 / 100;
+    const int top = mTabY + mTabH + 16;
+    const int innerW = std::max(1, mScreenW - pad * 2);
+    const int tileW = std::max(1, (innerW - gap) / 2);
+
+    auto place = [&](int tileH, bool commit) {
+        int y = top;
+        int i = 0;
+        const int n = static_cast<int>(mRows.size());
+        while (i < n)
         {
-            ++headers;
+            if (mRows[static_cast<size_t>(i)].header)
+            {
+                if (commit)
+                {
+                    Entry &row = mRows[static_cast<size_t>(i)];
+                    row.x = pad;
+                    row.y = y - mScroll;
+                    row.w = innerW;
+                    row.h = headerH;
+                }
+                y += headerH + 4;
+                ++i;
+                continue;
+            }
+            int count = 0;
+            while (i + count < n && !mRows[static_cast<size_t>(i + count)].header)
+            {
+                ++count;
+            }
+            int col = 0;
+            for (int k = 0; k < count; ++k)
+            {
+                if (commit)
+                {
+                    Entry &row = mRows[static_cast<size_t>(i + k)];
+                    row.x = pad + col * (tileW + gap);
+                    row.y = y - mScroll;
+                    row.w = tileW;
+                    row.h = tileH;
+                }
+                ++col;
+                if (col >= 2)
+                {
+                    col = 0;
+                    y += tileH + gap;
+                }
+            }
+            if (col != 0)
+            {
+                y += tileH + gap;
+            }
+            i += count;
         }
-        else
-        {
-            ++items;
-        }
-    }
-    int headerH = 40;
-    int itemH = 72;
-    int content = headers * headerH + items * itemH;
-    if (content < mScreenH && items > 0)
-    {
-        itemH = std::min(88, (mScreenH - headers * headerH) / items);
-        content = headers * headerH + items * itemH;
-    }
-    mContentH = content;
-    mScroll = std::clamp(mScroll, 0, std::max(0, mContentH - mPanelH));
-    int y = -mScroll;
-    for (Entry &row : mRows)
-    {
-        row.x = mPanelX;
-        row.y = y;
-        row.w = mPanelW;
-        row.h = row.header ? headerH : itemH;
-        y += row.h;
-    }
-    mFont = std::clamp(itemH * 2 / 5, 22, 32);
+        return y + pad;
+    };
+
+    // Two columns. A leftover tile stays one column wide. The page scrolls.
+    const int rowH = std::max(336, std::clamp(mScreenH / 3, 280, 420)) * 70 / 100;
+    const int tileH = rowH * 85 / 100;
+    mContentH = place(tileH, false);
+    mScroll = std::clamp(mScroll, 0, std::max(0, mContentH - mScreenH));
+    place(tileH, true);
+    int inset = 0;
+    int pane = 0;
+    iconPane(tileH, inset, pane);
+    const int textBudget = std::max(80, tileW - inset - pane - inset * 2);
+    // B612 Mono is about 0.6 em wide. The longest description is ~40 columns.
+    const int detail = std::clamp(textBudget * 10 / (40 * 6), 28, 48) * 70 / 100;
+    const int name = std::clamp(std::max(detail + 14, rowH / 6), 34, 54);
+    mDetailFont = detail * 120 / 100;
+    mFont = name * 120 / 100;
+    mHeaderFont = std::max(22, headerH / 2) * 115 / 100;
 }
 
 bool MenuWidget::inside(int x, int y, int rx, int ry, int rw, int rh) const
@@ -198,6 +251,7 @@ void MenuWidget::clearArm()
     mArm = Arm::None;
     mArmIndex = -1;
     mDragList = false;
+    mDragGeneral = false;
 }
 
 void MenuWidget::close()
@@ -254,46 +308,60 @@ void MenuWidget::paint()
         sprite().drawRectangle(mPanelX, 0, mPanelW, mPanelH, kPanel);
         for (const Entry &row : mRows)
         {
-            const int glY = mScreenH - row.y - row.h;
-            uint32_t fill = kRow;
+            if (row.h <= 0 || row.y + row.h <= 0 || row.y >= mPanelH)
+            {
+                continue;
+            }
             if (row.header)
             {
-                fill = kHeader;
+                const float y = static_cast<float>(mScreenH - row.y - row.h / 2 - mHeaderFont / 3);
+                const std::string key = std::string("menu-head-") + row.label;
+                sprite().drawText(row.label, static_cast<float>(mHeaderFont), static_cast<float>(row.x), y, kMuted,
+                                  key);
+                continue;
             }
-            else if (row.selected && row.selected())
+            const int glY = mScreenH - row.y - row.h;
+            const bool on = row.selected && row.selected();
+            sprite().drawFramedRectangle(row.x, glY, row.w, row.h, kTile, on ? kEdgeOn : kEdge, 2);
+            int inset = 0;
+            int pane = 0;
+            iconPane(row.h, inset, pane);
+            const int paneX = row.x + inset;
+            const int paneY = glY + inset;
+            if (row.icon != nullptr)
             {
-                fill = kRowOn;
+                Render2D &mark = sprite();
+                if (on)
+                {
+                    mark.setColorScale(0.224f, 1.0f, 0.416f);
+                }
+                else
+                {
+                    mark.setColorScale(0.941f, 0.957f, 0.973f);
+                }
+                const std::string path = AssetPath::resolve(std::string("resources/textures/ui/icons/") + row.icon + ".png");
+                mark.drawTexture(path, paneX, paneY, pane, pane);
             }
-            sprite().drawRectangle(row.x, glY, row.w, row.h, fill);
-            const std::string text = row.textOf ? row.textOf() : row.label;
-            sprite().drawTextCentered(text, static_cast<float>(row.header ? std::max(16, mFont - 6) : mFont),
-                                      static_cast<float>(row.x + row.w / 2), static_cast<float>(glY + row.h / 2), kInk,
-                                      text);
+            std::string detail = row.detail;
+            const int textX = row.x + inset + (row.icon != nullptr ? pane + inset : 0);
+            const int block = mFont + 18 + mDetailFont;
+            const float detailY = static_cast<float>(glY + (row.h - block) / 2);
+            const float titleY = detailY + static_cast<float>(mDetailFont + 18);
+            const std::string titleKey = std::string("menu-title-") + row.label + (on ? "-on" : "-off");
+            const std::string detailKey = std::string("menu-detail-") + row.label;
+            sprite().drawText(row.label, static_cast<float>(mFont), static_cast<float>(textX), titleY, kInk, titleKey);
+            sprite().drawText(detail, static_cast<float>(mDetailFont), static_cast<float>(textX), detailY, kMuted,
+                              detailKey);
         }
         mContentSprites = static_cast<int>(mSpriteCursor);
     }
-    if (!mOpen)
-    {
-        const int stubGl = mScreenH - mTabY - mTabH;
-        sprite().drawRectangle(-mTabW, stubGl, mTabW, mTabH, kTab);
-    }
+    const bool back = mOpen || mController.generalOpen() || coverageMapOpen();
     const int tabGl = mScreenH - mTabY - mTabH;
-    sprite().drawRectangle(mTabX, tabGl, mTabW, mTabH, mOpen ? kTabOn : kTab);
-    const int steps = 8;
-    const int arm = 26;
-    const int thick = 8;
-    const int cx = mTabX + mTabW / 2;
-    const int cy = mTabY + mTabH / 2;
-    const int tip = mOpen ? -arm / 2 : arm / 2;
-    const int tail = mOpen ? arm / 2 : -arm / 2;
-    for (int i = 0; i <= steps; ++i)
-    {
-        const float t = static_cast<float>(i) / static_cast<float>(steps);
-        const int px = tail + static_cast<int>(std::lround(t * static_cast<float>(tip - tail)));
-        const int py = static_cast<int>(std::lround((1.0f - t) * static_cast<float>(arm)));
-        sprite().drawRectangle(cx + px - thick / 2, mScreenH - (cy - py) - thick, thick, thick, kInk);
-        sprite().drawRectangle(cx + px - thick / 2, mScreenH - (cy + py) - thick, thick, thick, kInk);
-    }
+    sprite().drawRectangle(mTabX, tabGl, mTabW, mTabH, back ? kTabOn : kTab);
+    const int icon = mTabH;
+    const char *glyph = back ? "chevron-left" : "chevron-right";
+    sprite().drawTexture(AssetPath::resolve(std::string("resources/textures/ui/icons/") + glyph + ".png"),
+                         mTabX + (mTabW - icon) / 2, tabGl + (mTabH - icon) / 2, icon, icon);
     mSpriteCount = static_cast<int>(mSpriteCursor);
 }
 
@@ -350,18 +418,32 @@ void MenuWidget::render()
 
 bool MenuWidget::mouseClick(int x, int y)
 {
+    measure();
+    if (coverageMapOpen())
+    {
+        if (inside(x, y, mTabX, mTabY, mTabW, mTabH))
+        {
+            closeCoverageMap();
+            clearArm();
+            return true;
+        }
+        mPopup.hitChart(x, y);
+        return true;
+    }
     if (mController.view() == ViewMode::Planning)
     {
         close();
         return false;
     }
-    measure();
     if (inside(x, y, mTabX, mTabY, mTabW, mTabH))
     {
         if (mController.generalOpen())
         {
-            mController.setGeneralOpen(false);
-            mPopup.invalidate();
+            if (!mPopup.handleBack())
+            {
+                mController.setGeneralOpen(false);
+                mPopup.invalidate();
+            }
             clearArm();
             return true;
         }
@@ -373,63 +455,32 @@ bool MenuWidget::mouseClick(int x, int y)
     }
     if (mController.generalOpen())
     {
-        const int tab = mPopup.hitTab(x, y);
-        if (tab >= 0)
+        mDragGeneral = true;
+        int index = -1;
+        const SettingsPopup::TapKind kind = mPopup.hit(x, y, index);
+        mArmIndex = index;
+        mArmX = x;
+        mArmY = y;
+        if (kind == SettingsPopup::TapKind::Tab)
         {
-            if (tab != mPopup.activeTab())
-            {
-                mPopup.setActiveTab(tab);
-            }
-            return true;
+            mArm = Arm::GeneralTab;
         }
-        if (mPopup.activeTab() == 0)
+        else if (kind == SettingsPopup::TapKind::Row)
         {
-            const int control = mPopup.hitButton(x, y);
-            if (control >= 0)
-            {
-                mPopup.adjustRender(control);
-                return true;
-            }
+            mArm = Arm::GeneralRow;
         }
-        if (mPopup.activeTab() == 2)
+        else if (kind == SettingsPopup::TapKind::Key)
         {
-            if (mPopup.handleVoice(x, y))
-            {
-                return true;
-            }
-            const int control = mPopup.hitButton(x, y);
-            if (control >= 0)
-            {
-                mPopup.adjustSound(control);
-                return true;
-            }
+            mArm = Arm::GeneralKey;
         }
-        if (mPopup.activeTab() == 3)
+        else if (kind == SettingsPopup::TapKind::Chart)
         {
-            if (mPopup.handleSource(x, y))
-            {
-                return true;
-            }
+            mArm = Arm::GeneralChart;
         }
-        if (mPopup.activeTab() == 4)
+        else
         {
-            const int control = mPopup.hitButton(x, y);
-            if (control >= 0)
-            {
-                mPopup.adjustApp(control);
-                return true;
-            }
+            mArm = Arm::None;
         }
-        if (mPopup.hitChart(x, y))
-        {
-            return true;
-        }
-        if (mPopup.contains(x, y))
-        {
-            return true;
-        }
-        mController.setGeneralOpen(false);
-        mPopup.invalidate();
         return true;
     }
     if (mOpen && inside(x, y, mPanelX, mPanelY, mPanelW, mPanelH))
@@ -463,8 +514,18 @@ bool MenuWidget::mouseClick(int x, int y)
 
 bool MenuWidget::mouseMove(int x, int y, int dx, int dy)
 {
-    (void)x;
     (void)dx;
+    if (mController.generalOpen() && mDragGeneral)
+    {
+        if (mArm != Arm::None && !near(x, y, mArmX, mArmY))
+        {
+            mArm = Arm::None;
+            mArmIndex = -1;
+        }
+        mPopup.scrollBy(dy);
+        (void)y;
+        return true;
+    }
     if (!mOpen || !mDragList)
     {
         return false;
@@ -477,26 +538,53 @@ bool MenuWidget::mouseMove(int x, int y, int dx, int dy)
 
 bool MenuWidget::mouseWheel(int x, int y, int dy)
 {
+    if (mController.generalOpen() || coverageMapOpen())
+    {
+        mPopup.scrollBy(dy > 0 ? 64 : -64);
+        return true;
+    }
     if (!mOpen || !inside(x, y, mPanelX, mPanelY, mPanelW, mPanelH))
     {
         return false;
     }
     const int maxScroll = std::max(0, mContentH - mPanelH);
-    mScroll = std::clamp(mScroll - dy * 72, 0, maxScroll);
+    mScroll = std::clamp(mScroll - dy * 160, 0, maxScroll);
     return true;
 }
 
 bool MenuWidget::mouseUp(int x, int y)
 {
+    const bool generalDrag = mDragGeneral;
     if (mArm == Arm::None)
     {
-        return false;
+        clearArm();
+        return generalDrag;
     }
     const Arm arm = mArm;
     const int index = mArmIndex;
     const bool fire = near(x, y, mArmX, mArmY);
     clearArm();
-    if (fire)
+    if (!fire)
+    {
+        return true;
+    }
+    if (arm == Arm::GeneralTab)
+    {
+        mPopup.activate(SettingsPopup::TapKind::Tab, index, x, y);
+    }
+    else if (arm == Arm::GeneralRow)
+    {
+        mPopup.activate(SettingsPopup::TapKind::Row, index, x, y);
+    }
+    else if (arm == Arm::GeneralKey)
+    {
+        mPopup.activate(SettingsPopup::TapKind::Key, index, x, y);
+    }
+    else if (arm == Arm::GeneralChart)
+    {
+        mPopup.activate(SettingsPopup::TapKind::Chart, index, x, y);
+    }
+    else
     {
         commit(arm, index);
     }

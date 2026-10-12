@@ -623,6 +623,7 @@ void VoiceAnnouncer::stepVoice(int delta)
         const int count = static_cast<int>(mVoices.size());
         mVoiceIndex = (mVoiceIndex + (delta % count) + count) % count;
         id = mVoices[static_cast<size_t>(mVoiceIndex)].id;
+        mPreferredId = id;
     }
     applyVoice(id);
 }
@@ -663,8 +664,32 @@ void VoiceAnnouncer::selectVoice(int index)
         }
         mVoiceIndex = index;
         id = mVoices[static_cast<size_t>(mVoiceIndex)].id;
+        mPreferredId = id;
     }
     applyVoice(id);
+}
+
+std::string VoiceAnnouncer::selectedVoiceId()
+{
+    std::lock_guard<std::mutex> lock(mVoiceMutex);
+    if (!mPreferredId.empty())
+    {
+        return mPreferredId;
+    }
+    if (mVoices.empty() || mVoiceIndex < 0 || mVoiceIndex >= static_cast<int>(mVoices.size()))
+    {
+        return {};
+    }
+    return mVoices[static_cast<size_t>(mVoiceIndex)].id;
+}
+
+void VoiceAnnouncer::preferVoiceId(const std::string &id)
+{
+    {
+        std::lock_guard<std::mutex> lock(mVoiceMutex);
+        mPreferredId = id;
+    }
+    reloadVoices();
 }
 
 std::string VoiceAnnouncer::voiceLabel()
@@ -740,22 +765,25 @@ void VoiceAnnouncer::reloadVoices()
         next.push_back({"", "DEFAULT"});
     }
 
-    std::string previous;
+    std::string wanted;
     {
         std::lock_guard<std::mutex> lock(mVoiceMutex);
-        if (!mVoices.empty() && mVoiceIndex >= 0 && mVoiceIndex < static_cast<int>(mVoices.size()))
+        wanted = mPreferredId;
+        if (wanted.empty() && !mVoices.empty() && mVoiceIndex >= 0 && mVoiceIndex < static_cast<int>(mVoices.size()))
         {
-            previous = mVoices[static_cast<size_t>(mVoiceIndex)].id;
+            wanted = mVoices[static_cast<size_t>(mVoiceIndex)].id;
         }
     }
     int index = 0;
-    if (!previous.empty())
+    bool found = false;
+    if (!wanted.empty())
     {
         for (int i = 0; i < static_cast<int>(next.size()); ++i)
         {
-            if (next[static_cast<size_t>(i)].id == previous)
+            if (next[static_cast<size_t>(i)].id == wanted)
             {
                 index = i;
+                found = true;
                 break;
             }
         }
@@ -764,8 +792,15 @@ void VoiceAnnouncer::reloadVoices()
     {
         std::lock_guard<std::mutex> lock(mVoiceMutex);
         mVoices = std::move(next);
-        mVoiceIndex = index;
-        apply = mVoices[static_cast<size_t>(mVoiceIndex)].id;
+        if (found || mPreferredId.empty())
+        {
+            mVoiceIndex = index;
+            mPreferredId = mVoices[static_cast<size_t>(mVoiceIndex)].id;
+            apply = mPreferredId;
+        }
     }
-    applyVoice(apply);
+    if (!apply.empty())
+    {
+        applyVoice(apply);
+    }
 }

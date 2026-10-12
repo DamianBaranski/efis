@@ -1,5 +1,5 @@
 /// \file tab_window.h
-/// Settings window with a tab strip and a page of labels and buttons.
+/// GENERAL window: a page list, a row area, and a softkey bar.
 #ifndef TAB_WINDOW_H
 #define TAB_WINDOW_H
 
@@ -11,18 +11,21 @@
 #include <memory>
 #include <string>
 
-/// Tabbed settings window used by GENERAL and later popups.
-/// Left column: stacked tabs. Active tab is light gray. Right side is the page.
+/// Page list on the left, rows in the middle, softkeys along the bottom.
 /// SDL coordinates have the origin at the top left. Drawing uses GL, origin at the bottom left.
 template <int kTabs, int kTexts, int kButtons>
 class TabWindow
 {
 public:
-    /// Allocates the tab strip and the page drawables. Call layout before use.
+    static constexpr int kPlates = 8;
+
+    /// Allocates the page list and the page drawables. Call layout before use.
     /// \param screen Window whose height converts SDL coordinates to GL.
     explicit TabWindow(Screen &screen) : mScreen(screen)
     {
         mBox = std::make_unique<Render2D>(screen);
+        mTitleBar = std::make_unique<Render2D>(screen);
+        mSoftBar = std::make_unique<Render2D>(screen);
         mTabStrip = std::make_unique<Render2D>(screen);
         for (int i = 0; i < kTabs; ++i)
         {
@@ -38,32 +41,36 @@ public:
             mButtonBoxes[static_cast<size_t>(i)] = std::make_unique<Render2D>(screen);
             mButtonLabels[static_cast<size_t>(i)] = std::make_unique<Render2D>(screen);
         }
+        for (int i = 0; i < kPlates; ++i)
+        {
+            mPlateBoxes[static_cast<size_t>(i)] = std::make_unique<Render2D>(screen);
+        }
     }
 
-    /// Sizes the window and the tab strip. Call again when the screen size changes.
+    /// Sizes the window, the page list, and the softkey bar.
     /// \param screenW Window width in pixels.
     /// \param screenH Window height in pixels.
-    /// \param topLimit SDL Y the window must start at or below. Zero centres it.
+    /// \param topLimit Unused. The window fills the screen.
     void layout(int screenW, int screenH, int topLimit = 0)
     {
+        (void)topLimit;
         mScreenW = std::max(1, screenW);
         mScreenH = std::max(1, screenH);
-        const int margin = std::max(16, mScreenH / 30);
-        const int top = std::max(margin, topLimit);
-        const int availH = std::max(1, mScreenH - top - margin);
-        mBoxW = std::min(mScreenW - 2 * margin, std::max(720, mScreenW * 3 / 4));
-        mBoxH = std::min(availH, std::max(280, mScreenH * 3 / 5));
-        mSdlX = (mScreenW - mBoxW) / 2;
-        mSdlY = top + std::max(0, (availH - mBoxH) / 2);
-        mTabPad = std::max(8, mBoxH / 50);
-        mTabGap = std::max(6, mBoxH / 80);
-        mTabW = std::clamp(mBoxW / 5, 140, 240);
-        const int inner = mBoxH - 2 * mTabPad - (kTabs - 1) * mTabGap;
-        mTabH = std::min(88, std::max(1, inner / std::max(1, kTabs)));
-        mContentX = mSdlX + mTabW;
-        mContentY = mSdlY;
-        mContentW = mBoxW - mTabW;
-        mContentH = mBoxH;
+        mSdlX = 0;
+        mSdlY = 0;
+        mBoxW = mScreenW;
+        mBoxH = mScreenH;
+        mTitleH = std::clamp(mScreenH / 10, 108, 128);
+        mSoftH = std::clamp(mScreenH / 10, 72, 96);
+        mPageW = std::clamp(mScreenW / 4, 168, 280);
+        if (mPageW > mScreenW / 2)
+        {
+            mPageW = std::max(120, mScreenW / 2);
+        }
+        mContentX = mPageW;
+        mContentY = mTitleH;
+        mContentW = std::max(1, mBoxW - mPageW);
+        mContentH = std::max(1, mBoxH - mTitleH - mSoftH);
         rebuildTabs();
     }
 
@@ -77,18 +84,24 @@ public:
     int height() const { return mBoxH; }
     /// Screen height in pixels. Used to flip SDL Y into GL Y.
     int screenHeight() const { return mScreenH; }
-    /// Left edge of the page, to the right of the tab strip. SDL pixels.
+    /// Title-bar height in pixels.
+    int titleHeight() const { return mTitleH; }
+    /// Left edge of the page body. SDL pixels.
     int contentX() const { return mContentX; }
-    /// Top edge of the page, SDL pixels.
+    /// Top edge of the page body, SDL pixels.
     int contentY() const { return mContentY; }
-    /// Page width in pixels.
+    /// Page body width in pixels.
     int contentW() const { return mContentW; }
-    /// Page height in pixels.
+    /// Page body height in pixels.
     int contentH() const { return mContentH; }
-    /// Index of the light-gray tab.
+    /// Top of the softkey bar, SDL pixels.
+    int softY() const { return mScreenH - mSoftH; }
+    /// Softkey bar height in pixels.
+    int softH() const { return mSoftH; }
+    /// Index of the open page.
     int activeTab() const { return mActiveTab; }
 
-    /// Text drawn on one tab. Null is ignored.
+    /// Text drawn on one page. Null is ignored.
     void setTabLabel(int slot, const char *label)
     {
         if (slot < 0 || slot >= kTabs || label == nullptr)
@@ -98,7 +111,7 @@ public:
         mTabNames[static_cast<size_t>(slot)] = label;
     }
 
-    /// Highlights one tab and leaves the page contents for the caller to refill.
+    /// Highlights one page and leaves the body for the caller to refill.
     void setActiveTab(int slot)
     {
         if (slot < 0 || slot >= kTabs)
@@ -109,13 +122,13 @@ public:
         rebuildTabs();
     }
 
-    /// True when the SDL point is inside the window, including the tab strip.
+    /// True when the SDL point is inside the window.
     bool contains(int x, int y) const
     {
         return mBoxW > 0 && x >= mSdlX && y >= mSdlY && x < mSdlX + mBoxW && y < mSdlY + mBoxH;
     }
 
-    /// Tab index under the SDL point, or -1.
+    /// Page index under the SDL point, or -1.
     int hitTab(int x, int y) const
     {
         for (int i = 0; i < kTabs; ++i)
@@ -129,7 +142,7 @@ public:
         return -1;
     }
 
-    /// Page button under the SDL point, or -1.
+    /// Softkey under the SDL point, or -1.
     int hitButton(int x, int y) const
     {
         for (int i = 0; i < kButtons; ++i)
@@ -147,12 +160,34 @@ public:
         return -1;
     }
 
-    /// Drops page labels and buttons. Tabs stay.
+    /// Row plate under the SDL point, or -1.
+    int hitPlate(int x, int y) const
+    {
+        for (int i = 0; i < kPlates; ++i)
+        {
+            const Button &plate = mPlates[static_cast<size_t>(i)];
+            if (!plate.used)
+            {
+                continue;
+            }
+            if (x >= plate.x && y >= plate.y && x < plate.x + plate.w && y < plate.y + plate.h)
+            {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /// Drops page labels, row plates, and softkeys. The page list stays.
     void clearContent()
     {
         for (int i = 0; i < kButtons; ++i)
         {
             mButtons[static_cast<size_t>(i)].used = false;
+        }
+        for (int i = 0; i < kPlates; ++i)
+        {
+            mPlates[static_cast<size_t>(i)].used = false;
         }
         for (int i = 0; i < kTexts; ++i)
         {
@@ -160,8 +195,19 @@ public:
         }
     }
 
-    /// Places one page label. centerX and centerY are GL pixels.
-    /// \param font Pixel height of the glyphs.
+    /// Places one page label. `x` and `y` are the bottom-left corner in GL pixels.
+    void setTextLeft(int slot, const std::string &text, float font, float x, float y, uint32_t color,
+                     const char *cacheKey)
+    {
+        if (slot < 0 || slot >= kTexts || text.empty())
+        {
+            return;
+        }
+        mTextUsed[static_cast<size_t>(slot)] = true;
+        mTexts[static_cast<size_t>(slot)]->drawText(text, font, x, y, color, cacheKey == nullptr ? "" : cacheKey);
+    }
+
+    /// Centered page label. centerX and centerY are GL pixels.
     void setText(int slot, const std::string &text, float font, float centerX, float centerY, const char *cacheKey)
     {
         if (slot < 0 || slot >= kTexts)
@@ -172,9 +218,28 @@ public:
         mTexts[static_cast<size_t>(slot)]->drawTextCentered(text, font, centerX, centerY, 0xFFFFFFFFu, cacheKey);
     }
 
-    /// `x` and `y` are the top-left corner in SDL coordinates. `fill` is AABBGGRR.
+    /// Row plate. `x` and `y` are the top-left corner in SDL coordinates.
+    /// `fill` and `edge` are RRGGBBAA.
+    void setPlate(int slot, int x, int y, int w, int h, uint32_t fill, uint32_t edge)
+    {
+        if (slot < 0 || slot >= kPlates || w < 1 || h < 1)
+        {
+            return;
+        }
+        Button &plate = mPlates[static_cast<size_t>(slot)];
+        plate.x = x;
+        plate.y = y;
+        plate.w = w;
+        plate.h = h;
+        plate.used = true;
+        const int glY = mScreenH - y - h;
+        mPlateBoxes[static_cast<size_t>(slot)]->drawFramedRectangle(x, glY, w, h, fill, edge, 2);
+    }
+
+    /// Softkey. `x` and `y` are the top-left corner in SDL coordinates.
+    /// `fill` and `edge` are RRGGBBAA.
     void setButton(int slot, int x, int y, int w, int h, const std::string &label, float font, const char *cacheKey,
-                   uint32_t fill = 0xFFFFFF40u)
+                   uint32_t fill = 0x131920F0u, uint32_t edge = 0x273444FFu)
     {
         if (slot < 0 || slot >= kButtons)
         {
@@ -187,18 +252,20 @@ public:
         button.h = h;
         button.used = true;
         const int glY = mScreenH - y - h;
-        mButtonBoxes[static_cast<size_t>(slot)]->drawRectangle(x, glY, w, h, fill);
+        mButtonBoxes[static_cast<size_t>(slot)]->drawFramedRectangle(x, glY, w, h, fill, edge, 2);
         mButtonLabels[static_cast<size_t>(slot)]->drawTextCentered(label, font, static_cast<float>(x + w / 2),
                                                                    static_cast<float>(glY + h / 2), 0xFFFFFFFFu,
                                                                    cacheKey);
     }
 
-    /// Draws the window, the tab strip, then the page buttons and labels.
+    /// Draws the window, the page list, the row plates, then the softkeys and labels.
     void render()
     {
         const int glY = mScreenH - mSdlY - mBoxH;
-        mBox->drawRectangle(mSdlX, glY, mBoxW, mBoxH, 0x00000099u);
-        mTabStrip->drawRectangle(mSdlX, glY, mTabW, mBoxH, 0x00000055u);
+        mBox->drawRectangle(mSdlX, glY, mBoxW, mBoxH, 0x101820E0u);
+        mTitleBar->drawRectangle(0, mScreenH - mTitleH, mBoxW, mTitleH, 0x090C10F0u);
+        mSoftBar->drawRectangle(0, 0, mBoxW, mSoftH, 0x090C10F0u);
+        mTabStrip->drawRectangle(0, mSoftH, mPageW, mContentH, 0x090C10F0u);
         rebuildTabs();
 
         glDisable(GL_CULL_FACE);
@@ -209,6 +276,10 @@ public:
         const glm::mat4 identity(1.0f);
         mBox->setTransformationMatrix(identity);
         mBox->render();
+        mTitleBar->setTransformationMatrix(identity);
+        mTitleBar->render();
+        mSoftBar->setTransformationMatrix(identity);
+        mSoftBar->render();
         mTabStrip->setTransformationMatrix(identity);
         mTabStrip->render();
         for (int i = 0; i < kTabs; ++i)
@@ -217,6 +288,15 @@ public:
             mTabBoxes[static_cast<size_t>(i)]->render();
             mTabLabels[static_cast<size_t>(i)]->setTransformationMatrix(identity);
             mTabLabels[static_cast<size_t>(i)]->render();
+        }
+        for (int i = 0; i < kPlates; ++i)
+        {
+            if (!mPlates[static_cast<size_t>(i)].used)
+            {
+                continue;
+            }
+            mPlateBoxes[static_cast<size_t>(i)]->setTransformationMatrix(identity);
+            mPlateBoxes[static_cast<size_t>(i)]->render();
         }
         for (int i = 0; i < kButtons; ++i)
         {
@@ -254,28 +334,35 @@ private:
 
     void rebuildTabs()
     {
-        const float font = static_cast<float>(std::clamp(mTabH * 2 / 5, 16, 28));
+        const int tabH = std::max(1, mContentH / std::max(1, kTabs));
+        const float font =
+            static_cast<float>(std::clamp(std::min(tabH / 3, mPageW / 8), 14, 24));
         for (int i = 0; i < kTabs; ++i)
         {
             Button &tab = mTabs[static_cast<size_t>(i)];
-            tab.x = mSdlX + mTabPad;
-            tab.y = mSdlY + mTabPad + i * (mTabH + mTabGap);
-            tab.w = mTabW - 2 * mTabPad;
-            tab.h = mTabH;
+            tab.x = 0;
+            tab.y = mTitleH + i * tabH;
+            tab.w = mPageW;
+            tab.h = (i == kTabs - 1) ? (mContentY + mContentH - tab.y) : tabH;
             tab.used = true;
             const int glY = mScreenH - tab.y - tab.h;
-            const uint32_t fill = (i == mActiveTab) ? 0xC8C8C8D0u : 0xFFFFFF40u;
+            const bool on = i == mActiveTab;
+            const uint32_t fill = on ? 0x152030FFu : 0x090C10F0u;
             mTabBoxes[static_cast<size_t>(i)]->drawRectangle(tab.x, glY, tab.w, tab.h, fill);
             const char *label = mTabNames[static_cast<size_t>(i)].c_str();
-            const std::string key = std::string("efis-tab-") + std::to_string(i) + "-" + label;
+            const std::string key = std::string("efis-page-") + std::to_string(i) + "-" + label + (on ? "-on" : "-off");
+            // Text colors are 0xBBGGRRAA. Muted ink 0x8899A8 is passed as 0xA89988FF.
+            const uint32_t ink = on ? 0xFFFFFFFFu : 0xA89988FFu;
             mTabLabels[static_cast<size_t>(i)]->drawTextCentered(label, font, static_cast<float>(tab.x + tab.w / 2),
-                                                                 static_cast<float>(glY + tab.h / 2), 0xFFFFFFFFu,
+                                                                 static_cast<float>(glY + tab.h / 2), ink,
                                                                  key.c_str());
         }
     }
 
     Screen &mScreen;
     std::unique_ptr<Render2D> mBox;
+    std::unique_ptr<Render2D> mTitleBar;
+    std::unique_ptr<Render2D> mSoftBar;
     std::unique_ptr<Render2D> mTabStrip;
     std::array<std::unique_ptr<Render2D>, kTabs> mTabBoxes;
     std::array<std::unique_ptr<Render2D>, kTabs> mTabLabels;
@@ -286,16 +373,17 @@ private:
     std::array<std::unique_ptr<Render2D>, kButtons> mButtonBoxes;
     std::array<std::unique_ptr<Render2D>, kButtons> mButtonLabels;
     std::array<Button, kButtons> mButtons{};
+    std::array<std::unique_ptr<Render2D>, kPlates> mPlateBoxes;
+    std::array<Button, kPlates> mPlates{};
     int mScreenW = 0;
     int mScreenH = 0;
     int mSdlX = 0;
     int mSdlY = 0;
     int mBoxW = 0;
     int mBoxH = 0;
-    int mTabW = 0;
-    int mTabH = 0;
-    int mTabPad = 8;
-    int mTabGap = 6;
+    int mPageW = 200;
+    int mTitleH = 108;
+    int mSoftH = 88;
     int mContentX = 0;
     int mContentY = 0;
     int mContentW = 0;

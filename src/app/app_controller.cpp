@@ -257,7 +257,10 @@ void AppController::applyLayers()
             continue;
         }
         const bool dial = layer.role == CockpitRole::Dial;
-        layer.widget->enable(dial ? (efis && !split) : efis);
+        // HSI, DG, and the traffic dial are the AHRS picture. In 3D with the AHRS
+        // tapes they stay off the left and right edges.
+        // layer.widget->enable(dial ? (efis && !split) : efis);
+        layer.widget->enable(dial ? (ahrsPicture && !split) : efis);
         layer.widget->setSplit(!dial && split);
     }
     if (mPlanning != nullptr)

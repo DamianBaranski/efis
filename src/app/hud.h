@@ -28,6 +28,9 @@ public:
     /// dispatch on whether the menu is currently open.
     MenuWidget &menu() { return mMenu; }
 
+    /// GENERAL window. The desktop host. Android uses the platform list instead.
+    SettingsPopup &settings() { return mSettings; }
+
 private:
     SettingsPopup mSettings;
     StatsOverlay mStats;

@@ -133,6 +133,8 @@ public:
 
     void toggleSensor(int index) override { mInternal.toggleSensor(index); }
 
+    void setSensor(int index, bool on) override { mInternal.setSensor(index, on); }
+
     void setSource(SituationSource source) override
     {
         if (source == SituationSource::Stratux && !mReceiver)

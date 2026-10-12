@@ -57,15 +57,18 @@ void Render2D::setTransformationMatrix(glm::mat4 transform) {
     mShader.setMvpMatrix(mMvp);
 }
 
-void Render2D::drawText(std::string text, float size, float x, float y, uint32_t color, const std::string &cacheName)
+void Render2D::drawText(std::string text, float size, float x, float y, uint32_t color, const std::string &cacheName,
+                        const std::string &fontFile)
 {
+    mShader.setColorScale(1.0f, 1.0f, 1.0f);
     if (TTF_Init() != 0)
     {
         std::cerr << "TTF_Init" << std::endl;
         SDL_Quit();
         return;
     }
-    const std::string fontPath = AssetPath::resolve("resources/fonts/B612Mono-Regular.ttf");
+    const char *file = fontFile.empty() ? "B612Mono-Regular.ttf" : fontFile.c_str();
+    const std::string fontPath = AssetPath::resolve(std::string("resources/fonts/") + file);
     TTF_Font *font = TTF_OpenFont(fontPath.c_str(), size);
     if (!font)
     {
@@ -97,6 +100,7 @@ void Render2D::drawText(std::string text, float size, float x, float y, uint32_t
 void Render2D::drawTextCentered(std::string text, float size, float x, float y, uint32_t color,
                                 const std::string &cacheName)
 {
+    mShader.setColorScale(1.0f, 1.0f, 1.0f);
     if (TTF_Init() != 0)
     {
         std::cerr << "TTF_Init" << std::endl;
@@ -178,10 +182,49 @@ void Render2D::drawTexture(std::string name, int x, int y, float scale)
     drawTexture(name, x - w / 2, y - h / 2, w, h);
 }
 
+void Render2D::setColorScale(float r, float g, float b)
+{
+    mShader.setColorScale(r, g, b);
+}
+
 void Render2D::drawRectangle(int x, int y, int w, int h, uint32_t rgba)
 {
+    mShader.setColorScale(1.0f, 1.0f, 1.0f);
     mShader.setColor(std::to_string(rgba), rgba);
     drawTexture(std::to_string(rgba), x, y, w, h);
+}
+
+namespace
+{
+Triangles colorQuad(int x, int y, int w, int h, const std::string &material)
+{
+    Triangles quad;
+    quad.material = material;
+    quad.vertex = {
+        {{static_cast<float>(x), static_cast<float>(y), 0}, {0.0f, 1.0f}, {0.0f, 0.0f}},
+        {{static_cast<float>(x), static_cast<float>(y + h), 0}, {0.0f, 0.0f}, {0.0f, 0.0f}},
+        {{static_cast<float>(x + w), static_cast<float>(y), 0}, {1.0f, 1.0f}, {0.0f, 0.0f}},
+        {{static_cast<float>(x + w), static_cast<float>(y + h), 0}, {1.0f, 0.0f}, {0.0f, 0.0f}}};
+    quad.indices = {0, 1, 2, 2, 3, 1};
+    return quad;
+}
+}
+
+void Render2D::drawFramedRectangle(int x, int y, int w, int h, uint32_t fill, uint32_t edge, int thickness)
+{
+    mShader.setColorScale(1.0f, 1.0f, 1.0f);
+    if (thickness < 1 || w <= thickness * 2 || h <= thickness * 2)
+    {
+        drawRectangle(x, y, w, h, fill);
+        return;
+    }
+    mShader.setColor(std::to_string(fill), fill);
+    mShader.setColor(std::to_string(edge), edge);
+    std::vector<Triangles> triangles;
+    triangles.push_back(colorQuad(x, y, w, h, std::to_string(edge)));
+    triangles.push_back(colorQuad(x + thickness, y + thickness, w - 2 * thickness, h - 2 * thickness, std::to_string(fill)));
+    mShader.clearGeometry();
+    mShader.setTriangles(triangles);
 }
 
 void Render2D::render() const

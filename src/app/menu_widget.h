@@ -15,7 +15,7 @@
 class AppController;
 class SettingsPopup;
 
-/// Expand mark on the left edge. It opens one full-height translucent side menu.
+/// Expand mark on the left edge. It opens a full-screen grouped menu.
 /// The split map keeps its own settings control.
 class MenuWidget : public IWidget
 {
@@ -26,7 +26,7 @@ public:
     /// \param popup GENERAL window the menu opens and hits.
     MenuWidget(Frame &frame, AppController &controller, SettingsPopup &popup);
 
-    /// Draws the expand mark and the side menu while it is open.
+    /// Draws the expand mark and the full-screen menu while it is open.
     void render() override;
 
     /// Arms a tap. The action runs on release, so the first finger of a pinch does not open the menu.
@@ -47,21 +47,23 @@ public:
     /// Unused. The expand mark sits on the left edge.
     void setPos(int, int) override {}
 
-    /// True while the side menu is open.
+    /// True while the full-screen menu is open.
     bool isOpen() const { return mOpen; }
 
-    /// Closes the side menu. Does not notify the map.
+    /// Closes the full-screen menu. Does not notify the map.
     void close();
 
-    /// Called when the side menu opens, so the map menu can close.
+    /// Called when the full-screen menu opens, so the map menu can close.
     void setOnOpen(std::function<void()> callback) { mOnOpen = std::move(callback); }
 
 private:
     struct Entry
     {
         std::string label;
+        std::string detail;
+        const char *icon = nullptr;
         bool header = false;
-        std::function<std::string()> textOf;
+        bool stateLine = false;
         std::function<void()> run;
         std::function<bool()> selected;
         int x = 0;
@@ -76,6 +78,10 @@ private:
         Toggle,
         Row,
         Dismiss,
+        GeneralTab,
+        GeneralRow,
+        GeneralKey,
+        GeneralChart,
     };
 
     void buildEntries();
@@ -110,10 +116,13 @@ private:
     int mPanelW = 0;
     int mPanelH = 0;
     int mFont = 26;
+    int mDetailFont = 16;
+    int mHeaderFont = 18;
     int mScroll = 0;
     int mContentH = 0;
     int mContentSprites = 0;
     bool mDragList = false;
+    bool mDragGeneral = false;
 
     int mSpriteCount = 0;
     size_t mSpriteCursor = 0;

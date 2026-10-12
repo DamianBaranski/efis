@@ -47,6 +47,8 @@ public:
     bool sensorOn(int index) const;
     /// Flips one sensor into or out of the PX4 EKF. The SOURCES page still shows its reading.
     void toggleSensor(int index);
+    /// Turns one sensor into or out of the attitude filter.
+    void setSensor(int index, bool on);
 
 private:
     void publish();

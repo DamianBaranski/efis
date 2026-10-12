@@ -412,7 +412,12 @@ void StatsOverlay::formatGpsLine(char *out, size_t n) const
                   lonSide);
 }
 
-void StatsOverlay::drawStats()
+void StatsOverlay::drawDebug(int sdlX, int sdlY, int w, int h)
+{
+    drawStats(sdlX, sdlY, w, h, true);
+}
+
+void StatsOverlay::drawStats(int sdlX, int sdlY, int w, int h, bool inPage)
 {
     char fpsLine[96];
     char ahrs[96];
@@ -439,8 +444,9 @@ void StatsOverlay::drawStats()
     formatDownloadLines(dl0, sizeof(dl0), dl1, sizeof(dl1), dl2, sizeof(dl2));
     const uint64_t nowMs = SDL_GetTicks64();
     formatCacheLine(cache, sizeof(cache), nowMs);
-    const std::string key = std::string(fpsLine) + ahrs + compass + gps + l0 + l1 + l2 + l3 + vram + dl0 + dl1 + dl2 + cache;
-    const bool sizeChanged = mScreen.getWidth() != mStatsW || mScreen.getHeight() != mStatsH;
+    const std::string key = std::string(inPage ? "page:" : "corner:") + fpsLine + ahrs + compass + gps + l0 + l1 + l2 +
+                            l3 + vram + dl0 + dl1 + dl2 + cache;
+    const bool sizeChanged = w != mStatsW || h != mStatsH || sdlX != mDebugX || sdlY != mDebugY;
     const bool due = mStatsKey.empty() || sizeChanged || mStatsShownFps != mFps ||
                      (key != mStatsKey && nowMs - mStatsLastRebuildMs >= 250);
     if (due)
@@ -448,57 +454,88 @@ void StatsOverlay::drawStats()
         mStatsKey = key;
         mStatsShownFps = mFps;
         mStatsLastRebuildMs = nowMs;
-        mStatsW = mScreen.getWidth();
-        mStatsH = mScreen.getHeight();
-        const int margin = std::max(10, mStatsH / 80);
-        const int font = std::clamp(mStatsH / 48, 14, 20);
+        mStatsW = w;
+        mStatsH = h;
+        mDebugX = sdlX;
+        mDebugY = sdlY;
+        const int font = inPage ? std::clamp(std::min(w / 48, h / (kStatsLineCount + 1)), 14, 22)
+                                : std::clamp(h / 48, 14, 20);
         const char *lines[kStatsLineCount] = {fpsLine, ahrs, compass, gps, l0, l1, l2, l3, vram, dl0, dl1, dl2, cache};
         static const char *kKeys[kStatsLineCount] = {
             "efis-stat-0", "efis-stat-1",  "efis-stat-2",  "efis-stat-3",  "efis-stat-4",  "efis-stat-5", "efis-stat-6",
             "efis-stat-7", "efis-stat-8",  "efis-stat-9",  "efis-stat-10", "efis-stat-11", "efis-stat-12"};
-        int maxW = 0;
-        int textH = font + 6;
-        TTF_Init();
-        TTF_Font *face = TTF_OpenFont(AssetPath::resolve("resources/fonts/B612Mono-Regular.ttf").c_str(), font);
-        if (face)
-        {
-            for (int i = 0; i < kStatsLineCount; ++i)
-            {
-                int w = 0;
-                int h = 0;
-                TTF_SizeText(face, lines[i], &w, &h);
-                maxW = std::max(maxW, w);
-                textH = std::max(textH, h);
-            }
-            TTF_CloseFont(face);
-        }
         const int padX = std::max(12, font);
         const int padY = std::max(8, font / 2);
-        const int lineH = textH + 4;
-        const int boxW = maxW + 2 * padX;
-        const int boxH = kStatsLineCount * lineH + 2 * padY;
-        const int x = mStatsW - margin - boxW;
-        const int glY = margin;
-        mStatsBox->drawRectangle(x, glY, boxW, boxH, 0x00000099u);
-        for (int i = 0; i < kStatsLineCount; ++i)
+        const int lineH = font + 8;
+        const int screenH = std::max(1, mScreen.getHeight());
+        if (!inPage)
         {
-            const int ty = glY + padY + (kStatsLineCount - 1 - i) * lineH;
-            mStatsLines[static_cast<size_t>(i)]->drawText(lines[i], static_cast<float>(font),
-                                                          static_cast<float>(x + padX), static_cast<float>(ty),
-                                                          0xFFFFFFFFu, kKeys[i]);
+            int maxW = 0;
+            int textH = font + 6;
+            TTF_Init();
+            TTF_Font *face = TTF_OpenFont(AssetPath::resolve("resources/fonts/B612Mono-Regular.ttf").c_str(), font);
+            if (face)
+            {
+                for (int i = 0; i < kStatsLineCount; ++i)
+                {
+                    int tw = 0;
+                    int th = 0;
+                    TTF_SizeText(face, lines[i], &tw, &th);
+                    maxW = std::max(maxW, tw);
+                    textH = std::max(textH, th);
+                }
+                TTF_CloseFont(face);
+            }
+            const int boxW = maxW + 2 * padX;
+            const int boxH = kStatsLineCount * (textH + 4) + 2 * padY;
+            const int x = sdlX + w - std::max(10, h / 80) - boxW;
+            const int glY = padY;
+            mStatsBox->drawRectangle(x, glY, boxW, boxH, 0x00000099u);
+            for (int i = 0; i < kStatsLineCount; ++i)
+            {
+                const int ty = glY + padY + (kStatsLineCount - 1 - i) * (textH + 4);
+                mStatsLines[static_cast<size_t>(i)]->drawText(lines[i], static_cast<float>(font),
+                                                              static_cast<float>(x + padX), static_cast<float>(ty),
+                                                              0xFFFFFFFFu, kKeys[i]);
+            }
+        }
+        else
+        {
+            mStatsBox->drawRectangle(0, 0, 1, 1, 0x00000000u);
+            for (int i = 0; i < kStatsLineCount; ++i)
+            {
+                const int ty = screenH - (sdlY + padY + (i + 1) * lineH);
+                mStatsLines[static_cast<size_t>(i)]->drawText(lines[i], static_cast<float>(font),
+                                                              static_cast<float>(sdlX + padX), static_cast<float>(ty),
+                                                              0xFFFFFFFFu, kKeys[i]);
+            }
         }
     }
     glDisable(GL_CULL_FACE);
     glDisable(GL_DEPTH_TEST);
     glDepthMask(GL_FALSE);
     glEnable(GL_BLEND);
+    const bool clip = inPage && w > 0 && h > 0;
+    if (clip)
+    {
+        const int screenH = std::max(1, mScreen.getHeight());
+        glEnable(GL_SCISSOR_TEST);
+        glScissor(sdlX, screenH - sdlY - h, w, h);
+    }
     const glm::mat4 identity(1.0f);
-    mStatsBox->setTransformationMatrix(identity);
-    mStatsBox->render();
+    if (!inPage)
+    {
+        mStatsBox->setTransformationMatrix(identity);
+        mStatsBox->render();
+    }
     for (auto &line : mStatsLines)
     {
         line->setTransformationMatrix(identity);
         line->render();
+    }
+    if (clip)
+    {
+        glDisable(GL_SCISSOR_TEST);
     }
     glDepthMask(GL_TRUE);
     glEnable(GL_DEPTH_TEST);
@@ -590,9 +627,8 @@ void StatsOverlay::render()
     {
         return;
     }
-    if (mController.statsVisible())
+    if (mController.generalOpen())
     {
-        drawStats();
         return;
     }
     drawPreload();

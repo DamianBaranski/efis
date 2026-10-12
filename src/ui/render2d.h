@@ -44,8 +44,9 @@ public:
     /// @param size The font size.
     /// @param x The x-coordinate of the text position.
     /// @param y The y-coordinate of the text position.
-    void drawText(std::string text, float size, float x, float y, uint32_t color=0xFFFFFFFF,
-                  const std::string &cacheName = {});
+    /// `fontFile` is a file in resources/fonts. Empty uses B612 Mono.
+    void drawText(std::string text, float size, float x, float y, uint32_t color = 0xFFFFFFFF,
+                  const std::string &cacheName = {}, const std::string &fontFile = {});
 
     /// Centered text. `x`,`y` are the center of the baseline box.
     void drawTextCentered(std::string text, float size, float x, float y, uint32_t color = 0xFFFFFFFF,
@@ -68,6 +69,9 @@ public:
     /// @param h The height of the texture.
     void drawTexture(std::string name, int x, int y, int w, int h);
 
+    /// RGB multiply for the next textured draw. (1, 1, 1) leaves the texture unchanged.
+    void setColorScale(float r, float g, float b);
+
     /// @brief Draws a colored rectangle on the screen.
     /// @param x The x-coordinate of the top-left corner of the rectangle.
     /// @param y The y-coordinate of the top-left corner of the rectangle.
@@ -75,6 +79,10 @@ public:
     /// @param h The height of the rectangle.
     /// @param rgba The color of the rectangle in RGBA format.
     void drawRectangle(int x, int y, int w, int h, uint32_t rgba);
+
+    /// Filled rectangle with a solid edge. `x` and `y` are the bottom-left corner in GL pixels.
+    /// \param thickness Edge width in pixels.
+    void drawFramedRectangle(int x, int y, int w, int h, uint32_t fill, uint32_t edge, int thickness);
 
     /// @brief Renders the scene.
     void render() const;

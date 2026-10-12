@@ -1,0 +1,38 @@
+Tabler Icons, outline, 24x24, 2px stroke, MIT. Rasters are 2048x2048 straight-alpha white.
+Source: https://github.com/tabler/tabler-icons
+License: LICENSE in this folder. Copyright (c) 2020-2026 Paweł Kuna.
+Stroke is currentColor, so a tile can draw the icon white or green.
+
+tile	tabler name
+accel	arrows-move
+ahrs	plane-tilt
+airspace	hexagon
+compass	compass
+far-ring	circle
+general	adjustments-horizontal
+gps	location
+gyro	rotate-clockwise
+horizon	sunset
+labels	text-caption
+layout-horizontal	layout-columns
+layout-vertical	layout-rows
+narration	volume
+nearest	building-airport
+near-ring	circle-dot
+obstacles	building-broadcast-tower
+planning	route
+points	map-pin
+reporting	current-location
+satellite	satellite
+simple	mountain
+source-radio	antenna
+source-sim	device-desktop
+source-tablet	device-tablet
+split	layout-columns
+stats	chart-bar
+test-phrase	player-play
+three-d	box
+voice	wave-sine
+walls	fence
+chevron-left	chevron-left
+chevron-right	chevron-right

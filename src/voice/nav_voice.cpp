@@ -505,6 +505,16 @@ void NavVoice::selectVoice(int index)
     VoiceAnnouncer::instance().selectVoice(index);
 }
 
+std::string NavVoice::selectedVoiceId()
+{
+    return VoiceAnnouncer::instance().selectedVoiceId();
+}
+
+void NavVoice::preferVoiceId(const std::string &id)
+{
+    VoiceAnnouncer::instance().preferVoiceId(id);
+}
+
 std::string NavVoice::voiceLabel()
 {
     return VoiceAnnouncer::instance().voiceLabel();

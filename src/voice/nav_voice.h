@@ -56,6 +56,10 @@ public:
     void selectVoice(int index);
     /// Label of the selected voice, for the sound page.
     std::string voiceLabel();
+    /// Engine id of the selected voice. Saved in settings.json.
+    std::string selectedVoiceId();
+    /// Restores a voice by engine id. Applied when that voice is installed.
+    void preferVoiceId(const std::string &id);
 
     /// vertical: -1 below the floor, 0 inside the band, +1 above the ceiling.
     void noteAirspace(const std::string &name, int type, const std::string &lowerLabel, double distM, bool horizontal,

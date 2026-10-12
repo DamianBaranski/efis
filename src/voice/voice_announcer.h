@@ -42,6 +42,10 @@ public:
     /// Selects a catalog entry and applies it.
     /// \param index Index from voiceLabels(). Out of range is ignored.
     void selectVoice(int index);
+    /// Engine id of the selected voice. Empty until a voice has been chosen.
+    std::string selectedVoiceId();
+    /// Selects this engine id when the catalog contains it. Kept until then.
+    void preferVoiceId(const std::string &id);
     /// Label of the selected voice.
     std::string voiceLabel();
 
@@ -81,6 +85,7 @@ private:
     std::mutex mVoiceMutex;
     std::vector<VoiceChoice> mVoices;
     int mVoiceIndex = 0;
+    std::string mPreferredId;
     std::string mAppliedId;
     uint32_t mVoicePollMs = 0;
 };

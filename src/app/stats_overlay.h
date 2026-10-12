@@ -29,11 +29,15 @@ public:
     /// \param session Attitude sample for the AHRS line.
     StatsOverlay(Frame &frame, AppController &controller, IWorldRead &world, ISession &session);
 
-    /// Counts frames and draws either the banner or the panel.
+    /// Counts frames and draws the preload banner.
     void render() override;
 
     /// Unused. The overlay anchors itself to the window edges.
     void setPos(int, int) override {}
+
+    /// Draws the diagnostics lines inside a GENERAL Debug page rectangle.
+    /// Coordinates are SDL pixels, origin at the top left.
+    void drawDebug(int sdlX, int sdlY, int w, int h);
 
 private:
     static size_t readMemKb(const char *key);
@@ -52,7 +56,7 @@ private:
     void formatAhrsLine(char *out, size_t n);
     void formatCompassLine(char *out, size_t n) const;
     void formatGpsLine(char *out, size_t n) const;
-    void drawStats();
+    void drawStats(int sdlX, int sdlY, int w, int h, bool inPage);
     void rebuildPreloadSprites(const std::string &l0, const std::string &l1, const std::string &l2,
                                const std::string &l3);
     void drawPreload();
@@ -66,6 +70,8 @@ private:
     uint64_t mFpsStartMs = 0;
     int mStatsW = 0;
     int mStatsH = 0;
+    int mDebugX = 0;
+    int mDebugY = 0;
     std::string mStatsKey;
     uint64_t mStatsLastRebuildMs = 0;
     uint64_t mCacheScanMs = 0;
