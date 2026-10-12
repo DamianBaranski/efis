@@ -30,6 +30,9 @@ public:
     /// Draws beside the aircraft symbol in the split attitude pane.
     void setSplit(bool split) override { mSplit = split; }
 
+    /// When the corner dials are hidden, the tapes widen into that margin.
+    void setCornerDials(bool on) { mCornerDials = on; }
+
 private:
     struct Glyph
     {
@@ -48,6 +51,7 @@ private:
     Shader mShader;
     bool mColorsReady = false;
     bool mSplit = false;
+    bool mCornerDials = true;
 
     Glyph mIas;
     Glyph mSpdTop;

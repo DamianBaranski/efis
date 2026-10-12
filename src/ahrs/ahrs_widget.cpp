@@ -40,7 +40,7 @@ float AhrsWidget::hudScale() const
     {
         return 1.0f;
     }
-    return static_cast<float>(h) / cDesignHeight;
+    return static_cast<float>(h) / cDesignHeight * 1.12f;
 }
 
 void AhrsWidget::rebuildSprites()
@@ -68,8 +68,9 @@ void AhrsWidget::rebuildSprites()
     }
     // PC art is authored for a 600px-tall window. Grow the tape if the
     // 2048px-wide sky/ground would still leave the sides uncovered.
+    // 12% above that design. The route strip keeps its own scale.
     const float designScale = static_cast<float>(h) / cDesignHeight;
-    const float scale = std::max(designScale, w > 0 ? static_cast<float>(w) / 2048.0f : designScale);
+    const float scale = std::max(designScale, w > 0 ? static_cast<float>(w) / 2048.0f : designScale) * 1.12f;
 
     mLayoutX = cx;
     mPaneX = mSplit ? layout.ahrs.x : 0;

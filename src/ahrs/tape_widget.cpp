@@ -170,7 +170,8 @@ void TapeWidget::render()
     const float areaWf = static_cast<float>(areaW);
     const float areaHf = static_cast<float>(areaH);
     const float design = areaHf / 600.0f;
-    const float symbolScale = std::max(design, areaWf / 2048.0f);
+    // Match the attitude art, which is 12% above the 600px design. The route strip does not.
+    const float symbolScale = std::max(design, areaWf / 2048.0f) * 1.12f;
     const float leftEdge = mSplit ? static_cast<float>(layout.ahrs.x) : 0.0f;
     const float cx = leftEdge + areaWf * 0.5f;
     const float cy = mSplit ? static_cast<float>(screenH - layout.ahrs.y) - areaHf * 0.5f : hf * 0.5f;
@@ -179,8 +180,8 @@ void TapeWidget::render()
     const float column = std::min(areaHf / 3.0f, areaWf * 0.28f);
     const float inset = std::max(4.0f, column * 0.04f);
     const float outer = std::max(36.0f, column * 0.5f - inset);
-    // Corner dials are hidden in SPLIT, so the tapes can sit against the pane edge.
-    const float dialInner = mSplit ? inset : outer + inset + outer;
+    // Corner dials are hidden in SPLIT and in 3D. The tapes then use that margin.
+    const float dialInner = (mSplit || !mCornerDials) ? inset : outer + inset + outer;
     const float haveL = (cx - symbolHalf) - (leftEdge + dialInner);
     const float haveR = (leftEdge + areaWf - dialInner) - (cx + symbolHalf);
 

@@ -5,6 +5,7 @@
 #include "frame.h"
 #include "iwidget.h"
 #include "nav_voice.h"
+#include "tape_widget.h"
 #include "terrain_download.h"
 #include "terrain_widget.h"
 #include <iostream>
@@ -262,6 +263,10 @@ void AppController::applyLayers()
         // layer.widget->enable(dial ? (efis && !split) : efis);
         layer.widget->enable(dial ? (ahrsPicture && !split) : efis);
         layer.widget->setSplit(!dial && split);
+        if (auto *tapes = dynamic_cast<TapeWidget *>(layer.widget))
+        {
+            tapes->setCornerDials(ahrsPicture && !split);
+        }
     }
     if (mPlanning != nullptr)
     {
