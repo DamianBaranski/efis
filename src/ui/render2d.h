@@ -72,6 +72,9 @@ public:
     /// RGB multiply for the next textured draw. (1, 1, 1) leaves the texture unchanged.
     void setColorScale(float r, float g, float b);
 
+    /// Replaces this sprite with solid triangles. `rgba` is RRGGBBAA. One material name is enough.
+    void setSolidMesh(const std::vector<Triangles> &mesh, uint32_t rgba);
+
     /// @brief Draws a colored rectangle on the screen.
     /// @param x The x-coordinate of the top-left corner of the rectangle.
     /// @param y The y-coordinate of the top-left corner of the rectangle.

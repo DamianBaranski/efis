@@ -187,6 +187,21 @@ void Render2D::setColorScale(float r, float g, float b)
     mShader.setColorScale(r, g, b);
 }
 
+void Render2D::setSolidMesh(const std::vector<Triangles> &mesh, uint32_t rgba)
+{
+    mShader.setColorScale(1.0f, 1.0f, 1.0f);
+    for (const Triangles &part : mesh)
+    {
+        if (!part.material.empty())
+        {
+            mShader.setColor(part.material, rgba);
+            break;
+        }
+    }
+    mShader.clearGeometry();
+    mShader.setTriangles(mesh);
+}
+
 void Render2D::drawRectangle(int x, int y, int w, int h, uint32_t rgba)
 {
     mShader.setColorScale(1.0f, 1.0f, 1.0f);

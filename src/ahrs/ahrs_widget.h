@@ -9,6 +9,7 @@
 #include "idata_manager.h"
 #include "data_type.h"
 #include "render2d.h"
+#include <array>
 
 /// Pitch, roll, slip, and the aircraft symbol stay up in both AHRS and 3D.
 /// The sky and ground tape is drawn only in AHRS mode.
@@ -40,6 +41,9 @@ public:
 
 private:
     void rebuildSprites();
+    void buildRulers(float cx, float cy, float scale);
+    /// Whole pitch bars from -90° to +90° whose degree is within 30° of `pitchDeg`.
+    void buildVisibleLadder(float pitchDeg);
     float hudScale() const;
 
     /// \brief Updates the internal renderers based on the new attitude data.
@@ -47,12 +51,15 @@ private:
 
     IDataManager &mDataManager;            ///< Reference to the data manager providing attitude data.
     Render2D mLandRepresentation;  ///< Representation of land in the AHRS widget.
-    Render2D mHorizonLine;         ///< Representation of the horizon line in the AHRS widget.
-    Render2D mPithScale;           ///< Representation of the pitch scale in the AHRS widget.
-    Render2D mRollPointer;                 ///< Representation of the roll pointer in the AHRS widget.
-    Render2D mSkipSkidIndicator;           ///< Representation of the skip/skid indicator in the AHRS widget.
-    Render2D mAttitudeIndicator;   ///< Representation of the attitude indicator in the AHRS widget.
-    Render2D mAircraftSymbol;              ///< Representation of the aircraft symbol in the AHRS widget.
+    Render2D mHorizonLine;         ///< Horizon line, drawn as geometry so it stays sharp.
+    Render2D mPithScale;           ///< Pitch ladder, drawn as geometry so it stays sharp.
+    Render2D mRollPointer;         ///< Fixed bank index, drawn as geometry.
+    Render2D mSkipSkidIndicator;   ///< Representation of the skip/skid indicator in the AHRS widget.
+    Render2D mAttitudeIndicator;   ///< Bank arc and sky pointer, drawn as geometry.
+    Render2D mAircraftSymbol;      ///< Representation of the aircraft symbol in the AHRS widget.
+    /// ±10° through ±90° on each side of the ladder.
+    static constexpr int cPitchLabelCount = 36;
+    std::array<Render2D, cPitchLabelCount> mPitchLabel;
     AttitudeData mAttitudeData;    ///< Attitude data.
     bool mDrawSkyGround = true; ///< Land and horizon tape. False in 3D so terrain shows through.
     bool mSplit = false;        ///< Left column of the split picture.
@@ -66,14 +73,11 @@ private:
     int mClipW = 0;
     int mClipH = 0;
     float mHudScale = 1.0f;
+    /// Aircraft pitch in degrees. Nose up is positive. The ladder window follows it.
+    float mPitchDeg = 0.0f;
 
-    static constexpr const char *cResourcesPath = "../resources/textures/ui/AHRS/"; ///< Path to the resources directory.
-    static constexpr const char *cPithScaleTexture = "layer10.png";                 ///< Texture file for the pitch scale.
-    static constexpr const char *cRollPointerTexture = "layer5.png";                ///< Texture file for the roll pointer.
     static constexpr const char *cSkipSkidIndicatorTexture = "layer7.png";          ///< Texture file for the skip/skid indicator.
-    static constexpr const char *cAttitudeIndicatorTexture = "layer4.png";          ///< Texture file for the attitude indicator.
     static constexpr const char *cAircraftSymbolTexture = "layer11.png";            ///< Texture file for the aircraft symbol.
-    static constexpr const char *cHorizonLineTexture = "layer6.png";                ///< Texture file for the horizon line.
     static constexpr const char *cLandRepresentationTexture = "layer3.png";         ///< Texture file for the land representation.
     static constexpr float cDesignHeight = 600.0f;
     /// The 10° labels sit 62.5 px from the horizon in the unscaled ladder art.
